@@ -150,6 +150,8 @@ Run the full verification test suite:
 
 ## Industry Benchmark: AegisSec vs. SonarQube, Semgrep & OWASP Dependency-Check
 
+> 📄 **Dedicated Comprehensive Benchmark Report**: For the complete empirical benchmark analysis, ASCII performance trajectories, and strategic migration matrices, see [BENCHMARK.md](file:///home/zeek/appsec/BENCHMARK.md).
+
 A comprehensive architectural and operational evaluation comparing **AegisSec** with **OWASP Dependency-Check**, **SonarQube**, and **Semgrep**:
 
 ### Executive Scorecard Summary
@@ -212,4 +214,8 @@ A comprehensive architectural and operational evaluation comparing **AegisSec** 
 #### 5. AI-Powered Refactoring Diffs vs. Static Advisory Links
 - **Legacy Tools**: Point developers to generic CVE descriptions or external CWE definitions, leaving the engineer to research how to safely refactor the code.
 - **AegisSec**: Injects the flagged code snippet, language, and standards violations into the LLM engine to generate **exact refactored code diffs** (parameterized queries, bounded buffers, safe deserialization), root-cause analysis, and specific unit test verification steps with a 1-click **"Copy Fix"** workflow.
+
+---
+
+> 📊 **Explore More**: Read the full empirical study and technical scorecard in [BENCHMARK.md](file:///home/zeek/appsec/BENCHMARK.md).
 

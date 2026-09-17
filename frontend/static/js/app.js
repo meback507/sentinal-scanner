@@ -77,7 +77,6 @@ function navigate(viewName) {
     if (viewName === "compliance") renderComplianceMatrix();
     if (viewName === "integrations") loadIntegrations();
     if (viewName === "users") loadUsers();
-    if (viewName === "benchmark") loadBenchmarkData();
     if (viewName === "audit") loadAuditData();
 }
 
