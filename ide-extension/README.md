@@ -76,14 +76,99 @@ code --install-extension sentinel-appsec-ide-1.0.0.vsix
 
 ---
 
-## Configuration Settings
+---
 
-In your editor `settings.json`:
+## Cloud Server Setup & Remote Connection
+
+When Sentinel is hosted on a remote or cloud server (e.g. AWS EC2, GCP Compute Engine, Kubernetes cluster, or private VPS), developers can seamlessly connect their IDE extension to sync organization-wide security policies, platform custom rules, and audit results in real time.
+
+### Step 1: Deploy Sentinel on Your Cloud Server
+
+On your cloud VM or container cluster:
+
+```bash
+# Clone the repository on your cloud server
+git clone https://github.com/meback507/sentinal-scanner.git appsec
+cd appsec
+
+# Start Sentinel backend & web dashboard
+./run.sh
+# Or with Docker:
+docker compose up -d
+```
+Ensure your security group / firewall allows inbound traffic to port `8000` (or `443` if behind an Nginx / Cloudflare reverse proxy with SSL).
+
+---
+
+### Step 2: Configure the IDE Extension
+
+There are **two easy ways** to connect the extension to your cloud server:
+
+#### Option A: Interactive 1-Click Wizard (Recommended)
+1. Open the Command Palette in your editor:
+   - **Linux / Windows:** `Ctrl + Shift + P`
+   - **macOS:** `Cmd + Shift + P`
+2. Type and select: **`Sentinel: Connect to Cloud Server & API Token`**
+3. Enter your remote cloud server URL:
+   ```text
+   https://sentinel.company.internal
+   # or
+   http://<YOUR_CLOUD_SERVER_IP>:8000
+   ```
+4. Choose your preferred authentication method:
+   - **🔑 Login with Username & Password:** Enter your Sentinel account username and password (e.g., `admin` / `Admin@123!`). The plugin will authenticate to `POST /api/auth/login`, acquire your JWT bearer token, and save it automatically!
+   - **🪪 Enter API Bearer Token / PAT:** If you already have a Personal Access Token or CI token, simply paste it in.
+   - **🌐 Connect without Token:** Connect using anonymous / development mode.
+5. The extension immediately connects to the cloud server, downloads the full security catalog (`GET /api/rules/catalog`), and displays a confirmation notification!
+
+---
+
+#### Option B: Configure via Editor Settings (`settings.json`)
+
+You can also configure the server URL and token directly in your User or Workspace settings:
+
+1. Open Settings (`Ctrl + ,` or `Cmd + ,`).
+2. Search for **`Sentinel`**.
+3. Set the following options:
+
 ```json
 {
-  "sentinel.serverUrl": "http://127.0.0.1:8000",
+  "sentinel.serverUrl": "https://sentinel.your-company.com",
+  "sentinel.apiToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "sentinel.rulesFile": ".sentinel/rules.yaml",
   "sentinel.scanOnSave": true,
   "sentinel.failOnSeverity": "HIGH"
 }
 ```
+
+---
+
+### Step 3: How Cloud Rules & Local Rules Synchronize
+
+Once connected to your cloud instance:
+1. **Remote Cloud Catalog Synchronization:**
+   The plugin queries `GET /api/rules/catalog` on the remote cloud instance. All centralized rules (SAST, IaC, Secrets, API security, and platform-wide custom rules) are retrieved and displayed under:
+   - `☁️ Cloud Platform Custom Rules`
+   - `🛡️ SAST Security Rules`
+   - `🏗️ IaC & Container Hardening`
+   - `🔑 Secret & Key Detection`
+2. **Local Project Custom Rules Layering (`.sentinel/rules.yaml`):**
+   If the active project has its own `.sentinel/rules.yaml`, local project rules are automatically merged and take precedence, showing under:
+   - `⚙️ Project Custom Rules (.sentinel/rules.yaml)`
+3. **Real-Time In-Editor Enforcement:**
+   Every open document is evaluated against both remote cloud rules and local project rules as you type or save.
+4. **Offline Resilience:**
+   If the cloud server is temporarily unreachable or the developer goes offline, the plugin gracefully falls back to local cached rules and `.sentinel/rules.yaml` without breaking editor workflows.
+
+---
+
+## Quick Command Reference
+
+| Command | Action |
+| :--- | :--- |
+| `Sentinel: Connect to Cloud Server & API Token` | Launch cloud server connection & login wizard |
+| `Sentinel: Scan Active Document` | Run immediate AST audit on current file |
+| `Sentinel: Scan Entire Workspace` | Audit all repository files and update status bar |
+| `Sentinel: Refresh & Sync Custom Rules` | Re-fetch rules from cloud server & reload `.sentinel/rules.yaml` |
+| `Sentinel: Open Web Dashboard` | Open the cloud server dashboard in default browser |
+

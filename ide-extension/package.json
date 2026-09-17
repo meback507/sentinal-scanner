@@ -92,19 +92,30 @@
         "command": "sentinel.applyQuickFix",
         "title": "Sentinel: Apply Remediation Fix",
         "category": "Sentinel AppSec"
+      },
+      {
+        "command": "sentinel.configureCloud",
+        "title": "Sentinel: Connect to Cloud Server & API Token",
+        "category": "Sentinel AppSec",
+        "icon": "$(cloud)"
       }
     ],
     "menus": {
       "view/title": [
         {
+          "command": "sentinel.configureCloud",
+          "when": "view == sentinel.rulesExplorer",
+          "group": "navigation@1"
+        },
+        {
           "command": "sentinel.refreshRules",
           "when": "view == sentinel.rulesExplorer",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "sentinel.openDashboard",
           "when": "view == sentinel.rulesExplorer",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
           "command": "sentinel.scanWorkspace",

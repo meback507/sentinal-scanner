@@ -216,6 +216,68 @@ function activate(context) {
             vscode.env.openExternal(vscode.Uri.parse(serverUrl));
         }),
 
+        vscode.commands.registerCommand('sentinel.configureCloud', async () => {
+            const config = vscode.workspace.getConfiguration('sentinel');
+            const currentUrl = config.get('serverUrl') || 'http://127.0.0.1:8000';
+            const inputUrl = await vscode.window.showInputBox({
+                prompt: 'Enter Sentinel Cloud Server URL (e.g. https://sentinel.company.internal or http://<ip>:8000)',
+                value: currentUrl,
+                placeHolder: 'https://sentinel.mycloud.com',
+                ignoreFocusOut: true
+            });
+            if (!inputUrl) return;
+
+            const authChoice = await vscode.window.showQuickPick([
+                { label: '$(key) Login with Username & Password', description: 'Authenticate to cloud server and retrieve API token automatically', id: 'login' },
+                { label: '$(passkey) Enter API Bearer Token / PAT', description: 'Paste an existing JWT or Personal Access Token', id: 'token' },
+                { label: '$(globe) Connect without Token (Public / Dev Mode)', description: 'Connect using unauthenticated dev access', id: 'none' }
+            ], {
+                placeHolder: 'Select Authentication Method for Cloud Server'
+            });
+            if (!authChoice) return;
+
+            let finalToken = '';
+
+            if (authChoice.id === 'login') {
+                const username = await vscode.window.showInputBox({
+                    prompt: 'Enter Sentinel Cloud Username',
+                    value: 'admin',
+                    ignoreFocusOut: true
+                });
+                if (!username) return;
+
+                const password = await vscode.window.showInputBox({
+                    prompt: 'Enter Sentinel Cloud Password',
+                    password: true,
+                    ignoreFocusOut: true
+                });
+                if (password === undefined) return;
+
+                try {
+                    vscode.window.setStatusBarMessage('Connecting to Sentinel Cloud...', 3000);
+                    finalToken = await loginToCloudServer(inputUrl.trim(), username.trim(), password);
+                    vscode.window.showInformationMessage(`🛡️ Successfully authenticated as "${username}"!`);
+                } catch (err) {
+                    vscode.window.showErrorMessage(`❌ Login to ${inputUrl.trim()} failed: ${err.message}`);
+                    return;
+                }
+            } else if (authChoice.id === 'token') {
+                const tokenInput = await vscode.window.showInputBox({
+                    prompt: 'Paste API Bearer Token or Personal Access Token (PAT)',
+                    password: true,
+                    ignoreFocusOut: true
+                });
+                if (tokenInput === undefined) return;
+                finalToken = tokenInput.trim();
+            }
+
+            await config.update('serverUrl', inputUrl.trim(), vscode.ConfigurationTarget.Global);
+            await config.update('apiToken', finalToken, vscode.ConfigurationTarget.Global);
+
+            vscode.window.showInformationMessage(`🛡️ Sentinel: Connected to cloud server (${inputUrl.trim()}). Synchronizing security rules...`);
+            await loadAllRules();
+        }),
+
         vscode.commands.registerCommand('sentinel.applyQuickFix', (documentUri, range, ruleId) => {
             applySuppressionComment(documentUri, range, ruleId);
         })
@@ -301,16 +363,167 @@ function activate(context) {
 }
 
 /**
- * Loads project custom rules from .sentinel/rules.yaml and merges with built-in rules
+ * Helper to perform HTTP or HTTPS requests for cloud sync & authentication
  */
-function loadAllRules() {
+function makeApiRequest(urlStr, options = {}, postData = null) {
+    return new Promise((resolve, reject) => {
+        try {
+            const urlObj = new URL(urlStr);
+            const isHttps = urlObj.protocol === 'https:';
+            const client = isHttps ? https : http;
+
+            const reqOptions = {
+                hostname: urlObj.hostname,
+                port: urlObj.port || (isHttps ? 443 : 80),
+                path: urlObj.pathname + urlObj.search,
+                method: options.method || 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'Sentinel-IDE-Plugin/1.0.0',
+                    ...(options.headers || {})
+                },
+                timeout: 5000
+            };
+
+            if (postData) {
+                reqOptions.headers['Content-Type'] = 'application/json';
+                reqOptions.headers['Content-Length'] = Buffer.byteLength(postData);
+            }
+
+            const req = client.request(reqOptions, (res) => {
+                let body = '';
+                res.on('data', (chunk) => { body += chunk; });
+                res.on('end', () => {
+                    resolve({ statusCode: res.statusCode, headers: res.headers, body });
+                });
+            });
+
+            req.on('error', (err) => reject(err));
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Connection timed out'));
+            });
+
+            if (postData) {
+                req.write(postData);
+            }
+            req.end();
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+/**
+ * Authenticates against remote Sentinel cloud server to retrieve JWT Bearer token
+ */
+async function loginToCloudServer(serverUrl, username, password) {
+    const postBody = JSON.stringify({ username, password });
+    const url = new URL('/api/auth/login', serverUrl).toString();
+    const res = await makeApiRequest(url, { method: 'POST' }, postBody);
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+        const json = JSON.parse(res.body);
+        return json.access_token;
+    } else {
+        let msg = `HTTP ${res.statusCode}`;
+        try {
+            const err = JSON.parse(res.body);
+            if (err.detail) msg = err.detail;
+        } catch (_) {}
+        throw new Error(msg);
+    }
+}
+
+/**
+ * Fetches latest security rules and platform custom rules from remote Sentinel server
+ */
+async function fetchCloudRules(serverUrl, apiToken) {
+    if (!serverUrl) return [];
+    try {
+        const headers = {};
+        if (apiToken) {
+            headers['Authorization'] = `Bearer ${apiToken.trim()}`;
+        }
+        const url = new URL('/api/rules/catalog', serverUrl).toString();
+        const res = await makeApiRequest(url, { method: 'GET', headers });
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            const catalog = JSON.parse(res.body);
+            const cloudRules = [];
+            if (catalog && catalog.rules) {
+                for (const cat of Object.keys(catalog.rules)) {
+                    const rulesArr = catalog.rules[cat];
+                    if (Array.isArray(rulesArr)) {
+                        for (const r of rulesArr) {
+                            if (cat === 'platform_custom') {
+                                r.is_platform_custom = true;
+                            }
+                            cloudRules.push(r);
+                        }
+                    }
+                }
+            }
+            return cloudRules;
+        } else {
+            console.warn(`[Sentinel IDE] Cloud server returned status ${res.statusCode}`);
+            return [];
+        }
+    } catch (err) {
+        console.warn('[Sentinel IDE] Cloud server unreachable:', err.message);
+        return [];
+    }
+}
+
+/**
+ * Compiles regex safely, stripping Python-specific inline flags like (?i), (?m)
+ */
+function compileRegex(rawRegex) {
+    if (!rawRegex) return null;
+    let clean = rawRegex.trim();
+    // Strip Python inline flags (?i), (?m), (?s) at the start
+    clean = clean.replace(/^\(\?[imsx]+\)/, '');
+    try {
+        return new RegExp(clean, 'i');
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Loads project custom rules from .sentinel/rules.yaml, syncs with remote cloud server if configured,
+ * and merges with built-in rules
+ */
+async function loadAllRules() {
     activeRules = [...DEFAULT_RULES];
     projectCustomRules = [];
 
+    const config = vscode.workspace.getConfiguration('sentinel');
+    const serverUrl = config.get('serverUrl');
+    const apiToken = config.get('apiToken');
+
+    // 1. Fetch remote rules from cloud server if configured
+    if (serverUrl) {
+        try {
+            const cloudRules = await fetchCloudRules(serverUrl, apiToken);
+            if (cloudRules && cloudRules.length > 0) {
+                for (const cr of cloudRules) {
+                    const existingIdx = activeRules.findIndex(x => x.id === cr.id);
+                    if (existingIdx >= 0) {
+                        activeRules[existingIdx] = cr;
+                    } else {
+                        activeRules.push(cr);
+                    }
+                }
+                console.log(`[Sentinel IDE] Synchronized ${cloudRules.length} rules from cloud server: ${serverUrl}`);
+            }
+        } catch (err) {
+            console.warn('[Sentinel IDE] Failed fetching cloud rules:', err.message);
+        }
+    }
+
+    // 2. Load local project custom rules from workspace (.sentinel/rules.yaml)
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (workspaceFolders && workspaceFolders.length > 0) {
         const rootPath = workspaceFolders[0].uri.fsPath;
-        const config = vscode.workspace.getConfiguration('sentinel');
         const customRulesFile = config.get('rulesFile') || '.sentinel/rules.yaml';
 
         const possiblePaths = [
@@ -439,8 +652,10 @@ function scanDocument(document) {
 
         if (!rule.regex) continue;
 
+        const regex = compileRegex(rule.regex);
+        if (!regex) continue;
+
         try {
-            const regex = new RegExp(rule.regex, 'i');
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
                 if (line.includes('sentinel-ignore')) continue;
@@ -455,7 +670,13 @@ function scanDocument(document) {
                         ? vscode.DiagnosticSeverity.Error
                         : vscode.DiagnosticSeverity.Warning;
 
-                    const originLabel = rule.is_project_custom ? ' [Project Custom: .sentinel/rules.yaml]' : '';
+                    let originLabel = '';
+                    if (rule.is_project_custom) {
+                        originLabel = ' [Project Custom: .sentinel/rules.yaml]';
+                    } else if (rule.is_platform_custom) {
+                        originLabel = ' [Cloud Platform Custom]';
+                    }
+
                     const diag = new vscode.Diagnostic(
                         range,
                         `[${rule.id}] ${rule.name}${originLabel}: ${rule.description}`,
@@ -467,7 +688,7 @@ function scanDocument(document) {
                 }
             }
         } catch (e) {
-            // Ignore invalid regex patterns
+            // Ignore regex runtime errors
         }
     }
 
@@ -567,8 +788,19 @@ class SentinelRulesTreeProvider {
                 'project_custom'
             ));
 
-            // 2. Built-in SAST
-            const sastRules = activeRules.filter(r => !r.is_project_custom && r.type === 'sast');
+            // 2. Cloud Platform Custom Rules (if any)
+            const platformRules = activeRules.filter(r => r.is_platform_custom || (r.is_custom && !r.is_project_custom));
+            if (platformRules.length > 0) {
+                categories.push(new RuleCategoryItem(
+                    `☁️ Cloud Platform Custom Rules`,
+                    platformRules,
+                    vscode.TreeItemCollapsibleState.Expanded,
+                    'platform_custom'
+                ));
+            }
+
+            // 3. Built-in SAST
+            const sastRules = activeRules.filter(r => !r.is_project_custom && !r.is_platform_custom && r.type === 'sast');
             categories.push(new RuleCategoryItem(
                 `🛡️ Built-in SAST Rules`,
                 sastRules,
@@ -576,8 +808,8 @@ class SentinelRulesTreeProvider {
                 'sast'
             ));
 
-            // 3. Built-in IaC & Containers
-            const iacRules = activeRules.filter(r => !r.is_project_custom && r.type === 'iac');
+            // 4. Built-in IaC & Containers
+            const iacRules = activeRules.filter(r => !r.is_project_custom && !r.is_platform_custom && r.type === 'iac');
             categories.push(new RuleCategoryItem(
                 `🏗️ IaC & Container Hardening`,
                 iacRules,
@@ -585,8 +817,8 @@ class SentinelRulesTreeProvider {
                 'iac'
             ));
 
-            // 4. Built-in Secrets
-            const secretRules = activeRules.filter(r => !r.is_project_custom && r.type === 'secret');
+            // 5. Built-in Secrets
+            const secretRules = activeRules.filter(r => !r.is_project_custom && !r.is_platform_custom && r.type === 'secret');
             categories.push(new RuleCategoryItem(
                 `🔑 Secret & Key Detection`,
                 secretRules,
@@ -622,6 +854,8 @@ class RuleItem extends vscode.TreeItem {
 
         if (rule.is_project_custom) {
             this.iconPath = new vscode.ThemeIcon('tools', new vscode.ThemeColor('charts.green'));
+        } else if (rule.is_platform_custom) {
+            this.iconPath = new vscode.ThemeIcon('cloud', new vscode.ThemeColor('charts.purple'));
         } else if (rule.severity === 'CRITICAL') {
             this.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground'));
         } else {
@@ -649,6 +883,14 @@ function showRuleInspectorWebview(context, rule) {
 
     const standardsHtml = (rule.standards || []).map(s => `<span class="badge badge-std">${escapeHtml(s)}</span>`).join(' ');
     const isCustom = rule.is_project_custom;
+    const isPlatform = rule.is_platform_custom;
+
+    let originLabel = '🛡️ Built-in Scanner Rule';
+    if (isCustom) {
+        originLabel = '<span class="badge badge-custom">⚙️ Project Custom Rule</span> &bull; <code>.sentinel/rules.yaml</code>';
+    } else if (isPlatform) {
+        originLabel = '<span class="badge badge-cloud">☁️ Cloud Platform Custom Rule</span> &bull; Remote Catalog';
+    }
 
     panel.webview.html = `
     <!DOCTYPE html>
@@ -662,6 +904,7 @@ function showRuleInspectorWebview(context, rule) {
             .badge-critical { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
             .badge-high { background: rgba(249, 115, 22, 0.2); color: #fb923c; border: 1px solid #f97316; }
             .badge-custom { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
+            .badge-cloud { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #a855f7; }
             .badge-std { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
             .box { background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; }
             pre { background: #020617; padding: 12px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #38bdf8; overflow-x: auto; border: 1px solid #1e293b; }
@@ -674,7 +917,7 @@ function showRuleInspectorWebview(context, rule) {
             <div>
                 <h2>[${escapeHtml(rule.id)}] ${escapeHtml(rule.name)}</h2>
                 <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
-                    ${isCustom ? '<span class="badge badge-custom">⚙️ Project Custom Rule</span> &bull; <code>.sentinel/rules.yaml</code>' : '🛡️ Built-in Scanner Rule'}
+                    ${originLabel}
                 </div>
             </div>
             <div>
@@ -723,5 +966,8 @@ function deactivate() {
 module.exports = {
     activate,
     deactivate,
-    parseSimpleYamlRules
+    parseSimpleYamlRules,
+    fetchCloudRules,
+    loginToCloudServer,
+    compileRegex
 };

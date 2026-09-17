@@ -171,6 +171,35 @@ rules:
         exit_code_json = list_rules(".", output_json=True)
         self.assertEqual(exit_code_json, 0)
 
+    def test_08_ide_cloud_server_auth_and_catalog_sync(self):
+        """Verify cloud login endpoint and rule catalog retrieval flow used by IDE plugin."""
+        login_res = self.client.post("/api/auth/login", json={"username": "admin", "password": "Admin@123!"})
+        self.assertEqual(login_res.status_code, 200)
+        token = login_res.json()["access_token"]
+        self.assertTrue(len(token) > 20)
+
+        catalog_res = self.client.get("/api/rules/catalog", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(catalog_res.status_code, 200)
+        catalog = catalog_res.json()
+        self.assertIn("summary", catalog)
+        self.assertIn("rules", catalog)
+        self.assertGreater(catalog["summary"]["total_active_rules"], 0)
+
+    def test_09_vsix_bundle_integrity(self):
+        """Verify generated .vsix package is valid zip archive containing all required files."""
+        vsix_path = os.path.join(os.path.dirname(__file__), "..", "ide-extension", "sentinel-appsec-ide-1.0.0.vsix")
+        self.assertTrue(os.path.exists(vsix_path), ".vsix bundle must exist")
+
+        import zipfile
+        with zipfile.ZipFile(vsix_path, "r") as z:
+            names = z.namelist()
+            self.assertIn("extension.vsixmanifest", names)
+            self.assertIn("[Content_Types].xml", names)
+            self.assertIn("extension/package.json", names)
+            self.assertIn("extension/src/extension.js", names)
+            self.assertIn("extension/README.md", names)
+
 
 if __name__ == "__main__":
     unittest.main()
+
