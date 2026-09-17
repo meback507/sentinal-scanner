@@ -113,6 +113,12 @@ class FindingModel(BaseModel):
     zammad_id: Optional[str] = None
     ticket_assigned_to: Optional[str] = None
     ticket_assigned_email: Optional[str] = None
+    fingerprint: Optional[str] = None
+    first_seen: Optional[str] = None
+    last_seen: Optional[str] = None
+    age_days: Optional[int] = 0
+    first_seen_date: Optional[str] = None
+    age_display: Optional[str] = None
 
 
 class ScanModel(BaseModel):

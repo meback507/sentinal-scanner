@@ -439,6 +439,7 @@ class ReportGenerator:
         writer = csv.writer(output)
         writer.writerow([
             "ID", "Type", "Severity", "Title", "File Path", "Line Start",
+            "Age (Days)", "First Seen",
             "Author Name", "Author Email", "Commit Hash",
             "CVSS", "EPSS", "Risk Score", "Quadrant", "CWE", "CVE", "Standards", "Status"
         ])
@@ -450,6 +451,8 @@ class ReportGenerator:
                 f.get("title"),
                 f.get("file_path"),
                 f.get("line_start"),
+                f.get("age_days", 0),
+                f.get("first_seen_date") or (f.get("first_seen", "")[:10] if f.get("first_seen") else ""),
                 f.get("author_name", "Unknown"),
                 f.get("author_email", ""),
                 f.get("commit_hash", "HEAD"),

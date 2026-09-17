@@ -877,15 +877,27 @@ function renderFindingsTable() {
 
         const quadColor = f.quadrant === "ACT_NOW" ? "#ef4444" : f.quadrant === "CRITICAL_PATCH" ? "#f97316" : f.quadrant === "OPPORTUNISTIC" ? "#eab308" : "#10b981";
 
+        const ageDays = f.age_days !== undefined ? f.age_days : 0;
+        const ageText = f.age_display || (ageDays === 0 ? "Today (< 24h)" : `${ageDays} days old`);
+        const firstSeenDate = f.first_seen_date || (f.first_seen ? f.first_seen.split('T')[0] : '');
+        const agePillColor = ageDays > 14 ? '#fca5a5' : (ageDays > 2 ? '#fcd34d' : '#6ee7b7');
+        const agePillBg = ageDays > 14 ? 'rgba(239, 68, 68, 0.15)' : (ageDays > 2 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)');
+
         tr.innerHTML = `
             <td><span class="badge ${sevClass}">${f.severity}</span></td>
             <td>
-                <div style="font-weight: 600; cursor: pointer; color: #fff;" onclick="openFindingDetail('${f.id}')">${f.title}</div>
-                <div style="font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);">${f.file_path}:${f.line_start}</div>
+                <div style="font-weight: 600; cursor: pointer; color: #fff;" onclick="openFindingDetail('${f.id}')">${escapeHtml(f.title)}</div>
+                <div style="font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);">${escapeHtml(f.file_path)}:${f.line_start}</div>
+                <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                    <span class="badge" style="background: ${agePillBg}; color: ${agePillColor}; font-size: 10px; padding: 2px 6px;">
+                        🕒 ${escapeHtml(ageText)}
+                    </span>
+                    ${firstSeenDate ? `<span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">Seen: ${escapeHtml(firstSeenDate)}</span>` : ''}
+                </div>
             </td>
             <td>
-                <div style="font-weight: 600; color: #fff; font-size: 13px;">${f.author_name || 'Unknown'}</div>
-                <div style="font-size: 11px; color: var(--text-secondary);">${f.author_email || ''}</div>
+                <div style="font-weight: 600; color: #fff; font-size: 13px;">${escapeHtml(f.author_name || 'Unknown')}</div>
+                <div style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(f.author_email || '')}</div>
                 <div style="font-family: var(--font-mono); font-size: 10px; color: var(--accent-cyan);">${f.commit_hash ? '#' + f.commit_hash : ''}</div>
             </td>
             <td><span class="badge" style="background: rgba(255,255,255,0.06);">${f.type.toUpperCase()}</span></td>
@@ -953,6 +965,20 @@ async function openFindingDetail(findingId) {
     document.getElementById("detail-epss").textContent = `${f.epss_score} (${Math.round(f.epss_percentile * 100)}%)`;
     document.getElementById("detail-composite").textContent = `${f.composite_risk_score}/100`;
     document.getElementById("detail-sla").textContent = `${f.quadrant} (${f.sla_days}d SLA)`;
+
+    const ageDays = f.age_days !== undefined ? f.age_days : 0;
+    const ageText = f.age_display || (ageDays === 0 ? "Today (< 24h)" : `${ageDays} days old`);
+    const firstSeenDate = f.first_seen_date || (f.first_seen ? f.first_seen.split('T')[0] : (f.commit_date ? f.commit_date.split(' ')[0] : 'Today'));
+
+    const ageDispEl = document.getElementById("detail-age-display");
+    const firstSeenEl = document.getElementById("detail-first-seen");
+    if (ageDispEl) {
+        ageDispEl.textContent = ageText;
+        ageDispEl.style.color = ageDays > 14 ? "#f87171" : (ageDays > 2 ? "#fbbf24" : "#34d399");
+    }
+    if (firstSeenEl) {
+        firstSeenEl.textContent = `First seen: ${firstSeenDate}`;
+    }
 
     document.getElementById("detail-location").textContent = `${f.file_path} (lines ${f.line_start}-${f.line_end})`;
     document.getElementById("detail-cwe-cve").textContent = `${f.cwe_id || 'N/A'} ${f.cve_id ? ' | ' + f.cve_id : ''}`;
@@ -1272,6 +1298,9 @@ function renderDashboardFindingsFeed() {
                         ${escapeHtml(f.title)}
                     </div>
                     <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; font-size: 12px; flex-wrap: wrap;">
+                        <span class="badge" style="background: ${(f.age_days || 0) > 14 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)'}; color: ${(f.age_days || 0) > 14 ? '#fca5a5' : '#6ee7b7'}; font-size: 10px; border: 1px solid ${(f.age_days || 0) > 14 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}; padding: 2px 6px;">
+                            🕒 ${escapeHtml(f.age_display || ((f.age_days !== undefined ? f.age_days + 'd old' : 'Today')))}
+                        </span>
                         <span style="color: var(--accent-cyan); font-family: var(--font-mono);">
                             📁 ${escapeHtml(f.file_path)}:${f.line_start}
                         </span>
@@ -2352,18 +2381,25 @@ function renderAuditFindingsLedger(findings) {
     });
 
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">No audit findings matching current filter.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">No audit findings matching current filter.</td></tr>`;
         return;
     }
 
     filtered.forEach(f => {
         const tr = document.createElement("tr");
 
-        let typeBadge = `<span class="badge badge-${f.scan_type === 'sca' ? 'high' : 'medium'}">${f.scan_type.toUpperCase()}</span>`;
+        let typeBadge = `<span class="badge badge-${f.scan_type === 'sca' ? 'high' : 'medium'}">${(f.scan_type || f.type || 'sast').toUpperCase()}</span>`;
         if (f.reachability) {
             const rColor = f.reachability === 'REACHABLE' ? '#ef4444' : (f.reachability === 'IMPORTED' ? '#f59e0b' : '#64748b');
             typeBadge += `<br><span style="font-size: 10px; font-weight: 700; color: ${rColor}; margin-top: 2px; display: inline-block;">● ${f.reachability}</span>`;
         }
+
+        const ageDays = f.age_days !== undefined ? f.age_days : 0;
+        const ageText = f.age_display || (ageDays === 0 ? "Today (< 24h)" : `${ageDays} days old`);
+        const firstSeenDate = f.first_seen_date || (f.first_seen ? f.first_seen.split('T')[0] : (f.commit_date ? f.commit_date.split(' ')[0] : 'Today'));
+        const ageBg = ageDays > 14 ? 'rgba(239, 68, 68, 0.18)' : (ageDays > 2 ? 'rgba(245, 158, 11, 0.18)' : 'rgba(16, 185, 129, 0.18)');
+        const ageColor = ageDays > 14 ? '#fca5a5' : (ageDays > 2 ? '#fcd34d' : '#6ee7b7');
+        const ageBorder = ageDays > 14 ? 'rgba(239, 68, 68, 0.4)' : (ageDays > 2 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.4)');
 
         const stdBadges = (f.standards || []).map(s => `<span class="tag-std" style="font-size: 10px; padding: 2px 6px;">${escapeHtml(s)}</span>`).join(" ");
 
@@ -2376,6 +2412,16 @@ function renderAuditFindingsLedger(findings) {
                 </div>
             </td>
             <td>${typeBadge}</td>
+            <td>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="badge" style="background: ${ageBg}; color: ${ageColor}; border: 1px solid ${ageBorder}; font-size: 11px; font-weight: 700;">
+                        🕒 ${escapeHtml(ageText)}
+                    </span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--font-mono);">
+                    First seen: <span style="color: #cbd5e1; font-weight: 500;">${escapeHtml(firstSeenDate)}</span>
+                </div>
+            </td>
             <td style="max-width: 220px;">${stdBadges || '<span style="color: var(--text-muted); font-size: 11px;">Standard Baseline</span>'}</td>
             <td>
                 <div style="font-size: 12px; font-family: var(--font-mono);">

@@ -802,6 +802,7 @@ strcpy(buf, input);"></textarea>
                                 <th>Severity</th>
                                 <th>Finding &amp; ID</th>
                                 <th>Type / Reachability</th>
+                                <th>Age &amp; First Seen</th>
                                 <th>Standards / Controls</th>
                                 <th>CVSS / EPSS</th>
                                 <th>Author (Blame)</th>
@@ -918,7 +919,7 @@ strcpy(buf, input);"></textarea>
                 </div>
             </div>
             <div class="modal-body">
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: var(--bg-main); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; background: var(--bg-main); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border);">
                     <div>
                         <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">CVSS v3.1</div>
                         <div style="font-size: 18px; font-weight: 700; color: #38bdf8;" id="detail-cvss">9.8</div>
@@ -934,6 +935,11 @@ strcpy(buf, input);"></textarea>
                     <div>
                         <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Quadrant SLA</div>
                         <div style="font-size: 15px; font-weight: 700; color: #fff;" id="detail-sla">ACT NOW (2d)</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Age &amp; First Seen</div>
+                        <div style="font-size: 15px; font-weight: 700; color: #34d399;" id="detail-age-display">Today (< 24h)</div>
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;" id="detail-first-seen">First seen: Today</div>
                     </div>
                 </div>
 

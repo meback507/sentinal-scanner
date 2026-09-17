@@ -20,6 +20,76 @@ def hash_password(password: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000).hex()
 
 
+def compute_finding_fingerprint(project_id: str, f: Dict[str, Any]) -> str:
+    """
+    Computes a deterministic unique fingerprint for a finding within a project.
+    Prevents duplicate findings from being recreated across repeated scans.
+    """
+    ftype = (f.get("type") or f.get("scan_type") or "sast").strip().lower()
+    fpath = (f.get("file_path") or "").strip().replace("\\", "/")
+
+    if ftype == "sca":
+        pkg = (f.get("package_name") or "").strip().lower()
+        cve = (f.get("cve_id") or f.get("title") or "").strip().upper()
+        raw = f"{project_id}:sca:{fpath}:{pkg}:{cve}"
+    else:
+        # SAST or Secret
+        cwe = (f.get("cwe_id") or "").strip().upper()
+        title = (f.get("title") or "").strip().lower()
+        line_start = str(f.get("line_start", 1))
+        raw = f"{project_id}:{ftype}:{fpath}:{cwe}:{title}:{line_start}"
+
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+
+def parse_date_safely(date_str: Optional[str]) -> Optional[datetime.datetime]:
+    """
+    Parses various date/time formats robustly.
+    """
+    if not date_str or str(date_str).strip() in ("N/A", "Unknown", "None", ""):
+        return None
+    date_str = str(date_str).strip()
+    try:
+        return datetime.datetime.fromisoformat(date_str)
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.datetime.strptime(date_str, fmt)
+        except Exception:
+            pass
+    return None
+
+
+def enrich_finding_age(finding: Dict[str, Any], current_time: Optional[datetime.datetime] = None) -> Dict[str, Any]:
+    """
+    Calculates dynamic vulnerability age and formatted first_seen date.
+    """
+    now = current_time or datetime.datetime.now()
+    fs_str = finding.get("first_seen") or finding.get("commit_date")
+    fs_dt = parse_date_safely(fs_str)
+
+    if not fs_dt:
+        fs_dt = now
+        fs_str = now.isoformat()
+        finding["first_seen"] = fs_str
+
+    diff_days = max(0, (now.date() - fs_dt.date()).days)
+
+    finding["first_seen"] = fs_str
+    finding["first_seen_date"] = fs_dt.strftime("%Y-%m-%d")
+    finding["age_days"] = diff_days
+
+    if diff_days == 0:
+        finding["age_display"] = "Today (< 24h)"
+    elif diff_days == 1:
+        finding["age_display"] = "1 day old"
+    else:
+        finding["age_display"] = f"{diff_days} days old"
+
+    return finding
+
+
 class Database:
     def __init__(self, db_path: str = DB_FILE):
         self.db_path = db_path
@@ -116,6 +186,9 @@ class Database:
                 zammad_id TEXT,
                 ticket_assigned_to TEXT,
                 ticket_assigned_email TEXT,
+                first_seen TEXT,
+                last_seen TEXT,
+                fingerprint TEXT,
                 FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
@@ -150,8 +223,60 @@ class Database:
                     conn.execute("ALTER TABLE findings ADD COLUMN ticket_assigned_to TEXT")
                 if "ticket_assigned_email" not in cols:
                     conn.execute("ALTER TABLE findings ADD COLUMN ticket_assigned_email TEXT")
+                if "first_seen" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN first_seen TEXT")
+                if "last_seen" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN last_seen TEXT")
+                if "fingerprint" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN fingerprint TEXT")
+                self._migrate_and_deduplicate_findings(conn)
             except Exception:
                 pass
+
+    def _migrate_and_deduplicate_findings(self, conn: sqlite3.Connection):
+        """
+        Backfills fingerprint, first_seen, and last_seen for existing database rows
+        and removes any duplicate finding rows for the same project & vulnerability fingerprint.
+        """
+        try:
+            rows = conn.execute("SELECT * FROM findings").fetchall()
+            if not rows:
+                return
+
+            now = datetime.datetime.now().isoformat()
+            seen = {}
+            for r in rows:
+                item = dict(r)
+                pid = item.get("project_id", "")
+                fp = item.get("fingerprint")
+                if not fp:
+                    fp = compute_finding_fingerprint(pid, item)
+                    conn.execute("UPDATE findings SET fingerprint = ? WHERE id = ?", (fp, item["id"]))
+                    item["fingerprint"] = fp
+
+                fs = item.get("first_seen")
+                if not fs:
+                    fs = item.get("commit_date") or now
+                    conn.execute("UPDATE findings SET first_seen = ?, last_seen = ? WHERE id = ?", (fs, fs, item["id"]))
+                    item["first_seen"] = fs
+                    item["last_seen"] = fs
+
+                key = (pid, fp)
+                if key in seen:
+                    # Duplicate found in historical data: preserve ticket if present, delete redundant row
+                    prev = seen[key]
+                    has_ticket_curr = bool(item.get("jira_key") or item.get("zammad_id") or item.get("ticket_assigned_to"))
+                    has_ticket_prev = bool(prev.get("jira_key") or prev.get("zammad_id") or prev.get("ticket_assigned_to"))
+
+                    if has_ticket_curr and not has_ticket_prev:
+                        conn.execute("DELETE FROM findings WHERE id = ?", (prev["id"],))
+                        seen[key] = item
+                    else:
+                        conn.execute("DELETE FROM findings WHERE id = ?", (item["id"],))
+                else:
+                    seen[key] = item
+        except Exception:
+            pass
 
     def _seed_default_data(self):
         with self._get_conn() as conn:
@@ -205,8 +330,8 @@ class Database:
             projects = []
             for r in rows:
                 p = dict(r)
-                # Count findings
-                cnt = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ?", (p["id"],)).fetchone()["c"]
+                # Count findings (active non-resolved)
+                cnt = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ? AND status != 'resolved'", (p["id"],)).fetchone()["c"]
                 p["total_findings"] = cnt
                 p["git_pat_configured"] = bool(p.get("git_pat"))
                 del p["git_pat"]  # Never expose raw PAT in list
@@ -220,7 +345,7 @@ class Database:
                 return None
             p = dict(row)
             p["git_pat_configured"] = bool(p.get("git_pat"))
-            cnt = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ?", (project_id,)).fetchone()["c"]
+            cnt = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ? AND status != 'resolved'", (project_id,)).fetchone()["c"]
             p["total_findings"] = cnt
             return p
 
@@ -267,17 +392,204 @@ class Database:
         now = datetime.datetime.now().isoformat()
         status = "failed" if error_msg else "completed"
 
-        total = len(findings)
-        crit = sum(1 for f in findings if f["severity"] == "CRITICAL")
-        high = sum(1 for f in findings if f["severity"] == "HIGH")
-        med = sum(1 for f in findings if f["severity"] == "MEDIUM")
-        low = sum(1 for f in findings if f["severity"] == "LOW")
-
-        avg_cvss = round(sum(f["cvss_score"] for f in findings) / total, 1) if total > 0 else 0.0
-        avg_epss = round(sum(f["epss_score"] for f in findings) / total, 4) if total > 0 else 0.0
-        comp_risk = round(sum(f["composite_risk_score"] for f in findings) / total, 1) if total > 0 else 0.0
-
         with self._get_conn() as conn:
+            if error_msg:
+                conn.execute("""
+                UPDATE scans SET
+                    status = ?,
+                    completed_at = ?,
+                    error_message = ?
+                WHERE id = ?
+                """, (status, now, error_msg, scan_id))
+                return
+
+            # Fetch existing findings for this project to deduplicate
+            existing_rows = conn.execute("SELECT * FROM findings WHERE project_id = ?", (project_id,)).fetchall()
+            existing_by_fp = {}
+            for r in existing_rows:
+                r_dict = dict(r)
+                fp = r_dict.get("fingerprint")
+                if not fp:
+                    fp = compute_finding_fingerprint(project_id, r_dict)
+                    conn.execute("UPDATE findings SET fingerprint = ? WHERE id = ?", (fp, r_dict["id"]))
+                    r_dict["fingerprint"] = fp
+
+                # Deduplicate existing historical records if any
+                if fp in existing_by_fp:
+                    prev = existing_by_fp[fp]
+                    has_ticket_curr = bool(r_dict.get("jira_key") or r_dict.get("zammad_id") or r_dict.get("ticket_assigned_to"))
+                    has_ticket_prev = bool(prev.get("jira_key") or prev.get("zammad_id") or prev.get("ticket_assigned_to"))
+                    if has_ticket_curr and not has_ticket_prev:
+                        conn.execute("DELETE FROM findings WHERE id = ?", (prev["id"],))
+                        existing_by_fp[fp] = r_dict
+                    else:
+                        conn.execute("DELETE FROM findings WHERE id = ?", (r_dict["id"],))
+                else:
+                    existing_by_fp[fp] = r_dict
+
+            incoming_fingerprints = set()
+
+            for f in findings:
+                fp = compute_finding_fingerprint(project_id, f)
+                f["fingerprint"] = fp
+                incoming_fingerprints.add(fp)
+
+                ftype = f.get("type") or f.get("scan_type") or "sast"
+                title = f.get("title", "")
+                description = f.get("description", "")
+                remediation = f.get("remediation", "")
+                severity = f.get("severity", "MEDIUM")
+                cwe_id = f.get("cwe_id")
+                cve_id = f.get("cve_id")
+                language = f.get("language")
+                package_name = f.get("package_name")
+                installed_version = f.get("installed_version")
+                fixed_version = f.get("fixed_version")
+                license_val = f.get("license")
+                file_path = f.get("file_path", "")
+                line_start = f.get("line_start", 1)
+                line_end = f.get("line_end", 1)
+                code_snippet = f.get("code_snippet", "")
+                cvss_score = f.get("cvss_score", 0.0)
+                cvss_vector = f.get("cvss_vector", "")
+                epss_score = f.get("epss_score", 0.0)
+                epss_percentile = f.get("epss_percentile", 0.0)
+                composite_risk_score = f.get("composite_risk_score", 0.0)
+                quadrant = f.get("quadrant", "ROUTINE")
+                urgency = f.get("urgency", "LOW")
+                sla_days = f.get("sla_days", 90)
+                standards = json.dumps(f.get("standards", []))
+
+                if fp in existing_by_fp:
+                    # Repeating vulnerability: DO NOT re-create new row!
+                    existing = existing_by_fp[fp]
+                    finding_id = existing["id"]
+
+                    # Preserve first_seen
+                    orig_first_seen = existing.get("first_seen") or existing.get("commit_date") or now
+
+                    # If it was resolved, re-open since scanner detected it again
+                    curr_status = existing.get("status", "open")
+                    if curr_status == "resolved":
+                        curr_status = "open"
+
+                    # Preserve ticket assignments
+                    jira_key = existing.get("jira_key") or f.get("jira_key")
+                    zammad_id = existing.get("zammad_id") or f.get("zammad_id")
+                    ticket_assigned_to = existing.get("ticket_assigned_to") or f.get("ticket_assigned_to")
+                    ticket_assigned_email = existing.get("ticket_assigned_email") or f.get("ticket_assigned_email")
+
+                    author_name = f.get("author_name") or existing.get("author_name", "DevOps Engineer")
+                    author_email = f.get("author_email") or existing.get("author_email", "devops@internal.net")
+                    commit_hash = f.get("commit_hash") or existing.get("commit_hash", "HEAD")
+                    commit_date = f.get("commit_date") or existing.get("commit_date", "2026-09-17")
+                    commit_message = f.get("commit_message") or existing.get("commit_message", "Automated build sync")
+
+                    conn.execute("""
+                    UPDATE findings SET
+                        scan_id = ?,
+                        type = ?,
+                        title = ?,
+                        description = ?,
+                        remediation = ?,
+                        severity = ?,
+                        cwe_id = ?,
+                        cve_id = ?,
+                        language = ?,
+                        package_name = ?,
+                        installed_version = ?,
+                        fixed_version = ?,
+                        license = ?,
+                        file_path = ?,
+                        line_start = ?,
+                        line_end = ?,
+                        code_snippet = ?,
+                        cvss_score = ?,
+                        cvss_vector = ?,
+                        epss_score = ?,
+                        epss_percentile = ?,
+                        composite_risk_score = ?,
+                        quadrant = ?,
+                        urgency = ?,
+                        sla_days = ?,
+                        standards = ?,
+                        status = ?,
+                        author_name = ?,
+                        author_email = ?,
+                        commit_hash = ?,
+                        commit_date = ?,
+                        commit_message = ?,
+                        jira_key = ?,
+                        zammad_id = ?,
+                        ticket_assigned_to = ?,
+                        ticket_assigned_email = ?,
+                        first_seen = ?,
+                        last_seen = ?,
+                        fingerprint = ?
+                    WHERE id = ?
+                    """, (
+                        scan_id, ftype, title, description, remediation, severity,
+                        cwe_id, cve_id, language, package_name, installed_version, fixed_version,
+                        license_val, file_path, line_start, line_end, code_snippet, cvss_score,
+                        cvss_vector, epss_score, epss_percentile, composite_risk_score,
+                        quadrant, urgency, sla_days, standards, curr_status,
+                        author_name, author_email, commit_hash, commit_date, commit_message,
+                        jira_key, zammad_id, ticket_assigned_to, ticket_assigned_email,
+                        orig_first_seen, now, fp, finding_id
+                    ))
+                else:
+                    # New vulnerability introduced or discovered
+                    finding_id = str(uuid.uuid4())
+                    first_seen = f.get("first_seen") or f.get("commit_date") or now
+                    author_name = f.get("author_name", "DevOps Engineer")
+                    author_email = f.get("author_email", "devops@internal.net")
+                    commit_hash = f.get("commit_hash", "HEAD")
+                    commit_date = f.get("commit_date", "2026-09-17")
+                    commit_message = f.get("commit_message", "Automated build sync")
+
+                    conn.execute("""
+                    INSERT INTO findings (
+                        id, scan_id, project_id, type, title, description, remediation, severity,
+                        cwe_id, cve_id, language, package_name, installed_version, fixed_version,
+                        license, file_path, line_start, line_end, code_snippet, cvss_score,
+                        cvss_vector, epss_score, epss_percentile, composite_risk_score,
+                        quadrant, urgency, sla_days, standards, status,
+                        author_name, author_email, commit_hash, commit_date, commit_message,
+                        jira_key, zammad_id, ticket_assigned_to, ticket_assigned_email,
+                        first_seen, last_seen, fingerprint
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        finding_id, scan_id, project_id, ftype, title, description, remediation, severity,
+                        cwe_id, cve_id, language, package_name, installed_version, fixed_version,
+                        license_val, file_path, line_start, line_end, code_snippet, cvss_score,
+                        cvss_vector, epss_score, epss_percentile, composite_risk_score,
+                        quadrant, urgency, sla_days, standards, f.get("status", "open"),
+                        author_name, author_email, commit_hash, commit_date, commit_message,
+                        f.get("jira_key"), f.get("zammad_id"), f.get("ticket_assigned_to"), f.get("ticket_assigned_email"),
+                        first_seen, now, fp
+                    ))
+
+            # Auto-resolve vulnerabilities that were not detected in this scan
+            for fp, ex in existing_by_fp.items():
+                if fp not in incoming_fingerprints:
+                    if ex.get("status") in ("open", "in_triage", "confirmed"):
+                        conn.execute("UPDATE findings SET status = 'resolved', last_seen = ? WHERE id = ?", (now, ex["id"]))
+
+            # Compute accurate scan & project metrics on active (non-resolved) findings
+            active_rows = conn.execute(
+                "SELECT severity, cvss_score, epss_score, composite_risk_score FROM findings WHERE project_id = ? AND status != 'resolved'",
+                (project_id,)
+            ).fetchall()
+
+            total = len(active_rows)
+            crit = sum(1 for r in active_rows if r["severity"] == "CRITICAL")
+            high = sum(1 for r in active_rows if r["severity"] == "HIGH")
+            med = sum(1 for r in active_rows if r["severity"] == "MEDIUM")
+            low = sum(1 for r in active_rows if r["severity"] == "LOW")
+            avg_cvss = round(sum(r["cvss_score"] for r in active_rows) / total, 1) if total > 0 else 0.0
+            avg_epss = round(sum(r["epss_score"] for r in active_rows) / total, 4) if total > 0 else 0.0
+            comp_risk = round(sum(r["composite_risk_score"] for r in active_rows) / total, 1) if total > 0 else 0.0
+
             conn.execute("""
             UPDATE scans SET
                 status = ?,
@@ -299,40 +611,6 @@ class Database:
                 "UPDATE projects SET last_scanned = ?, risk_score = ? WHERE id = ?",
                 (now, comp_risk, project_id)
             )
-
-            # Insert Findings
-            for f in findings:
-                finding_id = str(uuid.uuid4())
-                conn.execute("""
-                INSERT INTO findings (
-                    id, scan_id, project_id, type, title, description, remediation, severity,
-                    cwe_id, cve_id, language, package_name, installed_version, fixed_version,
-                    license, file_path, line_start, line_end, code_snippet, cvss_score,
-                    cvss_vector, epss_score, epss_percentile, composite_risk_score,
-                    quadrant, urgency, sla_days, standards, status,
-                    author_name, author_email, commit_hash, commit_date, commit_message,
-                    jira_key, zammad_id, ticket_assigned_to, ticket_assigned_email
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    finding_id, scan_id, project_id, f["type"], f["title"], f["description"],
-                    f.get("remediation", ""), f["severity"], f.get("cwe_id"), f.get("cve_id"),
-                    f.get("language"), f.get("package_name"), f.get("installed_version"),
-                    f.get("fixed_version"), f.get("license"), f["file_path"], f.get("line_start", 1),
-                    f.get("line_end", 1), f.get("code_snippet", ""), f.get("cvss_score", 0.0),
-                    f.get("cvss_vector", ""), f.get("epss_score", 0.0), f.get("epss_percentile", 0.0),
-                    f.get("composite_risk_score", 0.0), f.get("quadrant", "ROUTINE"),
-                    f.get("urgency", "LOW"), f.get("sla_days", 90), json.dumps(f.get("standards", [])),
-                    f.get("status", "open"),
-                    f.get("author_name", "DevOps Engineer"),
-                    f.get("author_email", "devops@internal.net"),
-                    f.get("commit_hash", "HEAD"),
-                    f.get("commit_date", "2026-09-17"),
-                    f.get("commit_message", "Automated build sync"),
-                    f.get("jira_key"),
-                    f.get("zammad_id"),
-                    f.get("ticket_assigned_to"),
-                    f.get("ticket_assigned_email")
-                ))
 
     def list_scans(self, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:
@@ -365,6 +643,7 @@ class Database:
                         item["standards"] = []
                 else:
                     item["standards"] = []
+                enrich_finding_age(item)
                 findings.append(item)
             return findings
 
@@ -379,6 +658,7 @@ class Database:
                     item["standards"] = json.loads(item["standards"])
                 except Exception:
                     item["standards"] = []
+            enrich_finding_age(item)
             return item
 
     def update_finding_status(
