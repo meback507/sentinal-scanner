@@ -119,6 +119,13 @@ class FindingModel(BaseModel):
     age_days: Optional[int] = 0
     first_seen_date: Optional[str] = None
     age_display: Optional[str] = None
+    cisa_kev: Optional[bool] = False
+    cisa_kev_due_date: Optional[str] = None
+    ai_confidence_score: Optional[float] = None
+    ai_confidence_label: Optional[str] = None
+    ai_confidence_rationale: Optional[str] = None
+    dependency_lag_versions: Optional[str] = None
+    reachability_status: Optional[str] = "UNKNOWN"
 
 
 class ScanModel(BaseModel):

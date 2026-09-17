@@ -190,6 +190,13 @@ class Database:
                 first_seen TEXT,
                 last_seen TEXT,
                 fingerprint TEXT,
+                cisa_kev INTEGER DEFAULT 0,
+                cisa_kev_due_date TEXT,
+                ai_confidence_score REAL,
+                ai_confidence_label TEXT,
+                ai_confidence_rationale TEXT,
+                dependency_lag_versions TEXT,
+                reachability_status TEXT DEFAULT 'UNKNOWN',
                 FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
@@ -230,6 +237,20 @@ class Database:
                     conn.execute("ALTER TABLE findings ADD COLUMN last_seen TEXT")
                 if "fingerprint" not in cols:
                     conn.execute("ALTER TABLE findings ADD COLUMN fingerprint TEXT")
+                if "cisa_kev" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN cisa_kev INTEGER DEFAULT 0")
+                if "cisa_kev_due_date" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN cisa_kev_due_date TEXT")
+                if "ai_confidence_score" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN ai_confidence_score REAL")
+                if "ai_confidence_label" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN ai_confidence_label TEXT")
+                if "ai_confidence_rationale" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN ai_confidence_rationale TEXT")
+                if "dependency_lag_versions" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN dependency_lag_versions TEXT")
+                if "reachability_status" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN reachability_status TEXT DEFAULT 'UNKNOWN'")
                 self._migrate_and_deduplicate_findings(conn)
             except Exception:
                 pass
@@ -465,6 +486,14 @@ class Database:
                 sla_days = f.get("sla_days", 90)
                 standards = json.dumps(f.get("standards", []))
 
+                cisa_kev_val = 1 if f.get("cisa_kev") else 0
+                cisa_kev_due_date = f.get("cisa_kev_due_date")
+                ai_confidence_score = f.get("ai_confidence_score")
+                ai_confidence_label = f.get("ai_confidence_label")
+                ai_confidence_rationale = f.get("ai_confidence_rationale")
+                dependency_lag_versions = f.get("dependency_lag_versions")
+                reachability_status = f.get("reachability_status") or f.get("reachability") or "UNKNOWN"
+
                 if fp in existing_by_fp:
                     # Repeating vulnerability: DO NOT re-create new row!
                     existing = existing_by_fp[fp]
@@ -489,6 +518,12 @@ class Database:
                     commit_hash = f.get("commit_hash") or existing.get("commit_hash", "HEAD")
                     commit_date = f.get("commit_date") or existing.get("commit_date", "2026-09-17")
                     commit_message = f.get("commit_message") or existing.get("commit_message", "Automated build sync")
+
+                    # Keep existing AI confidence if not re-evaluated
+                    if ai_confidence_score is None and existing.get("ai_confidence_score") is not None:
+                        ai_confidence_score = existing.get("ai_confidence_score")
+                        ai_confidence_label = existing.get("ai_confidence_label")
+                        ai_confidence_rationale = existing.get("ai_confidence_rationale")
 
                     conn.execute("""
                     UPDATE findings SET
@@ -530,7 +565,14 @@ class Database:
                         ticket_assigned_email = ?,
                         first_seen = ?,
                         last_seen = ?,
-                        fingerprint = ?
+                        fingerprint = ?,
+                        cisa_kev = ?,
+                        cisa_kev_due_date = ?,
+                        ai_confidence_score = ?,
+                        ai_confidence_label = ?,
+                        ai_confidence_rationale = ?,
+                        dependency_lag_versions = ?,
+                        reachability_status = ?
                     WHERE id = ?
                     """, (
                         scan_id, ftype, title, description, remediation, severity,
@@ -540,7 +582,10 @@ class Database:
                         quadrant, urgency, sla_days, standards, curr_status,
                         author_name, author_email, commit_hash, commit_date, commit_message,
                         jira_key, zammad_id, ticket_assigned_to, ticket_assigned_email,
-                        orig_first_seen, now, fp, finding_id
+                        orig_first_seen, now, fp,
+                        cisa_kev_val, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
+                        ai_confidence_rationale, dependency_lag_versions, reachability_status,
+                        finding_id
                     ))
                 else:
                     # New vulnerability introduced or discovered
@@ -561,8 +606,10 @@ class Database:
                         quadrant, urgency, sla_days, standards, status,
                         author_name, author_email, commit_hash, commit_date, commit_message,
                         jira_key, zammad_id, ticket_assigned_to, ticket_assigned_email,
-                        first_seen, last_seen, fingerprint
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        first_seen, last_seen, fingerprint,
+                        cisa_kev, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
+                        ai_confidence_rationale, dependency_lag_versions, reachability_status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         finding_id, scan_id, project_id, ftype, title, description, remediation, severity,
                         cwe_id, cve_id, language, package_name, installed_version, fixed_version,
@@ -571,7 +618,9 @@ class Database:
                         quadrant, urgency, sla_days, standards, f.get("status", "open"),
                         author_name, author_email, commit_hash, commit_date, commit_message,
                         f.get("jira_key"), f.get("zammad_id"), f.get("ticket_assigned_to"), f.get("ticket_assigned_email"),
-                        first_seen, now, fp
+                        first_seen, now, fp,
+                        cisa_kev_val, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
+                        ai_confidence_rationale, dependency_lag_versions, reachability_status
                     ))
 
             # Auto-resolve vulnerabilities that were not detected in this scan
@@ -694,6 +743,17 @@ class Database:
             else:
                 conn.execute("UPDATE findings SET status = ? WHERE id = ?", (status, finding_id))
             return True
+
+    def update_finding_confidence(self, finding_id: str, score: float, label: str, rationale: str) -> bool:
+        with self._get_conn() as conn:
+            cur = conn.execute("""
+            UPDATE findings SET
+                ai_confidence_score = ?,
+                ai_confidence_label = ?,
+                ai_confidence_rationale = ?
+            WHERE id = ?
+            """, (score, label, rationale, finding_id))
+            return cur.rowcount > 0
 
     # --- Custom Rules ---
     def list_rules(self) -> List[Dict[str, Any]]:

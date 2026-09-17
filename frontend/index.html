@@ -356,6 +356,7 @@
                     <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('html')">Export HTML Report</button>
                     <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('sarif')">Export SARIF 2.1</button>
                     <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('cyclonedx')">Export SBOM</button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('vex')">Export OpenVEX</button>
                 </div>
             </div>
 
@@ -723,6 +724,10 @@ strcpy(buf, input);"></textarea>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                         Certify NIST SSDF
                     </button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('vex')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                        Export OpenVEX
+                    </button>
                 </div>
             </div>
 
@@ -908,7 +913,10 @@ strcpy(buf, input);"></textarea>
         <div class="modal-content" style="max-width: 800px;">
             <div class="modal-header">
                 <div>
-                    <span id="detail-severity-badge" class="badge">CRITICAL</span>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span id="detail-severity-badge" class="badge">CRITICAL</span>
+                        <span id="detail-cisa-badge" class="badge" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #f87171; font-weight: 700;">🚨 CISA KEV (ACTIVE WEAPONIZED EXPLOIT)</span>
+                    </div>
                     <h3 class="modal-title" id="detail-title" style="margin-top: 6px;">Finding Title</h3>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -943,6 +951,21 @@ strcpy(buf, input);"></textarea>
                     </div>
                 </div>
 
+                <!-- AI Confidence & False-Positive Evaluation Card -->
+                <div id="detail-ai-confidence-box" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 14px;">
+                    <div>
+                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">AI Threat Confidence &amp; False-Positive Assessment</div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                            <span id="detail-ai-confidence-label" class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 12px; font-weight: 700;">94% High Confidence True Positive</span>
+                        </div>
+                        <p id="detail-ai-confidence-rationale" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 0;">Evaluation pending.</p>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" id="btn-eval-confidence" onclick="triggerEvaluateConfidence()" style="white-space: nowrap; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                        <span id="eval-conf-text">⚡ Evaluate AI Confidence</span>
+                        <div id="eval-conf-spinner" class="spinner" style="display: none; width: 10px; height: 10px;"></div>
+                    </button>
+                </div>
+
                 <!-- Developer Attribution (Git Blame) -->
                 <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); padding: 12px 16px; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
                     <div>
@@ -967,6 +990,10 @@ strcpy(buf, input);"></textarea>
                         <div id="detail-secret-entropy-tag" style="display: none; align-items: center; gap: 6px;">
                             <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Shannon Entropy:</span>
                             <span id="detail-entropy-value" style="font-family: var(--font-mono); font-weight: 700; color: #fbbf24; font-size: 12px;">0.00 bits/char</span>
+                        </div>
+                        <div id="detail-drift-tag" style="display: none; align-items: center; gap: 6px;">
+                            <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Dependency Drift:</span>
+                            <span id="detail-drift-badge" class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">1 Minor version behind</span>
                         </div>
                     </div>
                 </div>
@@ -1019,12 +1046,22 @@ strcpy(buf, input);"></textarea>
                         <p id="ai-root-cause" style="font-size: 13px; color: #f1f5f9; line-height: 1.5;"></p>
                     </div>
 
+                    <!-- Interactive Remediation Playground (Side-by-Side Diff) -->
                     <div style="margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">Refactored Secure Code (Fix Diff)</div>
-                            <button class="btn btn-secondary btn-sm" onclick="copyAIDiff()" style="padding: 2px 8px; font-size: 11px;">Copy Fix</button>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">Interactive Remediation Playground (Side-by-Side Diff)</div>
+                            <button class="btn btn-secondary btn-sm" onclick="copyAIDiff()" style="padding: 2px 8px; font-size: 11px;">Copy Secure Fix</button>
                         </div>
-                        <pre class="code-view" id="ai-code-diff" style="max-height: 200px; overflow-y: auto; color: #86efac; border-color: rgba(56, 189, 248, 0.2); font-family: var(--font-mono); font-size: 12px; line-height: 1.4;"></pre>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div>
+                                <div style="font-size: 11px; color: #f87171; font-weight: 600; margin-bottom: 4px;">🔴 Flagged Source Context</div>
+                                <pre class="code-view" id="playground-vulnerable-snippet" style="max-height: 200px; overflow-y: auto; color: #fca5a5; background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.25); font-family: var(--font-mono); font-size: 12px; line-height: 1.4;"></pre>
+                            </div>
+                            <div>
+                                <div style="font-size: 11px; color: #4ade80; font-weight: 600; margin-bottom: 4px;">🟢 Secure Remediated Patch</div>
+                                <pre class="code-view" id="ai-code-diff" style="max-height: 200px; overflow-y: auto; color: #86efac; background: rgba(34, 197, 94, 0.05); border-color: rgba(34, 197, 94, 0.25); font-family: var(--font-mono); font-size: 12px; line-height: 1.4;"></pre>
+                            </div>
+                        </div>
                     </div>
 
                     <div style="margin-bottom: 10px;">

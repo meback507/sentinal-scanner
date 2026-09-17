@@ -25,9 +25,11 @@ from .auth import (
 )
 from .standards.taxonomy import STANDARDS_TAXONOMY
 from .prioritization.risk_engine import risk_engine
-from .prioritization.epss_service import epss_service
+from .prioritization.cisa_service import cisa_service
 from .scanners.sast_engine import SASTEngine
 from .scanners.sca_engine import SCAEngine
+from .scanners.iac_engine import IaCEngine
+from .scanners.api_sec_engine import APISecEngine
 from .rules.nl_rule_generator import NLRuleGenerator
 from .rules.rule_manager import rule_manager
 from .git_service import GitService
@@ -189,8 +191,30 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
             secret_findings = secret_scanner.scan_directory(target_dir)
             all_findings.extend(secret_findings)
 
-        # 5. Enrich all findings with Developer / Author Attribution via Git Blame
+        # 5. Run Infrastructure as Code (IaC) & Container Security Engine
+        if scan_type in ("full", "sast", "iac"):
+            iac = IaCEngine()
+            iac_findings = iac.scan_directory(target_dir)
+            all_findings.extend(iac_findings)
+
+        # 6. Run OpenAPI / Swagger API Security Engine
+        if scan_type in ("full", "sast", "api"):
+            api_scanner = APISecEngine()
+            api_findings = api_scanner.scan_directory(target_dir)
+            all_findings.extend(api_findings)
+
+        # 7. Enrich all findings with Threat Intel (CISA KEV), AI Confidence, and Git Blame Attribution
         for f in all_findings:
+            # Threat Intel: CISA KEV
+            cisa_service.enrich_finding_with_cisa_kev(f)
+
+            # AI-Assisted Confidence & False Positive Evaluation
+            conf = LLMService.evaluate_finding_confidence(f)
+            f["ai_confidence_score"] = conf["confidence_score"]
+            f["ai_confidence_label"] = conf["confidence_label"]
+            f["ai_confidence_rationale"] = conf["rationale"]
+
+            # Git Blame Attribution
             blame = GitService.get_line_blame(target_dir, f["file_path"], f.get("line_start", 1))
             f["author_name"] = blame.get("author_name", "DevOps Engineer")
             f["author_email"] = blame.get("author_email", "devops@internal.net")
@@ -198,7 +222,7 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
             f["commit_date"] = blame.get("commit_date", "2026-09-17")
             f["commit_message"] = blame.get("commit_message", "Repository commit")
 
-        # 6. Save scan results
+        # 8. Save scan results
         db.update_scan_results(scan_id, project_id, all_findings)
 
         # 7. Audit trail event logging
@@ -610,6 +634,29 @@ def create_remediation_pr_endpoint(
     return GitPRService.create_remediation_pr(finding, user.dict())
 
 
+@app.post("/api/findings/{finding_id}/evaluate-confidence")
+def evaluate_finding_confidence_endpoint(
+    finding_id: str,
+    user: UserModel = Depends(get_current_user)
+):
+    finding = db.get_finding_by_id(finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if not _is_finding_authored_by_user(finding, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to evaluate confidence on code you authored."
+        )
+    result = LLMService.evaluate_finding_confidence(finding)
+    db.update_finding_confidence(
+        finding_id=finding_id,
+        score=result["confidence_score"],
+        label=result["confidence_label"],
+        rationale=result["rationale"]
+    )
+    return result
+
+
 # --- Custom Rule Generator Routes ---
 @app.post("/api/rules/generate")
 def generate_custom_rule(req: RuleGenerateRequest, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
@@ -735,6 +782,20 @@ def export_csv(project_id: str, user: UserModel = Depends(get_current_user)):
     csv_str = ReportGenerator.generate_csv(findings)
     return Response(content=csv_str, media_type="text/csv", headers={
         "Content-Disposition": f'attachment; filename="aegissec-findings-{project_id}.csv"'
+    })
+
+
+@app.get("/api/projects/{project_id}/export/vex")
+def export_openvex(project_id: str, user: UserModel = Depends(get_current_user)):
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    findings = db.list_findings(project_id)
+    if user.role in (RoleEnum.DEVELOPER, "developer"):
+        findings = [f for f in findings if _is_finding_authored_by_user(f, user)]
+    vex_str = ReportGenerator.generate_openvex(proj, findings)
+    return Response(content=vex_str, media_type="application/vnd.openvex+json", headers={
+        "Content-Disposition": f'attachment; filename="aegissec-vex-{project_id}.json"'
     })
 
 

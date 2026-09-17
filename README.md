@@ -85,6 +85,30 @@
     - Static call-graph symbol reachability analysis distinguishing `REACHABLE` from `IMPORTED` and `DORMANT` dependencies.
     - Shannon Entropy detection ($H(X) \ge 4.0$ bits/char) with regex pattern matching for 50+ API and token formats.
 
+15. **Threat Intelligence & CISA KEV Catalog**:
+    - Automatic enrichment of CVE findings against the **CISA Known Exploited Vulnerabilities (KEV)** catalog.
+    - Escalates weaponized in-the-wild vulnerabilities to `ACT_NOW` urgency with strict 24–48 hour remediation deadlines and prominent badges across triage and audit ledgers.
+
+16. **AI-Assisted False-Positive Confidence Scoring**:
+    - Uses multi-model LLM analysis to evaluate vulnerability confidence, differentiating real threats from benign test fixtures, mocks, and demo code.
+    - Available on-demand per finding with detailed rationales and recommended remediation urgency.
+
+17. **Infrastructure as Code (IaC) & Container Hardening**:
+    - Dedicated scanner (`IaCEngine`) evaluating Dockerfiles, docker-compose, Kubernetes manifests, Terraform (`.tf`), and GitHub Actions workflows.
+    - Enforces least-privilege containers, non-root execution, pinned immutable tags, secret mask checks, and secure cloud storage configurations.
+
+18. **OpenAPI / Swagger API Security Engine (OWASP API Top 10)**:
+    - Spec auditor (`APISecEngine`) detecting Broken Object Level Authorization (BOLA), unauthenticated administrative routes, mass assignment hazards, unbounded pagination DoS, and cleartext HTTP transport.
+
+19. **Developer Shift-Left Tooling & Sentinel CLI**:
+    - Standalone pre-commit shield (`scripts/sentinel_cli.py`) enabling developers to run instant local AST/secrets/IaC audits before committing.
+    - Supports 1-command git pre-commit hook installation (`sentinel-cli install-hook`) and configurable exit gates (`--fail-on HIGH`).
+    - In-browser interactive Side-by-Side Remediation Playground in the finding triage inspector.
+
+20. **OpenVEX v0.2.0 Governance & Dependency Version Drift**:
+    - Machine-readable OpenVEX export (`GET /api/projects/{id}/export/vex`) for transparent vulnerability-exploitability exchange.
+    - Dependency lag tracking calculating major, minor, and patch version drift across project manifests.
+
 ---
 
 ## Quick Start

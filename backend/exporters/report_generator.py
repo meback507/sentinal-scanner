@@ -466,3 +466,74 @@ class ReportGenerator:
                 f.get("status")
             ])
         return output.getvalue()
+
+    @classmethod
+    def generate_openvex(cls, project: Dict[str, Any], findings: List[Dict[str, Any]]) -> str:
+        """
+        Generates standard OpenVEX v0.2.0 document for machine-readable vulnerability exploitability exchange.
+        """
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        doc_id = f"https://aegissec.internal/vex/{project.get('id', 'default')}/{int(datetime.datetime.now().timestamp())}"
+
+        statements = []
+        for f in findings:
+            cve_or_id = f.get("cve_id") or f.get("cwe_id") or f.get("id")
+            pkg_name = f.get("package_name") or project.get("name", "app")
+            version = f.get("installed_version") or "1.0.0"
+            subproduct_id = f"pkg:generic/{pkg_name}@{version}"
+
+            status_curr = f.get("status", "open")
+            reachability = f.get("reachability_status") or f.get("reachability") or ""
+
+            if status_curr == "resolved":
+                status = "fixed"
+                justification = None
+                action_statement = f"Remediated via version upgrade to {f.get('fixed_version', 'latest')} or secure code patch."
+            elif status_curr == "false_positive" or reachability == "DORMANT":
+                status = "not_affected"
+                justification = "vulnerable_code_not_in_execute_path" if reachability == "DORMANT" else "inline_mitigations_already_exist"
+                action_statement = None
+            elif reachability == "REACHABLE" or f.get("cisa_kev"):
+                status = "affected"
+                justification = None
+                action_statement = f.get("remediation") or "Apply immediate patch or upgrade per vendor security advisory."
+            else:
+                status = "under_investigation"
+                justification = None
+                action_statement = "Triage evaluation in progress by AppSec team."
+
+            statement = {
+                "vulnerability": {
+                    "name": cve_or_id,
+                    "description": f.get("title")
+                },
+                "timestamp": now,
+                "products": [
+                    {
+                        "@id": subproduct_id,
+                        "identifiers": {
+                            "purl": subproduct_id
+                        }
+                    }
+                ],
+                "status": status
+            }
+            if justification:
+                statement["justification"] = justification
+            if action_statement:
+                statement["action_statement"] = action_statement
+
+            statements.append(statement)
+
+        vex_doc = {
+            "@context": "https://openvex.dev/ns/v0.2.0",
+            "@id": doc_id,
+            "author": "AegisSec / Sentinel Scanner AST Platform",
+            "role": "Security Compliance & Vulnerability Management Engine",
+            "timestamp": now,
+            "version": 1,
+            "tooling": "AegisSec-AST-v2.1",
+            "statements": statements
+        }
+        return json.dumps(vex_doc, indent=2)
+

@@ -66,6 +66,7 @@ class RiskEngine:
 
         return {
             "composite_score": score,
+            "composite_risk_score": score,
             "quadrant": quadrant,
             "urgency": urgency,
             "sla_days": sla_days,
@@ -77,6 +78,29 @@ class RiskEngine:
                 "epss_percentile": epss_percentile
             }
         }
+
+    @classmethod
+    def calculate_finding_priority(
+        cls,
+        cvss_score: float,
+        epss_score: float = 0.05,
+        epss_percentile: float = 0.50,
+        standards: Any = None,
+        is_production: bool = True,
+        is_public_facing: bool = True,
+        has_compliance_mandate: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Calculates composite priority and returns normalized risk metrics.
+        """
+        return cls.calculate_composite_risk(
+            cvss_score=cvss_score,
+            epss_score=epss_score,
+            epss_percentile=epss_percentile,
+            is_production=is_production,
+            is_public_facing=is_public_facing,
+            has_compliance_mandate=has_compliance_mandate
+        )
 
     @classmethod
     def prioritize_finding(

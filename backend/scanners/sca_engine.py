@@ -6,7 +6,7 @@ Discovers third-party dependencies, matches vulnerabilities (CVE/CVSS/EPSS), and
 import os
 import re
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from ..standards.taxonomy import map_finding_to_standards
 from ..prioritization.risk_engine import risk_engine
 
@@ -222,6 +222,8 @@ class SCAEngine:
                 )
                 standards = map_finding_to_standards(vuln["cwe"], "sca vulnerability")
 
+                drift_label, drift_days = self._compute_version_drift(dep.get("version"), vuln.get("fixed_version"))
+
                 findings.append({
                     "rule_id": f"SCA-{vuln['cve']}",
                     "type": "sca",
@@ -248,8 +250,10 @@ class SCAEngine:
                     "urgency": risk["urgency"],
                     "sla_days": risk["sla_days"],
                     "reachability": reach_info["reachability"],
+                    "reachability_status": reach_info["reachability"],
                     "reachability_label": reach_info["label"],
                     "reachability_files": reach_info["files"],
+                    "dependency_lag_versions": drift_label,
                     "standards": standards,
                     "status": "open"
                 })
@@ -296,6 +300,33 @@ class SCAEngine:
             "dependencies": all_dependencies,
             "findings": findings
         }
+
+    def _compute_version_drift(self, installed: Optional[str], fixed: Optional[str]) -> Tuple[str, int]:
+        """
+        Calculates semantic version lag (Major/Minor/Patch) between installed and fixed version.
+        """
+        if not installed or not fixed:
+            return "Latest / No drift detected", 0
+        try:
+            inst_parts = [int(x) for x in re.findall(r'\d+', str(installed))]
+            fix_parts = [int(x) for x in re.findall(r'\d+', str(fixed))]
+            while len(inst_parts) < 3:
+                inst_parts.append(0)
+            while len(fix_parts) < 3:
+                fix_parts.append(0)
+
+            if fix_parts[0] > inst_parts[0]:
+                diff = fix_parts[0] - inst_parts[0]
+                return f"{diff} major version{'s' if diff > 1 else ''} behind", diff * 365
+            elif fix_parts[1] > inst_parts[1]:
+                diff = fix_parts[1] - inst_parts[1]
+                return f"{diff} minor version{'s' if diff > 1 else ''} behind", diff * 60
+            elif fix_parts[2] > inst_parts[2]:
+                diff = fix_parts[2] - inst_parts[2]
+                return f"{diff} patch release{'s' if diff > 1 else ''} behind", diff * 14
+            return "Current release / Patch ready", 0
+        except Exception:
+            return "Standard version", 0
 
     def _check_reachability(self, target_dir: str, pkg_name: str) -> Dict[str, Any]:
         """

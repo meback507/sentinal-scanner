@@ -899,13 +899,17 @@ function renderFindingsTable() {
         tr.innerHTML = `
             <td><span class="badge ${sevClass}">${f.severity}</span></td>
             <td>
-                <div style="font-weight: 600; cursor: pointer; color: #fff;" onclick="openFindingDetail('${f.id}')">${escapeHtml(f.title)}</div>
+                <div style="font-weight: 600; cursor: pointer; color: #fff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="openFindingDetail('${f.id}')">
+                    ${f.cisa_kev ? `<span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid #ef4444; font-size: 10px; font-weight: 700;">🚨 CISA KEV</span>` : ''}
+                    <span>${escapeHtml(f.title)}</span>
+                </div>
                 <div style="font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);">${escapeHtml(f.file_path)}:${f.line_start}</div>
-                <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
                     <span class="badge" style="background: ${agePillBg}; color: ${agePillColor}; font-size: 10px; padding: 2px 6px;">
                         🕒 ${escapeHtml(ageText)}
                     </span>
                     ${firstSeenDate ? `<span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">Seen: ${escapeHtml(firstSeenDate)}</span>` : ''}
+                    ${f.dependency_lag_versions ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; font-size: 10px;">📦 ${escapeHtml(f.dependency_lag_versions)}</span>` : ''}
                 </div>
             </td>
             <td>
@@ -974,6 +978,17 @@ async function openFindingDetail(findingId) {
     b.className = `badge badge-${f.severity.toLowerCase()}`;
     b.textContent = f.severity;
 
+    // CISA KEV Badge
+    const cisaBadge = document.getElementById("detail-cisa-badge");
+    if (cisaBadge) {
+        if (f.cisa_kev) {
+            cisaBadge.style.display = "inline-block";
+            cisaBadge.title = f.cisa_kev_due_date ? `CISA Due Date: ${f.cisa_kev_due_date}` : "CISA Known Exploited Vulnerability";
+        } else {
+            cisaBadge.style.display = "none";
+        }
+    }
+
     document.getElementById("detail-cvss").textContent = f.cvss_score;
     document.getElementById("detail-epss").textContent = `${f.epss_score} (${Math.round(f.epss_percentile * 100)}%)`;
     document.getElementById("detail-composite").textContent = `${f.composite_risk_score}/100`;
@@ -993,6 +1008,30 @@ async function openFindingDetail(findingId) {
         firstSeenEl.textContent = `First seen: ${firstSeenDate}`;
     }
 
+    // AI Confidence & False Positive Assessment
+    const confLabel = document.getElementById("detail-ai-confidence-label");
+    const confRationale = document.getElementById("detail-ai-confidence-rationale");
+    if (f.ai_confidence_score !== undefined && f.ai_confidence_score !== null) {
+        const pct = Math.round(f.ai_confidence_score * 100);
+        if (confLabel) {
+            confLabel.textContent = `${pct}% - ${f.ai_confidence_label || 'True Positive'}`;
+            confLabel.style.color = f.ai_confidence_score >= 0.7 ? '#34d399' : (f.ai_confidence_score >= 0.4 ? '#fbbf24' : '#f87171');
+            confLabel.style.background = f.ai_confidence_score >= 0.7 ? 'rgba(16, 185, 129, 0.15)' : (f.ai_confidence_score >= 0.4 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)');
+        }
+        if (confRationale) {
+            confRationale.textContent = f.ai_confidence_rationale || 'Evaluation completed.';
+        }
+    } else {
+        if (confLabel) {
+            confLabel.textContent = 'Pending AI Assessment';
+            confLabel.style.color = '#94a3b8';
+            confLabel.style.background = 'rgba(148, 163, 184, 0.15)';
+        }
+        if (confRationale) {
+            confRationale.textContent = 'Click "Evaluate AI Confidence" for contextual false-positive and exploitability scoring.';
+        }
+    }
+
     document.getElementById("detail-location").textContent = `${f.file_path} (lines ${f.line_start}-${f.line_end})`;
     document.getElementById("detail-cwe-cve").textContent = `${f.cwe_id || 'N/A'} ${f.cve_id ? ' | ' + f.cve_id : ''}`;
 
@@ -1010,11 +1049,13 @@ async function openFindingDetail(findingId) {
     const stdTagsContainer = document.getElementById("detail-standards-tags");
     stdTagsContainer.innerHTML = (f.standards || []).map(s => `<span class="tag-std" style="font-size: 12px;">${s}</span>`).join(" ");
 
-    // Reachability & Shannon Entropy metadata
+    // Reachability, Shannon Entropy, and Dependency Drift metadata
     const reachTag = document.getElementById("detail-reachability-tag");
     const reachBadge = document.getElementById("detail-reachability-badge");
     const entropyTag = document.getElementById("detail-secret-entropy-tag");
     const entropyVal = document.getElementById("detail-entropy-value");
+    const driftTag = document.getElementById("detail-drift-tag");
+    const driftBadge = document.getElementById("detail-drift-badge");
     const metaBox = document.getElementById("detail-advanced-meta-box");
 
     let hasAdvancedMeta = false;
@@ -1037,10 +1078,20 @@ async function openFindingDetail(findingId) {
         entropyTag.style.display = "none";
     }
 
+    if (f.dependency_lag_versions) {
+        if (driftTag) driftTag.style.display = "flex";
+        if (driftBadge) driftBadge.textContent = f.dependency_lag_versions;
+        hasAdvancedMeta = true;
+    } else if (driftTag) {
+        driftTag.style.display = "none";
+    }
+
     if (metaBox) metaBox.style.display = hasAdvancedMeta ? "block" : "none";
 
     document.getElementById("detail-desc").textContent = f.description;
     document.getElementById("detail-code-snippet").textContent = f.code_snippet || "No source code snippet available.";
+    const vulnSnippetEl = document.getElementById("playground-vulnerable-snippet");
+    if (vulnSnippetEl) vulnSnippetEl.textContent = f.code_snippet || "/* Original code context */";
     document.getElementById("detail-remediation").textContent = f.remediation || "Review according to secure coding policy.";
 
     // Update Ticket Assignment to Author Information
@@ -1478,6 +1529,11 @@ async function requestAIRemediation() {
         const rootEl = document.getElementById("ai-root-cause");
         if (rootEl) rootEl.textContent = data.root_cause_analysis || "No root cause analysis returned.";
 
+        const vulnSnippetEl = document.getElementById("playground-vulnerable-snippet");
+        if (vulnSnippetEl && state.activeFinding) {
+            vulnSnippetEl.textContent = state.activeFinding.code_snippet || "/* Flagged source context */";
+        }
+
         const diffEl = document.getElementById("ai-code-diff");
         if (diffEl) diffEl.textContent = data.suggested_fix_diff || "// No code diff available";
 
@@ -1506,6 +1562,52 @@ function copyAIDiff() {
     }).catch(() => {
         showToast("Failed to copy to clipboard", "error");
     });
+}
+
+async function triggerEvaluateConfidence() {
+    if (!state.activeFinding) return;
+    const btnText = document.getElementById("eval-conf-text");
+    const spinner = document.getElementById("eval-conf-spinner");
+    if (btnText) btnText.textContent = "Analyzing...";
+    if (spinner) spinner.style.display = "inline-block";
+
+    try {
+        const resp = await fetch(`/api/findings/${state.activeFinding.id}/evaluate-confidence`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+        });
+
+        if (resp.status === 403) {
+            showToast("Access Restricted: Only code author or Security Admin can evaluate confidence", "error");
+            return;
+        }
+
+        if (resp.ok) {
+            const data = await resp.json();
+            state.activeFinding.ai_confidence_score = data.confidence_score;
+            state.activeFinding.ai_confidence_label = data.confidence_label;
+            state.activeFinding.ai_confidence_rationale = data.rationale;
+            
+            // Also update in state.findings array
+            const fInList = (state.findings || []).find(x => x.id === state.activeFinding.id);
+            if (fInList) {
+                fInList.ai_confidence_score = data.confidence_score;
+                fInList.ai_confidence_label = data.confidence_label;
+                fInList.ai_confidence_rationale = data.rationale;
+            }
+
+            openFindingDetail(state.activeFinding);
+            showToast(`AI Confidence Evaluated: ${data.confidence_label}`, "success");
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.detail || "Failed to evaluate AI confidence", "error");
+        }
+    } catch (e) {
+        showToast("Error connecting to server", "error");
+    } finally {
+        if (btnText) btnText.textContent = "⚡ Evaluate AI Confidence";
+        if (spinner) spinner.style.display = "none";
+    }
 }
 
 async function createRemediationPR() {
@@ -2419,9 +2521,13 @@ function renderAuditFindingsLedger(findings) {
         tr.innerHTML = `
             <td><span class="badge badge-${f.severity.toLowerCase()}">${f.severity}</span></td>
             <td>
-                <strong style="color: #fff; font-size: 13px;">${escapeHtml(f.title)}</strong>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    ${f.cisa_kev ? `<span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid #ef4444; font-size: 10px; font-weight: 700;">🚨 CISA KEV</span>` : ''}
+                    <strong style="color: #fff; font-size: 13px;">${escapeHtml(f.title)}</strong>
+                </div>
                 <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px;">
                     ${escapeHtml(f.cwe_id || 'CWE')} ${f.cve_id ? ' &bull; ' + escapeHtml(f.cve_id) : ''}
+                    ${f.dependency_lag_versions ? ` &bull; <span style="color: #f59e0b;">📦 ${escapeHtml(f.dependency_lag_versions)}</span>` : ''}
                 </div>
             </td>
             <td>${typeBadge}</td>
