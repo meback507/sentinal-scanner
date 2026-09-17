@@ -516,7 +516,11 @@ async function loadDashboardStats() {
         if (!state.findings || state.findings.length === 0) {
             await loadFindings();
         }
-        const resp = await fetch("/api/dashboard/stats");
+        let url = "/api/dashboard/stats";
+        if (state.activeProjectId) {
+            url += `?project_id=${state.activeProjectId}`;
+        }
+        const resp = await fetch(url);
         if (resp.ok) {
             state.dashboardStats = await resp.json();
             renderDashboard();

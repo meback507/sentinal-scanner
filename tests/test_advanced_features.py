@@ -37,84 +37,74 @@ class TestAdvancedFeatures(unittest.TestCase):
         cls.marcus_headers = {"Authorization": f"Bearer {cls.marcus_token}"}
         cls.elena_headers = {"Authorization": f"Bearer {cls.elena_token}"}
 
-        # Seed sample project and findings if needed
-        projects = db.list_projects()
-        if not projects:
-            cls.proj = db.create_project(
-                name="Automotive-Cloud-Demo-Suite",
-                description="Test Suite",
-                git_url="demo",
-                created_by="admin"
-            )
-        else:
-            cls.proj = projects[0]
-
-        # Ensure we have test findings with known authors
-        findings = db.list_findings()
-        cls.marcus_finding = None
-        cls.elena_finding = None
-
-        for f in findings:
+        import uuid
+        # Seed sample isolated project and findings
+        cls.proj = db.create_project(
+            name=f"Adv-Features-{uuid.uuid4().hex[:6]}",
+            description="Test Suite",
+            git_url="",
+            git_branch="main",
+            git_pat="",
+            created_by="admin"
+        )
+        # Insert test findings
+        test_findings = [
+            {
+                "title": "SQL Injection in User Authentication",
+                "file_path": "src/app.py",
+                "line_start": 25,
+                "line_end": 28,
+                "severity": "CRITICAL",
+                "cvss_score": 9.8,
+                "epss_score": 0.85,
+                "epss_percentile": 0.98,
+                "composite_risk_score": 95.0,
+                "quadrant": "ACT_NOW",
+                "sla_days": 2,
+                "author_name": "Marcus Vance",
+                "author_email": "marcus.vance@cloudsec.internal",
+                "commit_hash": "a1b2c3d4",
+                "commit_date": "2026-09-15",
+                "commit_message": "Add user authentication query",
+                "code_snippet": "cursor.execute(f'SELECT * FROM users WHERE id = {user_id}')",
+                "cwe_id": "CWE-89",
+                "standards": ["ISO-27001", "OWASP-Top10-A03"],
+                "scan_type": "sast"
+            },
+            {
+                "title": "MISRA C:2012 Rule 21.3 Dynamic Memory in ASIL Controller",
+                "file_path": "ecu_controller.cpp",
+                "line_start": 44,
+                "line_end": 45,
+                "severity": "CRITICAL",
+                "cvss_score": 8.9,
+                "epss_score": 0.04,
+                "epss_percentile": 0.35,
+                "composite_risk_score": 75.0,
+                "quadrant": "CRITICAL_PATCH",
+                "sla_days": 14,
+                "author_name": "Dr. Elena Rostova",
+                "author_email": "elena.rostova@autocorp.de",
+                "commit_hash": "e5f6g7h8",
+                "commit_date": "2026-09-14",
+                "commit_message": "Implement dynamic buffer telemetry",
+                "code_snippet": "char* buf = (char*)malloc(256);",
+                "cwe_id": "CWE-401",
+                "standards": ["ISO-26262", "MISRA-C:2012-Rule-21.3"],
+                "scan_type": "sast"
+            }
+        ]
+        scan_id = db.create_scan(cls.proj["id"], cls.proj["name"], "full")
+        db.update_scan_results(scan_id, cls.proj["id"], test_findings)
+        for f in db.list_findings(cls.proj["id"]):
             if "marcus" in (f.get("author_name", "") + f.get("author_email", "")).lower():
                 cls.marcus_finding = f
             elif "elena" in (f.get("author_name", "") + f.get("author_email", "")).lower():
                 cls.elena_finding = f
 
-        if not cls.marcus_finding or not cls.elena_finding:
-            # Insert test findings
-            test_findings = [
-                {
-                    "title": "SQL Injection in User Authentication",
-                    "file_path": "src/app.py",
-                    "line_start": 25,
-                    "line_end": 28,
-                    "severity": "CRITICAL",
-                    "cvss_score": 9.8,
-                    "epss_score": 0.85,
-                    "epss_percentile": 0.98,
-                    "composite_risk_score": 95.0,
-                    "quadrant": "ACT_NOW",
-                    "sla_days": 2,
-                    "author_name": "Marcus Vance",
-                    "author_email": "marcus.vance@autocorp.de",
-                    "commit_hash": "a1b2c3d4",
-                    "commit_date": "2026-09-15",
-                    "commit_message": "Add user authentication query",
-                    "code_snippet": "cursor.execute(f'SELECT * FROM users WHERE id = {user_id}')",
-                    "cwe_id": "CWE-89",
-                    "standards": ["ISO-27001", "OWASP-Top10-A03"],
-                    "scan_type": "sast"
-                },
-                {
-                    "title": "MISRA C:2012 Rule 21.3 Dynamic Memory in ASIL Controller",
-                    "file_path": "ecu/controller.cpp",
-                    "line_start": 44,
-                    "line_end": 45,
-                    "severity": "CRITICAL",
-                    "cvss_score": 8.9,
-                    "epss_score": 0.04,
-                    "epss_percentile": 0.35,
-                    "composite_risk_score": 75.0,
-                    "quadrant": "CRITICAL_PATCH",
-                    "sla_days": 14,
-                    "author_name": "Dr. Elena Rostova",
-                    "author_email": "elena.rostova@autocorp.de",
-                    "commit_hash": "e5f6g7h8",
-                    "commit_date": "2026-09-14",
-                    "commit_message": "Implement dynamic buffer telemetry",
-                    "code_snippet": "char* buf = (char*)malloc(256);",
-                    "cwe_id": "CWE-401",
-                    "standards": ["ISO-26262", "MISRA-C:2012-Rule-21.3"],
-                    "scan_type": "sast"
-                }
-            ]
-            scan_id = db.create_scan(cls.proj["id"], cls.proj["name"], "full")
-            db.update_scan_results(scan_id, cls.proj["id"], test_findings)
-            for f in db.list_findings():
-                if "marcus" in (f.get("author_name", "") + f.get("author_email", "")).lower():
-                    cls.marcus_finding = f
-                elif "elena" in (f.get("author_name", "") + f.get("author_email", "")).lower():
-                    cls.elena_finding = f
+    @classmethod
+    def tearDownClass(cls):
+        db.delete_project(cls.proj["id"])
 
     def test_01_shannon_entropy_calculation(self):
         """Verify Shannon entropy correctly identifies high-randomness secrets vs regular text."""

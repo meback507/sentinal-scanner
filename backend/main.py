@@ -888,15 +888,21 @@ def _compute_vulnerability_trends(
 
 # --- Executive Dashboard Analytics ---
 @app.get("/api/dashboard/stats")
-def get_dashboard_stats(user: UserModel = Depends(get_current_user)):
+def get_dashboard_stats(
+    project_id: Optional[str] = None,
+    user: UserModel = Depends(get_current_user)
+):
     projects = db.list_projects()
-    scans = db.list_scans()
-    all_raw_findings = db.list_findings()
+    scans = db.list_scans(project_id=project_id) if project_id else db.list_scans()
+    all_raw_findings = db.list_findings(project_id=project_id) if project_id else db.list_findings()
 
     is_developer_scoped = (user.role in (RoleEnum.DEVELOPER, "developer"))
-    findings = [f for f in all_raw_findings if _is_finding_authored_by_user(f, user)] if is_developer_scoped else all_raw_findings
+    scoped_findings = [f for f in all_raw_findings if _is_finding_authored_by_user(f, user)] if is_developer_scoped else all_raw_findings
 
-    total_projects = len(projects)
+    # Filter out resolved findings from active vulnerability KPIs
+    findings = [f for f in scoped_findings if f.get("status") != "resolved"]
+
+    total_projects = 1 if project_id else len(projects)
     total_findings = len(findings)
     critical_count = sum(1 for f in findings if f["severity"] == "CRITICAL")
     high_count = sum(1 for f in findings if f["severity"] == "HIGH")

@@ -100,6 +100,7 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA foreign_keys = ON;")
         return conn
 
     def _init_schema(self):
@@ -235,10 +236,14 @@ class Database:
 
     def _migrate_and_deduplicate_findings(self, conn: sqlite3.Connection):
         """
-        Backfills fingerprint, first_seen, and last_seen for existing database rows
-        and removes any duplicate finding rows for the same project & vulnerability fingerprint.
+        Backfills fingerprint, first_seen, and last_seen for existing database rows,
+        purges orphan records from deleted projects, and removes duplicate finding rows.
         """
         try:
+            # Purge orphan records from projects that were deleted
+            conn.execute("DELETE FROM findings WHERE project_id NOT IN (SELECT id FROM projects)")
+            conn.execute("DELETE FROM scans WHERE project_id NOT IN (SELECT id FROM projects)")
+
             rows = conn.execute("SELECT * FROM findings").fetchall()
             if not rows:
                 return
