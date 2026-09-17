@@ -101,6 +101,10 @@
                 </div>
             </div>
             <div class="header-right">
+                <a href="/api/extension/download" class="btn btn-secondary" id="btn-header-ide-plugin" download="sentinel-appsec-ide-1.0.0.vsix" title="Download Sentinel IDE Plugin (.vsix) for VS Code / Cursor / Antigravity" style="text-decoration: none; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    <span>IDE Plugin (.vsix)</span>
+                </a>
                 <button class="btn btn-secondary" id="btn-export-menu" onclick="openExportMenu()">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                     Export Reports
@@ -132,6 +136,12 @@
                 <div>
                     <h1 class="page-title">Executive Security Posture</h1>
                     <p class="page-desc">Prioritized vulnerability management powered by CVSS impact, EPSS exploit likelihood, and multi-industry standards.</p>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <a href="/api/extension/download" download="sentinel-appsec-ide-1.0.0.vsix" class="btn btn-secondary btn-sm" id="btn-dashboard-ide-download" style="text-decoration: none; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); display: inline-flex; align-items: center; gap: 6px;" title="Download Sentinel IDE Extension (.vsix) for VS Code / Cursor / Antigravity">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                        <span>IDE Plugin (.vsix)</span>
+                    </a>
                 </div>
             </div>
 
@@ -450,6 +460,10 @@
                     <p class="page-desc">Synthesize production-ready SAST detection rules and SCA dependency policies from plain English instructions.</p>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
+                    <a href="/api/extension/download" download="sentinel-appsec-ide-1.0.0.vsix" class="btn btn-secondary btn-sm" style="text-decoration: none; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); display: inline-flex; align-items: center; gap: 6px;" title="Download IDE Extension to enforce rules in VS Code / Cursor">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                        <span>IDE Plugin (.vsix)</span>
+                    </a>
                     <span id="rule-engine-status-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 6px 12px; font-size: 12px;">
                         🤖 LLM AI RULE ENGINE ACTIVE
                     </span>
@@ -556,6 +570,41 @@ strcpy(buf, input);"></textarea>
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <!-- IDE Plugin & Developer Shift-Left Integration -->
+                <div class="glass-card" style="grid-column: span 2; border: 1px solid rgba(56, 189, 248, 0.35); background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(2, 132, 199, 0.1));">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 14px;">
+                            <div style="width: 42px; height: 42px; background: linear-gradient(135deg, #0284c7, #38bdf8); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                                🛡️
+                            </div>
+                            <div>
+                                <h3 style="font-size: 18px; margin: 0; color: #fff;">Sentinel IDE Plugin for VS Code, Cursor & Antigravity</h3>
+                                <p style="font-size: 13px; color: #94a3b8; margin: 4px 0 0 0;">Shift-left security diagnostics, in-editor squigglies, hover tooltips, and real-time reflection of custom rules directly in your developers' code editors.</p>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <a href="/api/extension/download" download="sentinel-appsec-ide-1.0.0.vsix" class="btn btn-primary" id="btn-integrations-download-vsix" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; box-shadow: 0 4px 14px rgba(14, 165, 233, 0.4);">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                                <span>Download Plugin (.vsix)</span>
+                            </a>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 14px; font-size: 12px; color: #cbd5e1;">
+                        <div style="background: rgba(15, 23, 42, 0.6); padding: 12px 14px; border-radius: 8px; border: 1px solid #1e293b;">
+                            <strong style="color: #38bdf8; display: block; margin-bottom: 4px;">1. Install in Editor</strong>
+                            Run <code>code --install-extension sentinel-appsec-ide-1.0.0.vsix</code> or install via Extensions menu.
+                        </div>
+                        <div style="background: rgba(15, 23, 42, 0.6); padding: 12px 14px; border-radius: 8px; border: 1px solid #1e293b;">
+                            <strong style="color: #38bdf8; display: block; margin-bottom: 4px;">2. 1-Click Cloud Connect</strong>
+                            Press <code>Ctrl+Shift+P</code> &rarr; <code>Sentinel: Connect to Cloud Server & API Token</code>.
+                        </div>
+                        <div style="background: rgba(15, 23, 42, 0.6); padding: 12px 14px; border-radius: 8px; border: 1px solid #1e293b;">
+                            <strong style="color: #38bdf8; display: block; margin-bottom: 4px;">3. Instant Rule Sync</strong>
+                            All built-in SAST/IaC rules and local <code>.sentinel/rules.yaml</code> custom rules sync automatically.
+                        </div>
+                    </div>
+                </div>
+
                 <!-- LLM AI Engine Integration -->
                 <div class="glass-card" style="grid-column: span 2;">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
