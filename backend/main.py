@@ -1,0 +1,653 @@
+"""
+AegisSec - Unified SAST & SCA Platform Main Server
+REST API, Background Scan Pipeline, Dynamic Prioritization, and Static File Server.
+"""
+
+import os
+import shutil
+import tempfile
+from typing import List, Optional, Dict, Any
+from fastapi import FastAPI, HTTPException, Depends, status, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
+
+from .models import (
+    UserModel, UserCreateRequest, LoginRequest, LoginResponse,
+    ProjectModel, ProjectCreateRequest, FindingModel, ScanModel,
+    CustomRuleModel, RuleGenerateRequest, RuleTestRequest,
+    JiraConfigRequest, ZammadConfigRequest, CreateTicketRequest
+)
+from .db import db, hash_password
+from .auth import (
+    create_access_token, get_current_user, require_roles
+)
+from .standards.taxonomy import STANDARDS_TAXONOMY
+from .prioritization.risk_engine import risk_engine
+from .prioritization.epss_service import epss_service
+from .scanners.sast_engine import SASTEngine
+from .scanners.sca_engine import SCAEngine
+from .rules.nl_rule_generator import NLRuleGenerator
+from .rules.rule_manager import rule_manager
+from .git_service import GitService
+from .integrations.jira_connector import JiraConnector
+from .integrations.zammad_connector import ZammadConnector
+from .exporters.report_generator import ReportGenerator
+
+app = FastAPI(
+    title="AegisSec - Unified SAST & SCA Platform",
+    version="1.0.0",
+    description="Enterprise Application Security Testing with EPSS Prioritization and Multi-Standard Compliance."
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# --- Authentication Routes ---
+@app.post("/api/auth/login", response_model=LoginResponse)
+def login(req: LoginRequest):
+    user = db.get_user_by_username(req.username)
+    if not user or user["password_hash"] != hash_password(req.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+
+    token = create_access_token(user["id"], user["username"], user["role"])
+    return LoginResponse(
+        access_token=token,
+        user=UserModel(
+            id=user["id"],
+            username=user["username"],
+            email=user["email"],
+            role=user["role"],
+            created_at=user["created_at"]
+        )
+    )
+
+
+@app.get("/api/auth/me", response_model=UserModel)
+def get_me(user: UserModel = Depends(get_current_user)):
+    return user
+
+
+@app.get("/api/users", response_model=List[UserModel])
+def list_users(user: UserModel = Depends(require_roles(["admin"]))):
+    return db.list_users()
+
+
+@app.post("/api/users", response_model=UserModel)
+def create_user(req: UserCreateRequest, user: UserModel = Depends(require_roles(["admin"]))):
+    existing = db.get_user_by_username(req.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    created = db.create_user(req.username, req.email, req.password, req.role.value)
+    return UserModel(**created)
+
+
+# --- Project Management Routes ---
+@app.get("/api/projects", response_model=List[ProjectModel])
+def list_projects(user: UserModel = Depends(get_current_user)):
+    return db.list_projects()
+
+
+@app.post("/api/projects", response_model=ProjectModel)
+def create_project(req: ProjectCreateRequest, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    proj = db.create_project(
+        name=req.name,
+        description=req.description or "",
+        git_url=req.git_url or "",
+        git_branch=req.git_branch or "main",
+        git_pat=req.git_pat or "",
+        created_by=user.username
+    )
+    return ProjectModel(**proj)
+
+
+@app.get("/api/projects/{project_id}", response_model=ProjectModel)
+def get_project(project_id: str, user: UserModel = Depends(get_current_user)):
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return ProjectModel(**proj)
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project(project_id: str, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    success = db.delete_project(project_id)
+    return {"success": success, "message": f"Project '{proj['name']}' deleted successfully"}
+
+
+# --- Scanning Execution Pipeline ---
+@app.post("/api/projects/{project_id}/scan")
+def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    scan_id = db.create_scan(project_id, proj["name"], scan_type)
+
+    target_dir = None
+    should_cleanup = False
+    git_url = proj.get("git_url")
+    git_pat = proj.get("git_pat")
+    git_branch = proj.get("git_branch", "main")
+
+    try:
+        # 1. Clone repository or use workspace target
+        if git_url and git_url != "demo" and (git_url.startswith("http://") or git_url.startswith("https://") or git_url.startswith("git@")):
+            ok, ws_path, commit_hash = GitService.clone_repository(git_url, git_branch, git_pat)
+            if not ok:
+                # If remote repository not found, fallback to demo fixture if it was a demo project
+                if "demo" in proj.get("name", "").lower():
+                    target_dir = _create_demo_project_fixture()
+                    should_cleanup = True
+                else:
+                    db.update_scan_results(scan_id, project_id, [], error_msg=ws_path)
+                    return {"success": False, "scan_id": scan_id, "error": ws_path}
+            else:
+                target_dir = ws_path
+                should_cleanup = True
+        elif git_url and os.path.isdir(git_url):
+            target_dir = git_url
+        else:
+            # Create a sample project payload with representative vulnerabilities if no external git configured
+            target_dir = _create_demo_project_fixture()
+            should_cleanup = True
+
+        all_findings = []
+
+        # 2. Run SAST Engine
+        if scan_type in ("full", "sast"):
+            custom_sast = rule_manager.get_active_sast_rules()
+            sast = SASTEngine(custom_rules=custom_sast)
+            sast_findings = sast.scan_directory(target_dir)
+            all_findings.extend(sast_findings)
+
+        # 3. Run SCA Engine
+        if scan_type in ("full", "sca"):
+            sca = SCAEngine()
+            sca_result = sca.scan_directory(target_dir)
+            all_findings.extend(sca_result["findings"])
+
+        # 4. Enrich all findings with Developer / Author Attribution via Git Blame
+        for f in all_findings:
+            blame = GitService.get_line_blame(target_dir, f["file_path"], f.get("line_start", 1))
+            f["author_name"] = blame.get("author_name", "DevOps Engineer")
+            f["author_email"] = blame.get("author_email", "devops@internal.net")
+            f["commit_hash"] = blame.get("commit_hash", "HEAD")
+            f["commit_date"] = blame.get("commit_date", "2026-09-17")
+            f["commit_message"] = blame.get("commit_message", "Repository commit")
+
+        # 5. Save scan results
+        db.update_scan_results(scan_id, project_id, all_findings)
+
+        return {
+            "success": True,
+            "scan_id": scan_id,
+            "total_findings": len(all_findings),
+            "critical_count": sum(1 for f in all_findings if f["severity"] == "CRITICAL"),
+            "high_count": sum(1 for f in all_findings if f["severity"] == "HIGH")
+        }
+
+    except Exception as e:
+        db.update_scan_results(scan_id, project_id, [], error_msg=str(e))
+        return {"success": False, "scan_id": scan_id, "error": str(e)}
+    finally:
+        if should_cleanup and target_dir:
+            shutil.rmtree(target_dir, ignore_errors=True)
+
+
+def _create_demo_project_fixture() -> str:
+    """
+    Creates a temporary demonstration codebase with real-world vulnerabilities covering ISO, Automotive, Cloud, and OWASP.
+    """
+    temp_dir = tempfile.mkdtemp(prefix="aegis_demo_")
+    
+    # 1. Python web service with SQLi, Secret leak, and pickle RCE
+    app_py = """import os
+import sqlite3
+import pickle
+import yaml
+
+API_KEY = "sk_live_93848201948572019485"  # Hardcoded secret
+
+def get_user_profile(user_id):
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    # SQL injection flaw
+    query = f"SELECT * FROM users WHERE id = '{user_id}'"
+    cursor.execute(query)
+    return cursor.fetchall()
+
+def load_session_state(raw_data):
+    # Insecure deserialization
+    return pickle.loads(raw_data)
+
+def parse_config(yaml_str):
+    # Insecure YAML load
+    return yaml.load(yaml_str)
+
+def run_backup(backup_cmd):
+    # OS Command Injection
+    os.system(f"tar -czf backup.tar.gz {backup_cmd}")
+"""
+    with open(os.path.join(temp_dir, "app.py"), "w") as f:
+        f.write(app_py)
+
+    # 2. Automotive C++ ECU Controller with MISRA violations and buffer operations
+    ecu_cpp = """#include <iostream>
+#include <cstring>
+#include <cstdlib>
+
+// Automotive ECU Engine Throttle Controller
+void process_telemetry(const char* packet) {
+    // MISRA C:2012 Rule 21.3 / ISO 26262 ASIL violation: dynamic heap allocation
+    char* dynamic_buffer = (char*)malloc(256);
+    
+    // MISRA & CWE-119: Unbounded string function
+    strcpy(dynamic_buffer, packet);
+    
+    std::cout << "Telemetry packet: " << dynamic_buffer << std::endl;
+    
+    free(dynamic_buffer);
+}
+
+int main() {
+    process_telemetry("SPEED=120&RPM=3400");
+    return 0;
+}
+"""
+    with open(os.path.join(temp_dir, "ecu_controller.cpp"), "w") as f:
+        f.write(ecu_cpp)
+
+    # 3. JavaScript frontend with DOM XSS
+    frontend_js = """function renderUserProfile(userData) {
+    // DOM-based XSS
+    document.getElementById("user-box").innerHTML = userData.bio;
+}
+"""
+    with open(os.path.join(temp_dir, "dashboard.js"), "w") as f:
+        f.write(frontend_js)
+
+    # 4. Dependency manifests with known vulnerable packages (Log4j / lodash / requests)
+    reqs = """requests==2.28.0
+urllib3==1.26.5
+django==4.1.0
+"""
+    with open(os.path.join(temp_dir, "requirements.txt"), "w") as f:
+        f.write(reqs)
+
+    pkg_json = """{
+  "name": "cloud-microservice",
+  "version": "1.0.0",
+  "dependencies": {
+    "lodash": "4.17.15",
+    "axios": "0.21.0"
+  }
+}"""
+    with open(os.path.join(temp_dir, "package.json"), "w") as f:
+        f.write(pkg_json)
+
+    # Initialize Git repository and simulate realistic commits across multiple developers
+    import subprocess
+    try:
+        subprocess.run(["git", "init"], cwd=temp_dir, capture_output=True, check=True)
+        # Commit 1: Backend Developer (Marcus Vance)
+        subprocess.run(["git", "config", "user.name", "Marcus Vance"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "config", "user.email", "marcus.vance@cloudsec.internal"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "add", "app.py"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "feat: add user profile query & session serialization"], cwd=temp_dir, check=True)
+
+        # Commit 2: Automotive Firmware Lead (Dr. Elena Rostova)
+        subprocess.run(["git", "config", "user.name", "Dr. Elena Rostova"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "config", "user.email", "elena.rostova@autocorp.de"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "add", "ecu_controller.cpp"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "fix: throttle controller packet telemetry logic"], cwd=temp_dir, check=True)
+
+        # Commit 3: Frontend Developer (Sarah Lin)
+        subprocess.run(["git", "config", "user.name", "Sarah Lin"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "config", "user.email", "sarah.lin@frontend.io"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "add", "dashboard.js"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "feat: dynamic user profile bio DOM rendering"], cwd=temp_dir, check=True)
+
+        # Commit 4: DevOps Lead (DevOps Automation)
+        subprocess.run(["git", "config", "user.name", "DevOps Engineer"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "config", "user.email", "pipeline-bot@supplychain.net"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "add", "requirements.txt", "package.json"], cwd=temp_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "chore: dependency manifest definitions"], cwd=temp_dir, check=True)
+    except Exception:
+        pass
+
+    return temp_dir
+
+
+# --- Findings & Triage Routes ---
+@app.get("/api/findings", response_model=List[FindingModel])
+def list_findings(
+    project_id: Optional[str] = None,
+    scan_id: Optional[str] = None,
+    user: UserModel = Depends(get_current_user)
+):
+    return db.list_findings(project_id, scan_id)
+
+
+@app.get("/api/findings/{finding_id}", response_model=FindingModel)
+def get_finding(finding_id: str, user: UserModel = Depends(get_current_user)):
+    f = db.get_finding_by_id(finding_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return f
+
+
+@app.patch("/api/findings/{finding_id}/status")
+def update_finding_status(
+    finding_id: str,
+    status: str,
+    user: UserModel = Depends(require_roles(["admin", "security_engineer", "developer"]))
+):
+    valid_statuses = ["open", "in_triage", "confirmed", "false_positive", "resolved"]
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+    db.update_finding_status(finding_id, status)
+    return {"success": True, "status": status}
+
+
+@app.post("/api/findings/{finding_id}/ticket")
+def create_ticket_for_finding(
+    finding_id: str,
+    req: CreateTicketRequest,
+    user: UserModel = Depends(require_roles(["admin", "security_engineer", "developer"]))
+):
+    finding = db.get_finding_by_id(finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    if req.platform == "jira":
+        res = JiraConnector.create_ticket(finding)
+        if res.get("success"):
+            db.update_finding_status(finding_id, "in_triage", ticket_key=res.get("ticket_key"), platform="jira")
+        return res
+    elif req.platform == "zammad":
+        res = ZammadConnector.create_ticket(finding)
+        if res.get("success"):
+            db.update_finding_status(finding_id, "in_triage", ticket_key=res.get("ticket_key"), platform="zammad")
+        return res
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported platform. Choose 'jira' or 'zammad'.")
+
+
+# --- Custom Rule Generator Routes ---
+@app.post("/api/rules/generate")
+def generate_custom_rule(req: RuleGenerateRequest, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    if not req.prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    rule = NLRuleGenerator.generate_from_text(req.prompt, req.ecosystem)
+    return rule
+
+
+@app.post("/api/rules/test")
+def test_custom_rule(req: RuleTestRequest, user: UserModel = Depends(get_current_user)):
+    res = NLRuleGenerator.test_rule_against_code(req.rule_yaml, req.sample_code, req.language)
+    return res
+
+
+@app.get("/api/rules")
+def list_custom_rules(user: UserModel = Depends(get_current_user)):
+    return rule_manager.list_rules()
+
+
+@app.post("/api/rules")
+def save_custom_rule(rule: Dict[str, Any], user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    saved = rule_manager.save_rule(rule)
+    return saved
+
+
+@app.delete("/api/rules/{rule_id}")
+def delete_custom_rule(rule_id: str, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    success = rule_manager.delete_rule(rule_id)
+    return {"success": success}
+
+
+# --- Standards Taxonomy ---
+@app.get("/api/standards")
+def get_standards(user: UserModel = Depends(get_current_user)):
+    all_findings = db.list_findings()
+    
+    # Calculate counts per standard control
+    counts = {}
+    for f in all_findings:
+        for s in f.get("standards", []):
+            counts[s] = counts.get(s, 0) + 1
+
+    return {
+        "taxonomy": STANDARDS_TAXONOMY,
+        "active_counts": counts
+    }
+
+
+# --- Exporters ---
+@app.get("/api/projects/{project_id}/export/html")
+def export_html(project_id: str, user: UserModel = Depends(get_current_user)):
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    scans = db.list_scans(project_id)
+    latest_scan = scans[0] if scans else {"id": "N/A", "composite_risk_score": 0.0}
+    findings = db.list_findings(project_id)
+
+    html_content = ReportGenerator.generate_html_report(proj, latest_scan, findings)
+    return HTMLResponse(content=html_content)
+
+
+@app.get("/api/projects/{project_id}/export/sarif")
+def export_sarif(project_id: str, user: UserModel = Depends(get_current_user)):
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    scans = db.list_scans(project_id)
+    latest_scan = scans[0] if scans else {"id": "N/A"}
+    findings = db.list_findings(project_id)
+
+    sarif_json = ReportGenerator.generate_sarif(proj, latest_scan, findings)
+    return Response(content=sarif_json, media_type="application/sarif+json", headers={
+        "Content-Disposition": f'attachment; filename="aegissec-{project_id}.sarif"'
+    })
+
+
+@app.get("/api/projects/{project_id}/export/cyclonedx")
+def export_cyclonedx(project_id: str, user: UserModel = Depends(get_current_user)):
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    findings = db.list_findings(project_id)
+    sca_deps = []
+    # Build unique dependencies from SCA findings
+    seen_deps = set()
+    for f in findings:
+        if f.get("type") == "sca" and f.get("package_name"):
+            pkg = f.get("package_name")
+            if pkg not in seen_deps:
+                seen_deps.add(pkg)
+                sca_deps.append({
+                    "name": pkg,
+                    "version": f.get("installed_version", "1.0.0"),
+                    "license": f.get("license", "MIT"),
+                    "ecosystem": "npm" if "package.json" in f.get("file_path", "") else "pypi"
+                })
+
+    cdx_json = ReportGenerator.generate_cyclonedx_sbom(proj, sca_deps, findings)
+    return Response(content=cdx_json, media_type="application/vnd.cyclonedx+json", headers={
+        "Content-Disposition": f'attachment; filename="aegissec-sbom-{project_id}.json"'
+    })
+
+
+@app.get("/api/projects/{project_id}/export/csv")
+def export_csv(project_id: str, user: UserModel = Depends(get_current_user)):
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    findings = db.list_findings(project_id)
+    csv_str = ReportGenerator.generate_csv(findings)
+    return Response(content=csv_str, media_type="text/csv", headers={
+        "Content-Disposition": f'attachment; filename="aegissec-findings-{project_id}.csv"'
+    })
+
+
+# --- Integrations Config Routes ---
+@app.get("/api/integrations/{key}")
+def get_integration_config(key: str, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    cfg = db.get_integration(key)
+    if not cfg:
+        return {"enabled": False}
+    # Mask secrets
+    safe_cfg = dict(cfg)
+    if "api_token" in safe_cfg and safe_cfg["api_token"]:
+        safe_cfg["api_token"] = "••••••••••••••••"
+    return safe_cfg
+
+
+@app.post("/api/integrations/{key}")
+def save_integration_config(key: str, payload: Dict[str, Any], user: UserModel = Depends(require_roles(["admin"]))):
+    # If token was masked and not changed, keep old token
+    old_cfg = db.get_integration(key) or {}
+    if payload.get("api_token") == "••••••••••••••••":
+        payload["api_token"] = old_cfg.get("api_token", "")
+    db.set_integration(key, payload)
+    return {"success": True, "message": f"{key.capitalize()} integration settings saved"}
+
+
+@app.post("/api/integrations/{key}/test")
+def test_integration(key: str, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    cfg = db.get_integration(key)
+    if not cfg:
+        return {"success": False, "message": "Integration not configured"}
+
+    if key == "jira":
+        return JiraConnector.test_connection(cfg.get("url", ""), cfg.get("email", ""), cfg.get("api_token", ""))
+    elif key == "zammad":
+        return ZammadConnector.test_connection(cfg.get("url", ""), cfg.get("api_token", ""))
+    return {"success": False, "message": "Unknown integration"}
+
+
+# --- Executive Dashboard Analytics ---
+@app.get("/api/dashboard/stats")
+def get_dashboard_stats(user: UserModel = Depends(get_current_user)):
+    projects = db.list_projects()
+    scans = db.list_scans()
+    findings = db.list_findings()
+
+    total_projects = len(projects)
+    total_findings = len(findings)
+    critical_count = sum(1 for f in findings if f["severity"] == "CRITICAL")
+    high_count = sum(1 for f in findings if f["severity"] == "HIGH")
+    medium_count = sum(1 for f in findings if f["severity"] == "MEDIUM")
+    low_count = sum(1 for f in findings if f["severity"] == "LOW")
+
+    # High EPSS active exploits (EPSS > 0.20 or percentile > 85%)
+    active_exploits = sum(1 for f in findings if f.get("epss_score", 0.0) >= 0.20)
+
+    # Average CVSS and EPSS
+    avg_cvss = round(sum(f["cvss_score"] for f in findings) / total_findings, 1) if total_findings > 0 else 0.0
+    avg_epss = round(sum(f["epss_score"] for f in findings) / total_findings, 4) if total_findings > 0 else 0.0
+    overall_posture = round(100.0 - (critical_count * 15.0 + high_count * 8.0 + medium_count * 3.0), 1)
+    overall_posture = max(min(overall_posture, 100.0), 10.0)
+
+    # Quadrant counts
+    quadrants = {"ACT_NOW": 0, "CRITICAL_PATCH": 0, "OPPORTUNISTIC": 0, "ROUTINE": 0}
+    for f in findings:
+        q = f.get("quadrant", "ROUTINE")
+        quadrants[q] = quadrants.get(q, 0) + 1
+
+    # Standards breakdown
+    standards_summary = {
+        "ISO-27001": 0,
+        "ISO-26262": 0,
+        "MISRA": 0,
+        "OWASP": 0,
+        "NIST-SSDF": 0,
+        "CIS": 0
+    }
+    for f in findings:
+        for s in f.get("standards", []):
+            for std_prefix in standards_summary.keys():
+                if std_prefix in s:
+                    standards_summary[std_prefix] += 1
+
+    # Developer Attribution Scorecard
+    dev_stats = {}
+    for f in findings:
+        auth = f.get("author_name") or "Unknown"
+        if auth not in dev_stats:
+            dev_stats[auth] = {
+                "name": auth,
+                "email": f.get("author_email") or "",
+                "total_findings": 0,
+                "critical_count": 0,
+                "high_count": 0
+            }
+        dev_stats[auth]["total_findings"] += 1
+        if f.get("severity") == "CRITICAL":
+            dev_stats[auth]["critical_count"] += 1
+        elif f.get("severity") == "HIGH":
+            dev_stats[auth]["high_count"] += 1
+
+    developer_attribution = sorted(dev_stats.values(), key=lambda x: x["total_findings"], reverse=True)
+
+    return {
+        "total_projects": total_projects,
+        "total_findings": total_findings,
+        "critical_count": critical_count,
+        "high_count": high_count,
+        "medium_count": medium_count,
+        "low_count": low_count,
+        "active_exploits": active_exploits,
+        "avg_cvss": avg_cvss,
+        "avg_epss": avg_epss,
+        "overall_posture": overall_posture,
+        "quadrants": quadrants,
+        "standards_summary": standards_summary,
+        "developer_attribution": developer_attribution,
+        "recent_scans": scans[:5]
+    }
+
+
+# --- Seed Initial Demo Project ---
+@app.on_event("startup")
+def startup_seed_demo():
+    # If no projects exist, seed a starter demo project
+    projects = db.list_projects()
+    if len(projects) == 0:
+        proj = db.create_project(
+            name="Automotive-Cloud-Demo-Suite",
+            description="Reference project demonstrating ISO 26262 (ASIL-D), MISRA C:2012, ISO 27001, and Cloud Supply Chain vulnerability detection.",
+            git_url="",
+            git_branch="main",
+            git_pat="",
+            created_by="admin"
+        )
+        # Trigger an initial scan so the dashboard has rich security metrics immediately!
+        trigger_scan(proj["id"], "full", UserModel(id="1", username="admin", email="admin@internal", role="admin", created_at=""))
+
+
+# Mount frontend static files
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+if os.path.exists(frontend_dir):
+    app.mount("/static", StaticFiles(directory=os.path.join(frontend_dir, "static")), name="static")
+
+    @app.get("/", response_class=HTMLResponse)
+    def serve_index():
+        index_path = os.path.join(frontend_dir, "index.html")
+        if os.path.exists(index_path):
+            with open(index_path, "r", encoding="utf-8") as f:
+                return f.read()
+        return "<h1>AegisSec Platform Online</h1>"
