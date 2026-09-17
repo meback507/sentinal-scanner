@@ -260,6 +260,64 @@ class TestAdvancedFeatures(unittest.TestCase):
         # Both Marcus and Elena should be in per_developer_trends for Admin filtering
         self.assertIn("All Enterprise Code", admin_trends["per_developer_trends"])
 
+    def test_09_ticket_assigned_to_code_author_jira_and_zammad(self):
+        """
+        Verify that when creating a ticket for a vulnerable finding,
+        the ticket is assigned directly to the author of the code,
+        and persisted in the database.
+        """
+        # 1. Marcus Vance finding ticket via Jira
+        marcus_res = self.client.post(
+            f"/api/findings/{self.marcus_finding['id']}/ticket",
+            headers=self.marcus_headers,
+            json={"platform": "jira", "finding_id": self.marcus_finding["id"]}
+        )
+        self.assertEqual(marcus_res.status_code, 200)
+        data = marcus_res.json()
+        self.assertTrue(data["success"])
+        self.assertIn("SEC-", data["ticket_key"])
+        self.assertIn("Marcus Vance", data.get("assigned_to", ""))
+
+        # Verify database record updated with author assignment
+        f_db = db.get_finding_by_id(self.marcus_finding["id"])
+        self.assertEqual(f_db["status"], "in_triage")
+        self.assertIn("Marcus Vance", f_db["ticket_assigned_to"])
+        self.assertEqual(f_db["jira_key"], data["ticket_key"])
+
+        # 2. Elena Rostova finding ticket via Zammad
+        elena_res = self.client.post(
+            f"/api/findings/{self.elena_finding['id']}/ticket",
+            headers=self.elena_headers,
+            json={"platform": "zammad", "finding_id": self.elena_finding["id"]}
+        )
+        self.assertEqual(elena_res.status_code, 200)
+        e_data = elena_res.json()
+        self.assertTrue(e_data["success"])
+        self.assertIn("Dr. Elena Rostova", e_data.get("assigned_to", ""))
+
+        f_elena_db = db.get_finding_by_id(self.elena_finding["id"])
+        self.assertEqual(f_elena_db["status"], "in_triage")
+        self.assertIn("Dr. Elena Rostova", f_elena_db["ticket_assigned_to"])
+
+    def test_10_project_auto_ticket_dispatch_assigned_to_authors(self):
+        """
+        Verify that auto-dispatching tickets for a project assigns tickets
+        to each respective code author for all vulnerable code.
+        """
+        res = self.client.post(
+            f"/api/projects/{self.proj['id']}/auto-ticket?platform=jira",
+            headers=self.admin_headers
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["success"])
+        self.assertIn("dispatched_count", data)
+
+        # Every auto-dispatched ticket must have assigned_to set to the code author
+        for t in data["tickets"]:
+            self.assertTrue(bool(t.get("assigned_to")))
+            self.assertNotEqual(t.get("assigned_to"), "")
+
 
 if __name__ == "__main__":
     unittest.main()

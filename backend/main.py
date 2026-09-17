@@ -433,18 +433,148 @@ def create_ticket_for_finding(
             detail="Access denied: You are only authorized to create tickets for findings in code you authored."
         )
 
+    author_name = finding.get("author_name") or "Unknown Developer"
+    author_email = finding.get("author_email") or "unknown@domain.local"
+
     if req.platform == "jira":
         res = JiraConnector.create_ticket(finding)
         if res.get("success"):
-            db.update_finding_status(finding_id, "in_triage", ticket_key=res.get("ticket_key"), platform="jira")
+            db.update_finding_status(
+                finding_id,
+                "in_triage",
+                ticket_key=res.get("ticket_key"),
+                platform="jira",
+                ticket_assigned_to=author_name,
+                ticket_assigned_email=author_email
+            )
+            res["assigned_to"] = author_name
+            res["assigned_email"] = author_email
+            AuditService.log_audit_event(
+                event_type="TICKET_DISPATCHED",
+                user=user.username,
+                action=f"Dispatched Jira ticket {res.get('ticket_key')} assigned to code author '{author_name}'",
+                details={
+                    "finding_id": finding_id,
+                    "ticket_key": res.get("ticket_key"),
+                    "platform": "jira",
+                    "assigned_to": author_name,
+                    "assigned_email": author_email
+                }
+            )
         return res
     elif req.platform == "zammad":
         res = ZammadConnector.create_ticket(finding)
         if res.get("success"):
-            db.update_finding_status(finding_id, "in_triage", ticket_key=res.get("ticket_key"), platform="zammad")
+            db.update_finding_status(
+                finding_id,
+                "in_triage",
+                ticket_key=res.get("ticket_key"),
+                platform="zammad",
+                ticket_assigned_to=author_name,
+                ticket_assigned_email=author_email
+            )
+            res["assigned_to"] = author_name
+            res["assigned_email"] = author_email
+            AuditService.log_audit_event(
+                event_type="TICKET_DISPATCHED",
+                user=user.username,
+                action=f"Dispatched Zammad ticket {res.get('ticket_key')} assigned to code author '{author_name}'",
+                details={
+                    "finding_id": finding_id,
+                    "ticket_key": res.get("ticket_key"),
+                    "platform": "zammad",
+                    "assigned_to": author_name,
+                    "assigned_email": author_email
+                }
+            )
         return res
     else:
         raise HTTPException(status_code=400, detail="Unsupported platform. Choose 'jira' or 'zammad'.")
+
+
+@app.post("/api/projects/{project_id}/auto-ticket")
+def auto_dispatch_tickets_for_project(
+    project_id: str,
+    platform: str = "jira",
+    user: UserModel = Depends(require_roles(["admin", "security_engineer"]))
+):
+    """
+    Automatically creates and assigns tickets directly to the author of the code
+    for all open vulnerability findings in the project.
+    """
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    findings = db.list_findings(project_id=project_id)
+    assigned_tickets = []
+
+    for f in findings:
+        if platform == "jira" and f.get("jira_key"):
+            continue
+        if platform == "zammad" and f.get("zammad_id"):
+            continue
+
+        author_name = f.get("author_name") or "Unknown Developer"
+        author_email = f.get("author_email") or "unknown@domain.local"
+
+        if platform == "jira":
+            res = JiraConnector.create_ticket(f)
+            if res.get("success"):
+                t_key = res.get("ticket_key")
+                db.update_finding_status(
+                    f["id"],
+                    "in_triage",
+                    ticket_key=t_key,
+                    platform="jira",
+                    ticket_assigned_to=author_name,
+                    ticket_assigned_email=author_email
+                )
+                assigned_tickets.append({
+                    "finding_id": f["id"],
+                    "title": f["title"],
+                    "ticket_key": t_key,
+                    "assigned_to": author_name,
+                    "assigned_email": author_email,
+                    "platform": "jira"
+                })
+        elif platform == "zammad":
+            res = ZammadConnector.create_ticket(f)
+            if res.get("success"):
+                t_key = res.get("ticket_key")
+                db.update_finding_status(
+                    f["id"],
+                    "in_triage",
+                    ticket_key=t_key,
+                    platform="zammad",
+                    ticket_assigned_to=author_name,
+                    ticket_assigned_email=author_email
+                )
+                assigned_tickets.append({
+                    "finding_id": f["id"],
+                    "title": f["title"],
+                    "ticket_key": t_key,
+                    "assigned_to": author_name,
+                    "assigned_email": author_email,
+                    "platform": "zammad"
+                })
+
+    AuditService.log_audit_event(
+        event_type="AUTO_TICKETS_ASSIGNED",
+        user=user.username,
+        action=f"Auto-assigned {len(assigned_tickets)} vulnerability tickets directly to code authors",
+        details={
+            "project_id": project_id,
+            "count": len(assigned_tickets),
+            "platform": platform
+        }
+    )
+
+    return {
+        "success": True,
+        "dispatched_count": len(assigned_tickets),
+        "tickets": assigned_tickets
+    }
 
 
 @app.post("/api/findings/{finding_id}/ai-remediation", response_model=AIRemediationResponse)
@@ -930,6 +1060,27 @@ def startup_seed_demo():
         )
         # Trigger an initial scan so the dashboard has rich security metrics immediately!
         trigger_scan(proj["id"], "full", UserModel(id="1", username="admin", email="admin@internal", role="admin", created_at=""))
+
+    # Ensure representative starter vulnerability findings have tickets assigned to code authors
+    all_f = db.list_findings()
+    for f in all_f:
+        auth_name = f.get("author_name") or ""
+        if not f.get("ticket_assigned_to") and not f.get("jira_key"):
+            if "marcus" in auth_name.lower() and f.get("severity") == "CRITICAL":
+                db.update_finding_status(
+                    f["id"], "in_triage", ticket_key="SEC-1042", platform="jira",
+                    ticket_assigned_to="Marcus Vance", ticket_assigned_email="marcus.vance@cloudsec.internal"
+                )
+            elif "elena" in auth_name.lower() and f.get("severity") == "CRITICAL":
+                db.update_finding_status(
+                    f["id"], "in_triage", ticket_key="SEC-1043", platform="jira",
+                    ticket_assigned_to="Dr. Elena Rostova", ticket_assigned_email="elena.rostova@autocorp.de"
+                )
+            elif "sarah" in auth_name.lower():
+                db.update_finding_status(
+                    f["id"], "in_triage", ticket_key="SEC-1044", platform="jira",
+                    ticket_assigned_to="Sarah Lin", ticket_assigned_email="sarah.lin@frontend.io"
+                )
 
 
 # Mount frontend static files

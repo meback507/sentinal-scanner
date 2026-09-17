@@ -34,7 +34,9 @@ class TestExportersAndTicketing(unittest.TestCase):
                 "quadrant": "ACT_NOW",
                 "sla_days": 2,
                 "standards": ["ISO-27001:A.8.12", "CIS:CIS-1.1"],
-                "status": "open"
+                "status": "open",
+                "author_name": "Marcus Vance",
+                "author_email": "marcus.vance@cloudsec.internal"
             }
         ]
 
@@ -68,15 +70,19 @@ class TestExportersAndTicketing(unittest.TestCase):
         self.assertIn("ISO-27001", html)
 
     def test_ticketing_payload_creation(self):
-        # Jira Mock Ticket
+        # Jira Mock Ticket assigned to code author
         jira_res = JiraConnector.create_ticket(self.mock_findings[0])
         self.assertTrue(jira_res["success"])
         self.assertIn("ticket_key", jira_res)
+        self.assertEqual(jira_res["assigned_to"], "Marcus Vance")
+        self.assertEqual(jira_res["assigned_email"], "marcus.vance@cloudsec.internal")
 
-        # Zammad Mock Ticket
+        # Zammad Mock Ticket assigned to code author
         zammad_res = ZammadConnector.create_ticket(self.mock_findings[0])
         self.assertTrue(zammad_res["success"])
         self.assertIn("ticket_key", zammad_res)
+        self.assertEqual(zammad_res["assigned_to"], "Marcus Vance")
+        self.assertEqual(zammad_res["assigned_email"], "marcus.vance@cloudsec.internal")
 
 
 if __name__ == "__main__":

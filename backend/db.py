@@ -114,6 +114,8 @@ class Database:
                 commit_message TEXT,
                 jira_key TEXT,
                 zammad_id TEXT,
+                ticket_assigned_to TEXT,
+                ticket_assigned_email TEXT,
                 FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
@@ -140,6 +142,16 @@ class Database:
                 value TEXT NOT NULL
             );
             """)
+
+            # Automatic schema migration for existing SQLite databases
+            try:
+                cols = [c[1] for c in conn.execute("PRAGMA table_info(findings)").fetchall()]
+                if "ticket_assigned_to" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN ticket_assigned_to TEXT")
+                if "ticket_assigned_email" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN ticket_assigned_email TEXT")
+            except Exception:
+                pass
 
     def _seed_default_data(self):
         with self._get_conn() as conn:
@@ -296,8 +308,9 @@ class Database:
                     license, file_path, line_start, line_end, code_snippet, cvss_score,
                     cvss_vector, epss_score, epss_percentile, composite_risk_score,
                     quadrant, urgency, sla_days, standards, status,
-                    author_name, author_email, commit_hash, commit_date, commit_message
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    author_name, author_email, commit_hash, commit_date, commit_message,
+                    jira_key, zammad_id, ticket_assigned_to, ticket_assigned_email
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     finding_id, scan_id, project_id, f["type"], f["title"], f["description"],
                     f.get("remediation", ""), f["severity"], f.get("cwe_id"), f.get("cve_id"),
@@ -312,7 +325,11 @@ class Database:
                     f.get("author_email", "devops@internal.net"),
                     f.get("commit_hash", "HEAD"),
                     f.get("commit_date", "2026-09-17"),
-                    f.get("commit_message", "Automated build sync")
+                    f.get("commit_message", "Automated build sync"),
+                    f.get("jira_key"),
+                    f.get("zammad_id"),
+                    f.get("ticket_assigned_to"),
+                    f.get("ticket_assigned_email")
                 ))
 
     def list_scans(self, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -362,12 +379,31 @@ class Database:
                     item["standards"] = []
             return item
 
-    def update_finding_status(self, finding_id: str, status: str, ticket_key: Optional[str] = None, platform: Optional[str] = None) -> bool:
+    def update_finding_status(
+        self,
+        finding_id: str,
+        status: str,
+        ticket_key: Optional[str] = None,
+        platform: Optional[str] = None,
+        ticket_assigned_to: Optional[str] = None,
+        ticket_assigned_email: Optional[str] = None
+    ) -> bool:
         with self._get_conn() as conn:
             if platform == "jira":
-                conn.execute("UPDATE findings SET status = ?, jira_key = ? WHERE id = ?", (status, ticket_key, finding_id))
+                conn.execute(
+                    "UPDATE findings SET status = ?, jira_key = ?, ticket_assigned_to = COALESCE(?, ticket_assigned_to), ticket_assigned_email = COALESCE(?, ticket_assigned_email) WHERE id = ?",
+                    (status, ticket_key, ticket_assigned_to, ticket_assigned_email, finding_id)
+                )
             elif platform == "zammad":
-                conn.execute("UPDATE findings SET status = ?, zammad_id = ? WHERE id = ?", (status, ticket_key, finding_id))
+                conn.execute(
+                    "UPDATE findings SET status = ?, zammad_id = ?, ticket_assigned_to = COALESCE(?, ticket_assigned_to), ticket_assigned_email = COALESCE(?, ticket_assigned_email) WHERE id = ?",
+                    (status, ticket_key, ticket_assigned_to, ticket_assigned_email, finding_id)
+                )
+            elif ticket_assigned_to:
+                conn.execute(
+                    "UPDATE findings SET status = ?, ticket_assigned_to = ?, ticket_assigned_email = ? WHERE id = ?",
+                    (status, ticket_assigned_to, ticket_assigned_email, finding_id)
+                )
             else:
                 conn.execute("UPDATE findings SET status = ? WHERE id = ?", (status, finding_id))
             return True

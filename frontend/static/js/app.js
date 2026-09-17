@@ -875,7 +875,16 @@ function renderFindingsTable() {
                 <div style="font-size: 11px; text-transform: uppercase; font-weight: 600; color: ${quadColor};">${f.quadrant}</div>
             </td>
             <td>${stdBadges}</td>
-            <td><span class="badge" style="background: rgba(56, 189, 248, 0.1); color: var(--accent-cyan);">${f.status.replace("_", " ")}</span></td>
+            <td>
+                <span class="badge" style="background: rgba(56, 189, 248, 0.1); color: var(--accent-cyan);">${f.status.replace("_", " ")}</span>
+                ${(f.jira_key || f.zammad_id || f.ticket_assigned_to) ? `
+                    <div style="margin-top: 4px;">
+                        <span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; font-size: 10px; border: 1px solid rgba(168, 85, 247, 0.35);" title="Ticket assigned to author ${escapeHtml(f.ticket_assigned_to || f.author_name)}">
+                            🎫 ${f.jira_key ? 'Jira #' + f.jira_key : (f.zammad_id ? 'Zammad #' + f.zammad_id : 'Ticket')} &rarr; ${escapeHtml(f.ticket_assigned_to || f.author_name)}
+                        </span>
+                    </div>
+                ` : ''}
+            </td>
             <td style="text-align: right;">
                 <button class="btn btn-secondary btn-sm" onclick="openFindingDetail('${f.id}')">Inspect</button>
             </td>
@@ -885,7 +894,9 @@ function renderFindingsTable() {
 }
 
 function openFindingDetail(findingId) {
-    const f = state.findings.find(item => item.id === findingId);
+    const f = (typeof findingId === 'object' && findingId !== null) 
+        ? findingId 
+        : (state.findings || []).find(item => item.id === findingId) || (state.auditFindings || []).find(item => item.id === findingId);
     if (!f) return;
     state.activeFinding = f;
 
@@ -959,6 +970,36 @@ function openFindingDetail(findingId) {
     document.getElementById("detail-code-snippet").textContent = f.code_snippet || "No source code snippet available.";
     document.getElementById("detail-remediation").textContent = f.remediation || "Review according to secure coding policy.";
 
+    // Update Ticket Assignment to Author Information
+    const ticketAuthName = document.getElementById("detail-ticket-author-name");
+    const ticketAuthEmail = document.getElementById("detail-ticket-author-email");
+    const ticketPill = document.getElementById("detail-ticket-status-pill");
+
+    const assignedAuthor = f.ticket_assigned_to || f.author_name || "Unknown Developer";
+    const assignedEmail = f.ticket_assigned_email || f.author_email || "unknown@domain.local";
+
+    if (ticketAuthName) ticketAuthName.textContent = assignedAuthor;
+    if (ticketAuthEmail) ticketAuthEmail.textContent = `(${assignedEmail})`;
+
+    if (ticketPill) {
+        if (f.jira_key) {
+            ticketPill.textContent = `Jira #${f.jira_key} (Assigned to ${assignedAuthor})`;
+            ticketPill.style.background = "rgba(59, 130, 246, 0.2)";
+            ticketPill.style.color = "#93c5fd";
+            ticketPill.style.border = "1px solid rgba(59, 130, 246, 0.4)";
+        } else if (f.zammad_id) {
+            ticketPill.textContent = `Zammad #${f.zammad_id} (Assigned to ${assignedAuthor})`;
+            ticketPill.style.background = "rgba(16, 185, 129, 0.2)";
+            ticketPill.style.color = "#6ee7b7";
+            ticketPill.style.border = "1px solid rgba(16, 185, 129, 0.4)";
+        } else {
+            ticketPill.textContent = `Unassigned (Will assign to ${assignedAuthor})`;
+            ticketPill.style.background = "rgba(148, 163, 184, 0.15)";
+            ticketPill.style.color = "#cbd5e1";
+            ticketPill.style.border = "1px solid rgba(148, 163, 184, 0.3)";
+        }
+    }
+
     const statusSel = document.getElementById("detail-status-select");
     if (statusSel) statusSel.value = f.status;
 
@@ -990,7 +1031,8 @@ async function changeFindingStatus(newStatus) {
 
 async function dispatchTicket(platform) {
     if (!state.activeFinding) return;
-    showToast(`Dispatching ticket to ${platform.toUpperCase()}...`, "info");
+    const author = state.activeFinding.author_name || "Code Author";
+    showToast(`Dispatching and assigning ticket directly to author '${author}' via ${platform.toUpperCase()}...`, "info");
     try {
         const resp = await fetch(`/api/findings/${state.activeFinding.id}/ticket`, {
             method: "POST",
@@ -999,14 +1041,55 @@ async function dispatchTicket(platform) {
         });
         const res = await resp.json();
         if (res.success) {
-            const isMockStr = res.is_mock ? " (Demonstration Ticket)" : "";
-            showToast(`Ticket ${res.ticket_key} created successfully${isMockStr}!`, "success");
+            const assignedTo = res.assigned_to || author;
+            const isMockStr = res.is_mock ? " (Demonstration Mode)" : "";
+            showToast(`Ticket ${res.ticket_key} created and assigned directly to code author: ${assignedTo}${isMockStr}!`, "success");
+
+            state.activeFinding.status = "in_triage";
+            if (platform === "jira") state.activeFinding.jira_key = res.ticket_key;
+            if (platform === "zammad") state.activeFinding.zammad_id = res.ticket_key;
+            state.activeFinding.ticket_assigned_to = assignedTo;
+            state.activeFinding.ticket_assigned_email = res.assigned_email || state.activeFinding.author_email;
+
+            const statusSel = document.getElementById("detail-status-select");
+            if (statusSel) statusSel.value = "in_triage";
+
+            const ticketPill = document.getElementById("detail-ticket-status-pill");
+            if (ticketPill) {
+                ticketPill.textContent = `${platform.toUpperCase()} #${res.ticket_key} (Assigned to ${assignedTo})`;
+                ticketPill.style.background = platform === "jira" ? "rgba(59, 130, 246, 0.2)" : "rgba(16, 185, 129, 0.2)";
+                ticketPill.style.color = platform === "jira" ? "#93c5fd" : "#6ee7b7";
+            }
+
             await loadFindings();
         } else {
-            showToast(`Ticket creation failed: ${res.message}`, "error");
+            showToast(`Ticket creation failed: ${res.message || res.detail}`, "error");
         }
     } catch (e) {
         showToast("Error contacting ticketing integration", "error");
+    }
+}
+
+async function autoDispatchProjectTickets() {
+    const projId = state.selectedProjectId || (state.projects[0] ? state.projects[0].id : null);
+    if (!projId) {
+        showToast("Please select a project first", "info");
+        return;
+    }
+    showToast("Auto-assigning tickets directly to code authors for all open vulnerabilities...", "info");
+    try {
+        const resp = await fetch(`/api/projects/${projId}/auto-ticket?platform=jira`, {
+            method: "POST"
+        });
+        const res = await resp.json();
+        if (res.success) {
+            showToast(`Successfully created & assigned ${res.dispatched_count} tickets directly to respective code authors!`, "success");
+            await loadFindings();
+        } else {
+            showToast(`Auto-dispatch failed: ${res.detail || 'Unknown error'}`, "error");
+        }
+    } catch (e) {
+        showToast("Error executing auto-dispatch", "error");
     }
 }
 
@@ -2002,7 +2085,16 @@ function renderAuditFindingsLedger(findings) {
                 <div style="font-size: 12px; color: #fff; font-weight: 600;">${escapeHtml(f.author_name || 'Unknown')}</div>
                 <div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(f.author_email || '')}</div>
             </td>
-            <td><span class="status-pill status-${(f.status || 'open').toLowerCase()}">${(f.status || 'open').toUpperCase()}</span></td>
+            <td>
+                <span class="status-pill status-${(f.status || 'open').toLowerCase()}">${(f.status || 'open').toUpperCase()}</span>
+                ${(f.jira_key || f.zammad_id || f.ticket_assigned_to) ? `
+                    <div style="margin-top: 4px;">
+                        <span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; font-size: 10px; border: 1px solid rgba(168, 85, 247, 0.35);" title="Assigned to author ${escapeHtml(f.ticket_assigned_to || f.author_name)}">
+                            🎫 ${f.jira_key ? 'Jira #' + f.jira_key : (f.zammad_id ? 'Zammad #' + f.zammad_id : 'Ticket')} &rarr; ${escapeHtml(f.ticket_assigned_to || f.author_name)}
+                        </span>
+                    </div>
+                ` : ''}
+            </td>
             <td style="text-align: right;">
                 <button class="btn btn-secondary btn-sm" onclick="openFindingDetailById('${f.id}')" style="padding: 4px 10px; font-size: 12px;">Inspect</button>
             </td>

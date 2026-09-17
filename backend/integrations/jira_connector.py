@@ -35,6 +35,9 @@ class JiraConnector:
 
     @classmethod
     def create_ticket(cls, finding: Dict[str, Any]) -> Dict[str, Any]:
+        author_name = finding.get("author_name") or "Unknown Developer"
+        author_email = finding.get("author_email") or "unknown@domain.local"
+
         cfg = cls.get_config()
         if not cfg or not cfg.get("enabled"):
             # Mock successful creation for demonstration if no live Jira account configured
@@ -43,6 +46,9 @@ class JiraConnector:
                 "success": True,
                 "ticket_key": mock_key,
                 "ticket_url": f"https://mock-jira.internal/browse/{mock_key}",
+                "assigned_to": author_name,
+                "assigned_email": author_email,
+                "assignee": author_name,
                 "is_mock": True
             }
 
@@ -74,7 +80,7 @@ class JiraConnector:
 *Severity:* {finding.get('severity')} (CVSS: {finding.get('cvss_score')}, EPSS: {finding.get('epss_score')})
 *Quadrant:* {finding.get('quadrant')} (SLA: {finding.get('sla_days')} days)
 *File / Location:* {finding.get('file_path')}:{finding.get('line_start')}
-*Developer / Author:* {finding.get('author_name', 'Unknown')} <{finding.get('author_email', 'unknown@domain.local')}> (Commit: {finding.get('commit_hash', 'HEAD')} on {finding.get('commit_date', 'N/A')})
+*Developer / Author (Assigned):* {author_name} <{author_email}> (Commit: {finding.get('commit_hash', 'HEAD')} on {finding.get('commit_date', 'N/A')})
 *Standards:* {', '.join(finding.get('standards', []))}
 
 *Description:*
@@ -92,7 +98,7 @@ class JiraConnector:
         payload = {
             "fields": {
                 "project": {"key": project_key},
-                "summary": f"[AegisSec] {finding.get('title')}",
+                "summary": f"[AegisSec] {finding.get('title')} ({author_name})",
                 "description": {
                     "type": "doc",
                     "version": 1,
@@ -105,9 +111,13 @@ class JiraConnector:
                 },
                 "issuetype": {"name": issue_type},
                 "priority": {"name": severity_map.get(finding.get("severity"), "Medium")},
-                "labels": ["aegissec", "appsec", finding.get("type", "vuln")]
+                "labels": ["aegissec", "appsec", finding.get("type", "vuln"), f"author-{author_name.replace(' ', '_').lower()}"]
             }
         }
+
+        # Assign ticket directly to the author of the code
+        if author_email:
+            payload["fields"]["assignee"] = {"name": author_name, "emailAddress": author_email}
 
         try:
             resp = requests.post(f"{url}/rest/api/3/issue", json=payload, headers=headers, timeout=10)
@@ -118,6 +128,9 @@ class JiraConnector:
                     "success": True,
                     "ticket_key": key,
                     "ticket_url": f"{url}/browse/{key}",
+                    "assigned_to": author_name,
+                    "assigned_email": author_email,
+                    "assignee": author_name,
                     "is_mock": False
                 }
             else:

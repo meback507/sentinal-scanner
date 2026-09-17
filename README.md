@@ -33,9 +33,11 @@
    - Automated token encryption and credential masking in logs and output.
    - Shallow clone optimization (`--depth 1 --single-branch`) with workspace isolation.
 
-5. **Ticketing Platform Connectors**:
-   - **Atlassian Jira Cloud / Server**: Direct issue creation with vulnerability details, reproduction, priority mapping, code snippet context, and remediation guidance.
-   - **Zammad Helpdesk**: Native REST API ticket creation and customer/group assignment.
+5. **Ticketing Platform Connectors & Automatic Author Assignment**:
+   - **Automatic Assignment to Code Author**: If a piece of code contains a vulnerability, dispatched tickets (Jira or Zammad) are **automatically assigned directly to the author of that code** (`author_name`, `author_email`) via Git blame attribution.
+   - **Atlassian Jira Cloud / Server**: Direct issue creation with automatic `assignee` set to the code author, vulnerability reproduction details, CVSS/EPSS priority mapping, and code context.
+   - **Zammad Helpdesk**: Native REST API ticket creation with customer/owner set directly to the code author.
+   - **1-Click Project Auto-Dispatch (`POST /api/projects/{id}/auto-ticket`)**: Batch dispatches and assigns tickets directly to each respective code author for all detected vulnerabilities across the codebase.
 
 6. **Multi-Format Security Exporters**:
    - **Executive HTML / PDF Report**: Comprehensive executive summaries, compliance impact, and remediation plan.
@@ -135,7 +137,8 @@ Run the full verification test suite:
 - `POST /api/projects/{id}/scan`: Trigger on-demand SAST & SCA scan.
 - `GET /api/findings`: List findings with developer-scoped filtering.
 - `PATCH /api/findings/{id}/status`: Update triage status.
-- `POST /api/findings/{id}/ticket`: Create Jira or Zammad ticket.
+- `POST /api/findings/{id}/ticket`: Create Jira or Zammad ticket assigned directly to the author of the code.
+- `POST /api/projects/{id}/auto-ticket`: Batch create and assign tickets directly to code authors for all vulnerabilities.
 - `POST /api/findings/{id}/ai-remediation`: Generate AI root-cause analysis, secure code diff, and verification steps.
 - `POST /api/rules/generate`: Convert natural language into SAST/SCA rule YAML using LLM or semantic engine.
 - `POST /api/rules/test`: Sandbox test bench for custom rules against code.

@@ -323,10 +323,13 @@
                     <h1 class="page-title">Vulnerability Triage & Prioritization</h1>
                     <p class="page-desc">Inspect SAST code flaws and SCA dependency CVEs with CVSS/EPSS scores, standards cross-referencing, and ticketing dispatch.</p>
                 </div>
-                <div style="display: flex; gap: 10px;">
-                    <button class="btn btn-secondary" onclick="exportCurrentReport('html')">Export HTML Report</button>
-                    <button class="btn btn-secondary" onclick="exportCurrentReport('sarif')">Export SARIF 2.1</button>
-                    <button class="btn btn-secondary" onclick="exportCurrentReport('cyclonedx')">Export SBOM</button>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-sm" onclick="autoDispatchProjectTickets()" style="background: linear-gradient(135deg, #7c3aed, #6d28d9); border-color: #6d28d9; font-weight: 700;">
+                        ⚡ Auto-Assign Tickets to Authors
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('html')">Export HTML Report</button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('sarif')">Export SARIF 2.1</button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('cyclonedx')">Export SBOM</button>
                 </div>
             </div>
 
@@ -1009,6 +1012,21 @@ strcpy(buf, input);"></textarea>
                     </div>
                 </div>
 
+                <!-- Ticket Assignment to Author Information Box -->
+                <div id="detail-ticket-assignment-box" style="margin-top: 14px; padding: 12px 16px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #93c5fd; font-weight: 700; margin-bottom: 2px;">Vulnerability Ticket Assignment</div>
+                            <div style="font-size: 13px; color: #fff;">
+                                👤 <span style="color: #94a3b8;">Assigned Code Author:</span> <strong id="detail-ticket-author-name">Marcus Vance</strong> <span id="detail-ticket-author-email" style="color: var(--text-secondary); font-size: 12px;">(marcus.vance@cloudsec.internal)</span>
+                            </div>
+                        </div>
+                        <div id="detail-ticket-badge-container">
+                            <span id="detail-ticket-status-pill" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 12px;">Not Dispatched</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Status & Ticketing Controls -->
                 <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--border);">
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -1023,11 +1041,11 @@ strcpy(buf, input);"></textarea>
                     </div>
 
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-secondary btn-sm" id="btn-ticket-jira" onclick="dispatchTicket('jira')">
-                            🎫 Create Jira Ticket
+                        <button class="btn btn-secondary btn-sm" id="btn-ticket-jira" onclick="dispatchTicket('jira')" title="Create Jira issue and automatically assign directly to the author of this vulnerable code">
+                            🎫 Assign Jira Ticket to Author
                         </button>
-                        <button class="btn btn-secondary btn-sm" id="btn-ticket-zammad" onclick="dispatchTicket('zammad')">
-                            📨 Create Zammad Ticket
+                        <button class="btn btn-secondary btn-sm" id="btn-ticket-zammad" onclick="dispatchTicket('zammad')" title="Create Zammad ticket and assign directly to the author of this vulnerable code">
+                            📨 Assign Zammad Ticket to Author
                         </button>
                     </div>
                 </div>

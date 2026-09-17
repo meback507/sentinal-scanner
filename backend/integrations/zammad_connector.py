@@ -32,6 +32,9 @@ class ZammadConnector:
 
     @classmethod
     def create_ticket(cls, finding: Dict[str, Any]) -> Dict[str, Any]:
+        author_name = finding.get("author_name") or "Unknown Developer"
+        author_email = finding.get("author_email") or "unknown@domain.local"
+
         cfg = cls.get_config()
         if not cfg or not cfg.get("enabled"):
             mock_id = f"ZAM-{finding.get('id', '1')[:4].upper()}"
@@ -39,6 +42,9 @@ class ZammadConnector:
                 "success": True,
                 "ticket_key": mock_id,
                 "ticket_url": f"https://mock-zammad.internal/#ticket/zoom/{mock_id}",
+                "assigned_to": author_name,
+                "assigned_email": author_email,
+                "assignee": author_name,
                 "is_mock": True
             }
 
@@ -64,7 +70,7 @@ Vulnerability Finding: {finding.get('title')}
 Severity: {finding.get('severity')} | CVSS: {finding.get('cvss_score')} | EPSS: {finding.get('epss_score')}
 Composite Risk: {finding.get('composite_risk_score')} / 100 ({finding.get('quadrant')})
 Location: {finding.get('file_path')}:{finding.get('line_start')}
-Developer / Author: {finding.get('author_name', 'Unknown')} <{finding.get('author_email', 'unknown@domain.local')}> (Commit: {finding.get('commit_hash', 'HEAD')})
+Developer / Author (Assigned): {author_name} <{author_email}> (Commit: {finding.get('commit_hash', 'HEAD')})
 Standards Compliance: {', '.join(finding.get('standards', []))}
 
 Description:
@@ -78,9 +84,10 @@ Remediation Action:
 """
 
         payload = {
-            "title": f"[AegisSec] {finding.get('title')}",
+            "title": f"[AegisSec] {finding.get('title')} ({author_name})",
             "group": group,
-            "customer": "security-bot@aegissec.internal",
+            "customer": author_email,
+            "owner": author_email,
             "priority_id": priority_map.get(finding.get("severity"), 2),
             "article": {
                 "subject": f"[AegisSec] {finding.get('title')}",
@@ -99,6 +106,9 @@ Remediation Action:
                     "success": True,
                     "ticket_key": t_id,
                     "ticket_url": f"{url}/#ticket/zoom/{t_id}",
+                    "assigned_to": author_name,
+                    "assigned_email": author_email,
+                    "assignee": author_name,
                     "is_mock": False
                 }
             else:

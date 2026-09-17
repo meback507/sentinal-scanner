@@ -111,6 +111,8 @@ class FindingModel(BaseModel):
     commit_message: Optional[str] = None
     jira_key: Optional[str] = None
     zammad_id: Optional[str] = None
+    ticket_assigned_to: Optional[str] = None
+    ticket_assigned_email: Optional[str] = None
 
 
 class ScanModel(BaseModel):
