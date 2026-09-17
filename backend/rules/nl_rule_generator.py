@@ -17,6 +17,15 @@ class NLRuleGenerator:
 
     @classmethod
     def generate_from_text(cls, human_prompt: str, target_ecosystem: str = "auto") -> Dict[str, Any]:
+        # Check if LLM rule generation is enabled and active
+        try:
+            from ..integrations.llm_service import LLMService
+            llm_res = LLMService.generate_rule(human_prompt, target_ecosystem)
+            if llm_res and llm_res.get("success") and llm_res.get("rule"):
+                return llm_res["rule"]
+        except Exception:
+            pass
+
         prompt = human_prompt.strip().lower()
         rule_id = f"RULE-{uuid.uuid4().hex[:6].upper()}"
 

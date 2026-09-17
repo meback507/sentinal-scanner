@@ -708,6 +708,16 @@ function openFindingDetail(findingId) {
     if (!f) return;
     state.activeFinding = f;
 
+    // Reset AI remediation box and button state
+    const aiBox = document.getElementById("detail-ai-remediation-box");
+    if (aiBox) aiBox.style.display = "none";
+    const aiBtnText = document.getElementById("ai-btn-text");
+    if (aiBtnText) aiBtnText.textContent = "✨ Generate AI Remediation & Code Diff";
+    const aiBtn = document.getElementById("btn-ask-ai");
+    if (aiBtn) aiBtn.disabled = false;
+    const aiSpinner = document.getElementById("ai-btn-spinner");
+    if (aiSpinner) aiSpinner.style.display = "none";
+
     document.getElementById("detail-title").textContent = f.title;
     const b = document.getElementById("detail-severity-badge");
     b.className = `badge badge-${f.severity.toLowerCase()}`;
@@ -790,6 +800,77 @@ async function dispatchTicket(platform) {
     }
 }
 
+async function requestAIRemediation() {
+    if (!state.activeFinding) return;
+
+    const btn = document.getElementById("btn-ask-ai");
+    const btnText = document.getElementById("ai-btn-text");
+    const btnSpinner = document.getElementById("ai-btn-spinner");
+    const box = document.getElementById("detail-ai-remediation-box");
+
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = "AI Synthesizing Fix...";
+    if (btnSpinner) btnSpinner.style.display = "inline-block";
+
+    try {
+        const resp = await fetch(`/api/findings/${state.activeFinding.id}/ai-remediation`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+        });
+
+        if (resp.status === 403) {
+            showToast("Access Restricted: Only finding author or Security Admin can generate AI fixes", "error");
+            return;
+        }
+
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            showToast(errData.detail || "Failed to generate AI remediation", "error");
+            return;
+        }
+
+        const data = await resp.json();
+
+        // Populate the AI box elements
+        const badge = document.getElementById("ai-model-badge");
+        if (badge) badge.textContent = `${data.provider}: ${data.model}`;
+        
+        const ts = document.getElementById("ai-timestamp");
+        if (ts) ts.textContent = new Date().toLocaleTimeString();
+
+        const rootEl = document.getElementById("ai-root-cause");
+        if (rootEl) rootEl.textContent = data.root_cause_analysis || "No root cause analysis returned.";
+
+        const diffEl = document.getElementById("ai-code-diff");
+        if (diffEl) diffEl.textContent = data.suggested_fix_diff || "// No code diff available";
+
+        const compEl = document.getElementById("ai-compliance");
+        if (compEl) compEl.textContent = data.compliance_implications || "Standard security baseline preserved.";
+
+        const verifEl = document.getElementById("ai-verification");
+        if (verifEl) verifEl.textContent = data.verification_steps || "Perform automated test verification.";
+
+        if (box) box.style.display = "block";
+        showToast(`✨ AI Remediation & Secure Diff synthesized! (${data.model})`, "success");
+    } catch (e) {
+        showToast("Error contacting AI remediation service", "error");
+    } finally {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.textContent = "✨ Re-run AI Remediation";
+        if (btnSpinner) btnSpinner.style.display = "none";
+    }
+}
+
+function copyAIDiff() {
+    const diffEl = document.getElementById("ai-code-diff");
+    if (!diffEl || !diffEl.textContent) return;
+    navigator.clipboard.writeText(diffEl.textContent).then(() => {
+        showToast("Secure refactored code copied to clipboard!", "success");
+    }).catch(() => {
+        showToast("Failed to copy to clipboard", "error");
+    });
+}
+
 // --- Natural Language Rule Studio ---
 function setPromptExample(text) {
     const el = document.getElementById("nl-rule-prompt");
@@ -821,7 +902,8 @@ async function generateRuleFromPrompt() {
             activeGeneratedRule = rule;
             const editor = document.getElementById("rule-yaml-editor");
             if (editor) editor.value = rule.yaml_representation;
-            showToast("Rule synthesized successfully! Ready for live testing.", "success");
+            const creator = rule.created_by || "AegisSec Synthesizer";
+            showToast(`Rule synthesized successfully via ${creator}!`, "success");
         } else {
             showToast("Failed to synthesize rule", "error");
         }
@@ -1031,7 +1113,111 @@ function renderComplianceMatrix() {
 }
 
 // --- Integrations ---
+function onLLMProviderChange(provider) {
+    const modelInput = document.getElementById("llm-model");
+    const endpointInput = document.getElementById("llm-endpoint-url");
+    if (!modelInput) return;
+
+    if (provider === "openai") {
+        modelInput.value = "gpt-4o";
+        if (endpointInput) endpointInput.placeholder = "https://api.openai.com/v1 (default)";
+    } else if (provider === "anthropic") {
+        modelInput.value = "claude-3-5-sonnet-20241022";
+        if (endpointInput) endpointInput.placeholder = "https://api.anthropic.com/v1 (default)";
+    } else if (provider === "gemini") {
+        modelInput.value = "gemini-1.5-pro";
+        if (endpointInput) endpointInput.placeholder = "https://generativelanguage.googleapis.com (default)";
+    } else if (provider === "ollama") {
+        modelInput.value = "llama3.2:latest";
+        if (endpointInput) {
+            endpointInput.value = endpointInput.value || "http://localhost:11434";
+            endpointInput.placeholder = "http://localhost:11434";
+        }
+    } else if (provider === "custom") {
+        modelInput.value = "custom-model";
+        if (endpointInput) {
+            endpointInput.placeholder = "http://localhost:8080/v1";
+        }
+    }
+}
+
+async function loadLLMConfig() {
+    try {
+        const resp = await fetch("/api/integrations/llm");
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.provider) document.getElementById("llm-provider").value = data.provider;
+            if (data.model) document.getElementById("llm-model").value = data.model;
+            if (data.api_key) document.getElementById("llm-api-key").value = data.api_key;
+            if (data.endpoint_url) document.getElementById("llm-endpoint-url").value = data.endpoint_url;
+            if (data.temperature !== undefined) {
+                document.getElementById("llm-temperature").value = data.temperature;
+                document.getElementById("llm-temp-val").textContent = data.temperature;
+            }
+            if (data.enable_rule_generation !== undefined) {
+                document.getElementById("llm-enable-rule-gen").checked = data.enable_rule_generation;
+            }
+            if (data.enable_remediation !== undefined) {
+                document.getElementById("llm-enable-remediation").checked = data.enable_remediation;
+            }
+            const chip = document.getElementById("llm-status-chip");
+            if (chip) {
+                if (data.enabled) {
+                    chip.textContent = "CONFIGURED";
+                    chip.style.background = "rgba(16, 185, 129, 0.15)";
+                    chip.style.color = "#10b981";
+                    chip.style.borderColor = "rgba(16, 185, 129, 0.3)";
+                } else {
+                    chip.textContent = "READY / DEMO";
+                    chip.style.background = "rgba(148, 163, 184, 0.15)";
+                    chip.style.color = "#94a3b8";
+                    chip.style.borderColor = "rgba(148, 163, 184, 0.3)";
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error loading LLM config:", e);
+    }
+}
+
+async function saveLLMConfig(e) {
+    e.preventDefault();
+    const payload = {
+        enabled: true,
+        provider: document.getElementById("llm-provider").value,
+        model: document.getElementById("llm-model").value,
+        api_key: document.getElementById("llm-api-key").value,
+        endpoint_url: document.getElementById("llm-endpoint-url").value || null,
+        temperature: parseFloat(document.getElementById("llm-temperature").value || 0.2),
+        enable_rule_generation: document.getElementById("llm-enable-rule-gen").checked,
+        enable_remediation: document.getElementById("llm-enable-remediation").checked
+    };
+
+    try {
+        const resp = await fetch("/api/integrations/llm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        if (resp.ok) {
+            showToast("LLM Configuration saved successfully!", "success");
+            const chip = document.getElementById("llm-status-chip");
+            if (chip) {
+                chip.textContent = "CONFIGURED";
+                chip.style.background = "rgba(16, 185, 129, 0.15)";
+                chip.style.color = "#10b981";
+                chip.style.borderColor = "rgba(16, 185, 129, 0.3)";
+            }
+        } else {
+            showToast("Failed to save LLM configuration", "error");
+        }
+    } catch (e) {
+        showToast("Error saving LLM config", "error");
+    }
+}
+
 async function loadIntegrations() {
+    await loadLLMConfig();
     try {
         const jResp = await fetch("/api/integrations/jira");
         if (jResp.ok) {

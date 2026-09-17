@@ -359,6 +359,11 @@
                     <h1 class="page-title">Natural Language Custom Rule Studio</h1>
                     <p class="page-desc">Synthesize production-ready SAST detection rules and SCA dependency policies from plain English instructions.</p>
                 </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="rule-engine-status-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 6px 12px; font-size: 12px;">
+                        🤖 LLM AI RULE ENGINE ACTIVE
+                    </span>
+                </div>
             </div>
 
             <div class="glass-card">
@@ -461,6 +466,75 @@ strcpy(buf, input);"></textarea>
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <!-- LLM AI Engine Integration -->
+                <div class="glass-card" style="grid-column: span 2;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent-purple), var(--accent-indigo)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px;">
+                                🤖
+                            </div>
+                            <div>
+                                <h3 style="font-size: 18px;">Large Language Model (LLM) Engine</h3>
+                                <p style="font-size: 12px; color: var(--text-secondary);">Power AI-assisted Natural Language Rule Generation and Contextual Vulnerability Remediation with code diffs.</p>
+                            </div>
+                        </div>
+                        <span id="llm-status-chip" class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">READY</span>
+                    </div>
+
+                    <form id="llm-config-form" onsubmit="saveLLMConfig(event)" style="display: flex; flex-direction: column; gap: 14px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
+                            <div class="form-group">
+                                <label class="form-label">LLM Provider</label>
+                                <select id="llm-provider" class="form-select" onchange="onLLMProviderChange(this.value)">
+                                    <option value="openai">OpenAI (GPT-4o / GPT-4 Turbo)</option>
+                                    <option value="anthropic">Anthropic Claude (Claude 3.5 Sonnet)</option>
+                                    <option value="gemini">Google Gemini (Gemini 1.5 Pro)</option>
+                                    <option value="ollama">Ollama (Local / Self-Hosted)</option>
+                                    <option value="custom">Custom OpenAI-Compatible Gateway</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Model Identifier</label>
+                                <input type="text" id="llm-model" class="form-input" placeholder="e.g. gpt-4o or claude-3-5-sonnet" value="gpt-4o" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">API Key / Access Token</label>
+                                <input type="password" id="llm-api-key" class="form-input" placeholder="Enter API key or leave blank for demo...">
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px;">
+                            <div class="form-group">
+                                <label class="form-label">Custom Endpoint URL (Optional)</label>
+                                <input type="url" id="llm-endpoint-url" class="form-input" placeholder="https://api.openai.com/v1 or http://localhost:11434/v1">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Temperature: <span id="llm-temp-val" style="color: var(--accent-cyan);">0.2</span></label>
+                                <input type="range" id="llm-temperature" min="0.0" max="1.0" step="0.05" value="0.2" class="form-input" style="padding: 6px 0;" oninput="document.getElementById('llm-temp-val').textContent = this.value">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 24px; align-items: center; padding: 12px 16px; background: rgba(0, 0, 0, 0.2); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+                                <input type="checkbox" id="llm-enable-rule-gen" checked style="accent-color: var(--accent-indigo);">
+                                <span>Enable AI Natural-Language Rule Generation</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+                                <input type="checkbox" id="llm-enable-remediation" checked style="accent-color: var(--accent-indigo);">
+                                <span>Enable AI Contextual Remediation & Code Diffs</span>
+                            </label>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 4px;">
+                            <button type="submit" class="btn btn-primary" style="flex-grow: 1;">Save LLM Configuration</button>
+                            <button type="button" class="btn btn-secondary" onclick="testIntegration('llm')">Test Connection</button>
+                        </div>
+                    </form>
+                </div>
+
                 <!-- Jira Integration -->
                 <div class="glass-card">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
@@ -678,9 +752,50 @@ strcpy(buf, input);"></textarea>
                     <pre class="code-view" id="detail-code-snippet"></pre>
                 </div>
 
-                <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid var(--accent-cyan); padding: 12px 16px; border-radius: var(--radius-sm);">
-                    <div style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); text-transform: uppercase;">Actionable Remediation</div>
-                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 4px;" id="detail-remediation"></div>
+                <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid var(--accent-cyan); padding: 14px 16px; border-radius: var(--radius-sm);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); text-transform: uppercase;">Standard Remediation</div>
+                        <button class="btn btn-secondary btn-sm" id="btn-ask-ai" onclick="requestAIRemediation()" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.3)); border-color: rgba(168, 85, 247, 0.5); color: #e9d5ff;">
+                            <span id="ai-btn-text">✨ Generate AI Remediation & Code Diff</span>
+                            <div id="ai-btn-spinner" class="spinner" style="display: none; width: 12px; height: 12px;"></div>
+                        </button>
+                    </div>
+                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px;" id="detail-remediation"></div>
+                </div>
+
+                <!-- AI Contextual Remediation Panel (Dynamic) -->
+                <div id="detail-ai-remediation-box" style="display: none; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: var(--radius-md); padding: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 16px;">🤖</span>
+                            <strong style="font-size: 13px; color: #e9d5ff;">LLM Security Analysis & Refactored Fix</strong>
+                            <span id="ai-model-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #d8b4fe;">gpt-4o</span>
+                        </div>
+                        <span style="font-size: 11px; color: var(--text-muted);" id="ai-timestamp">Just now</span>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Root Cause & Exploit Mechanics</div>
+                        <p id="ai-root-cause" style="font-size: 13px; color: #f1f5f9; line-height: 1.5;"></p>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">Refactored Secure Code (Fix Diff)</div>
+                            <button class="btn btn-secondary btn-sm" onclick="copyAIDiff()" style="padding: 2px 8px; font-size: 11px;">Copy Fix</button>
+                        </div>
+                        <pre class="code-view" id="ai-code-diff" style="max-height: 200px; overflow-y: auto; color: #86efac; border-color: rgba(56, 189, 248, 0.2); font-family: var(--font-mono); font-size: 12px; line-height: 1.4;"></pre>
+                    </div>
+
+                    <div style="margin-bottom: 10px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #fbbf24; text-transform: uppercase; margin-bottom: 4px;">Compliance Standards Verification</div>
+                        <p id="ai-compliance" style="font-size: 12px; color: #cbd5e1; line-height: 1.4;"></p>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; color: #a78bfa; text-transform: uppercase; margin-bottom: 4px;">Testing & Verification Guidance</div>
+                        <p id="ai-verification" style="font-size: 12px; color: #cbd5e1; line-height: 1.4;"></p>
+                    </div>
                 </div>
 
                 <!-- Status & Ticketing Controls -->

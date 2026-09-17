@@ -54,6 +54,13 @@
    - **Author-Scoped Visibility**: When a developer logs in, the platform restricts the triage table, finding detail modals, dashboard analytics, and report exports **strictly to vulnerabilities in code authored by that developer**.
    - **Cross-Developer Tamper Guards**: Direct access or status manipulation of another developer's code flaws is blocked with `403 Forbidden`.
 
+9. **Large Language Model (LLM) Integration & AI-Powered Security Engine**:
+   - **Multi-Provider Support**: Supports OpenAI (GPT-4o, GPT-4 Turbo), Anthropic Claude (Claude 3.5 Sonnet), Google Gemini (Gemini 1.5 Pro), Ollama (Local/Self-Hosted `llama3.2`), and custom OpenAI-compatible gateways.
+   - **AI-Assisted Natural Language Rule Generation**: Transforms complex security policies into precise AST/regex rules with standards compliance mapping (MISRA, ISO 26262, OWASP, ISO 27001).
+   - **AI Contextual Remediation & Code Diffs**: In the Vulnerability Triage inspector, engineers can generate AI root-cause analysis, refactored secure replacement code diffs (parameterized queries, bounded buffers, safe deserialization), and unit test verification guidance.
+   - **Developer-Scoped AI Access**: Developers can only trigger AI remediation on code they authored; cross-developer inspection requests are strictly blocked.
+   - **100% Offline / Air-Gapped Resiliency**: Built-in deterministic AST synthesis engine ensures continuous operation with expert code diffs even when external LLM APIs are offline or unconfigured.
+
 ---
 
 ## Quick Start
@@ -77,14 +84,14 @@ The containerized platform will be accessible on port 8000 with persistent data 
 
 | Role | Username | Password | Authored Code Scope | Permissions |
 | :--- | :--- | :--- | :--- | :--- |
-| **Super Admin** | `admin` | `Admin@123!` | Global (All developers) | Full administrative & system access |
-| **Security Lead** | `sec_lead` | `SecLead@123!` | Global (All developers) | Scans, custom rules, ticket dispatch |
-| **Developer** | `marcus` | `Marcus@123!` | Marcus Vance (`app.py`) | **Scoped**: Only Python flaws authored by Marcus |
-| **Developer** | `elena` | `Elena@123!` | Dr. Elena Rostova (`ecu_controller.cpp`) | **Scoped**: Only MISRA C flaws authored by Elena |
-| **Developer** | `sarah` | `Sarah@123!` | Sarah Lin (`dashboard.js`) | **Scoped**: Only JavaScript flaws authored by Sarah |
+| **Super Admin** | `admin` | `Admin@123!` | Global (All developers) | Full administrative & system access, LLM config |
+| **Security Lead** | `sec_lead` | `SecLead@123!` | Global (All developers) | Scans, custom rules, ticket dispatch, AI analysis |
+| **Developer** | `marcus` | `Marcus@123!` | Marcus Vance (`app.py`) | **Scoped**: Python flaws authored by Marcus, AI fixes |
+| **Developer** | `elena` | `Elena@123!` | Dr. Elena Rostova (`ecu_controller.cpp`) | **Scoped**: MISRA C flaws authored by Elena, AI fixes |
+| **Developer** | `sarah` | `Sarah@123!` | Sarah Lin (`dashboard.js`) | **Scoped**: JavaScript flaws authored by Sarah, AI fixes |
 | **Auditor** | `auditor` | `Auditor@123!` | Global (All developers) | Read-only compliance inspection & exports |
 
-*Note: Switch active developer accounts anytime using the role switcher dropdown in the UI sidebar.*
+*Note: Switch active developer accounts anytime using the 1-click switchboard on the Login screen or the dropdown in the UI sidebar.*
 
 ---
 
@@ -104,10 +111,14 @@ Run the full verification test suite:
 - `POST /api/projects`: Create project with Git repository and PAT credentials.
 - `DELETE /api/projects/{id}`: Permanently delete project with cascading data cleanup.
 - `POST /api/projects/{id}/scan`: Trigger on-demand SAST & SCA scan.
-- `GET /api/findings`: List findings with multi-dimensional filtering.
+- `GET /api/findings`: List findings with developer-scoped filtering.
 - `PATCH /api/findings/{id}/status`: Update triage status.
 - `POST /api/findings/{id}/ticket`: Create Jira or Zammad ticket.
-- `POST /api/rules/generate`: Convert natural language into SAST/SCA rule YAML.
+- `POST /api/findings/{id}/ai-remediation`: Generate AI root-cause analysis, secure code diff, and verification steps.
+- `POST /api/rules/generate`: Convert natural language into SAST/SCA rule YAML using LLM or semantic engine.
 - `POST /api/rules/test`: Sandbox test bench for custom rules against code.
+- `GET /api/integrations/llm`: Retrieve LLM integration configuration with secret masking.
+- `POST /api/integrations/llm`: Save LLM provider, model, API keys, temperature, and feature toggles.
+- `POST /api/integrations/llm/test`: Test live connectivity to configured LLM provider.
 - `GET /api/standards`: Query compliance taxonomies and violation counts.
 - `GET /api/projects/{id}/export/{html|sarif|cyclonedx|csv}`: Download reports.

@@ -181,3 +181,31 @@ class ZammadConfigRequest(BaseModel):
 class CreateTicketRequest(BaseModel):
     platform: str  # 'jira' or 'zammad'
     finding_id: str
+
+
+class LLMConfigRequest(BaseModel):
+    enabled: bool = True
+    provider: str = "openai"  # 'openai', 'anthropic', 'gemini', 'ollama', 'custom'
+    api_key: Optional[str] = ""
+    model: str = "gpt-4o"
+    endpoint_url: Optional[str] = ""
+    temperature: float = 0.2
+    enable_rule_generation: bool = True
+    enable_remediation: bool = True
+
+
+class AIRemediationResponse(BaseModel):
+    success: bool = True
+    provider: str
+    model: str
+    finding_id: str
+    root_cause: str
+    code_diff: str
+    compliance_notes: str
+    verification_guidance: str
+    root_cause_analysis: Optional[str] = None
+    suggested_fix_diff: Optional[str] = None
+    compliance_implications: Optional[str] = None
+    verification_steps: Optional[str] = None
+    is_mock: bool = False
+

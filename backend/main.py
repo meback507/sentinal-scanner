@@ -17,7 +17,7 @@ from .models import (
     ProjectModel, ProjectCreateRequest, FindingModel, ScanModel,
     CustomRuleModel, RuleGenerateRequest, RuleTestRequest,
     JiraConfigRequest, ZammadConfigRequest, CreateTicketRequest,
-    RoleEnum
+    RoleEnum, LLMConfigRequest, AIRemediationResponse
 )
 from .db import db, hash_password
 from .auth import (
@@ -33,6 +33,7 @@ from .rules.rule_manager import rule_manager
 from .git_service import GitService
 from .integrations.jira_connector import JiraConnector
 from .integrations.zammad_connector import ZammadConnector
+from .integrations.llm_service import LLMService
 from .exporters.report_generator import ReportGenerator
 
 app = FastAPI(
@@ -421,6 +422,23 @@ def create_ticket_for_finding(
         raise HTTPException(status_code=400, detail="Unsupported platform. Choose 'jira' or 'zammad'.")
 
 
+@app.post("/api/findings/{finding_id}/ai-remediation", response_model=AIRemediationResponse)
+def get_ai_remediation_for_finding(
+    finding_id: str,
+    user: UserModel = Depends(get_current_user)
+):
+    finding = db.get_finding_by_id(finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if not _is_finding_authored_by_user(finding, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to inspect vulnerabilities in code you authored."
+        )
+    remediation_data = LLMService.generate_remediation(finding)
+    return AIRemediationResponse(**remediation_data)
+
+
 # --- Custom Rule Generator Routes ---
 @app.post("/api/rules/generate")
 def generate_custom_rule(req: RuleGenerateRequest, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
@@ -559,6 +577,8 @@ def get_integration_config(key: str, user: UserModel = Depends(require_roles(["a
     safe_cfg = dict(cfg)
     if "api_token" in safe_cfg and safe_cfg["api_token"]:
         safe_cfg["api_token"] = "••••••••••••••••"
+    if "api_key" in safe_cfg and safe_cfg["api_key"]:
+        safe_cfg["api_key"] = "••••••••••••••••"
     return safe_cfg
 
 
@@ -568,8 +588,10 @@ def save_integration_config(key: str, payload: Dict[str, Any], user: UserModel =
     old_cfg = db.get_integration(key) or {}
     if payload.get("api_token") == "••••••••••••••••":
         payload["api_token"] = old_cfg.get("api_token", "")
+    if payload.get("api_key") == "••••••••••••••••":
+        payload["api_key"] = old_cfg.get("api_key", "")
     db.set_integration(key, payload)
-    return {"success": True, "message": f"{key.capitalize()} integration settings saved"}
+    return {"success": True, "message": f"{key.upper() if key == 'llm' else key.capitalize()} integration settings saved"}
 
 
 @app.post("/api/integrations/{key}/test")
@@ -582,6 +604,13 @@ def test_integration(key: str, user: UserModel = Depends(require_roles(["admin",
         return JiraConnector.test_connection(cfg.get("url", ""), cfg.get("email", ""), cfg.get("api_token", ""))
     elif key == "zammad":
         return ZammadConnector.test_connection(cfg.get("url", ""), cfg.get("api_token", ""))
+    elif key == "llm":
+        return LLMService.test_connection(
+            cfg.get("provider", "openai"),
+            cfg.get("api_key", ""),
+            cfg.get("model", "gpt-4o"),
+            cfg.get("endpoint_url", "")
+        )
     return {"success": False, "message": "Unknown integration"}
 
 
