@@ -848,6 +848,39 @@ async function loadFindings() {
     }
 }
 
+function setEngineFilter(engine) {
+    const typeSelect = document.getElementById('filter-type');
+    if (typeSelect) {
+        typeSelect.value = engine;
+    }
+    syncEnginePills(engine);
+    applyFilters();
+}
+
+function syncEnginePills(engine) {
+    document.querySelectorAll('.engine-filter-pill').forEach(btn => {
+        const btnEngine = btn.getAttribute('data-engine') || '';
+        if (btnEngine === engine) {
+            btn.classList.add('active');
+            btn.style.background = 'var(--accent-indigo, #6366f1)';
+            btn.style.color = '#fff';
+            btn.style.borderColor = 'var(--accent-indigo, #6366f1)';
+            btn.style.boxShadow = '0 0 10px rgba(99, 102, 241, 0.4)';
+        } else {
+            btn.classList.remove('active');
+            btn.style.background = 'rgba(255, 255, 255, 0.05)';
+            btn.style.color = 'var(--text-secondary, #94a3b8)';
+            btn.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+            btn.style.boxShadow = 'none';
+        }
+    });
+}
+
+function onFilterTypeSelectChange(val) {
+    syncEnginePills(val);
+    applyFilters();
+}
+
 function applyFilters() {
     const q = document.getElementById("filter-search")?.value.toLowerCase() || "";
     const type = document.getElementById("filter-type")?.value || "";
@@ -855,6 +888,8 @@ function applyFilters() {
     const quad = document.getElementById("filter-quadrant")?.value || "";
     const std = document.getElementById("filter-standard")?.value || "";
     const dev = document.getElementById("filter-developer")?.value || "";
+
+    syncEnginePills(type);
 
     state.filteredFindings = state.findings.filter(f => {
         if (q && !f.title.toLowerCase().includes(q) && !f.file_path.toLowerCase().includes(q) && !(f.cve_id && f.cve_id.toLowerCase().includes(q))) {
@@ -896,6 +931,19 @@ function renderFindingsTable() {
         const agePillColor = ageDays > 14 ? '#fca5a5' : (ageDays > 2 ? '#fcd34d' : '#6ee7b7');
         const agePillBg = ageDays > 14 ? 'rgba(239, 68, 68, 0.15)' : (ageDays > 2 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)');
 
+        let engineBadge = `<span class="badge" style="background: rgba(255,255,255,0.06);">${escapeHtml((f.type || 'sast').toUpperCase())}</span>`;
+        if (f.type === 'iac') {
+            engineBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-weight: 700;">🏗️ IAC</span>`;
+        } else if (f.type === 'sca') {
+            engineBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700;">📦 SCA</span>`;
+        } else if (f.type === 'api') {
+            engineBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700;">🌐 API</span>`;
+        } else if (f.type === 'secret') {
+            engineBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 700;">🔑 SECRET</span>`;
+        } else if (f.type === 'sast') {
+            engineBadge = `<span class="badge" style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-weight: 700;">🛡️ SAST</span>`;
+        }
+
         tr.innerHTML = `
             <td><span class="badge ${sevClass}">${f.severity}</span></td>
             <td>
@@ -917,7 +965,7 @@ function renderFindingsTable() {
                 <div style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(f.author_email || '')}</div>
                 <div style="font-family: var(--font-mono); font-size: 10px; color: var(--accent-cyan);">${f.commit_hash ? '#' + f.commit_hash : ''}</div>
             </td>
-            <td><span class="badge" style="background: rgba(255,255,255,0.06);">${f.type.toUpperCase()}</span></td>
+            <td>${engineBadge}</td>
             <td>
                 <div>CVSS: <strong>${f.cvss_score}</strong></div>
                 <div style="font-size: 12px; color: var(--text-secondary);">EPSS: <strong>${f.epss_score}</strong></div>
@@ -2470,11 +2518,15 @@ function renderAuditTrendChart(trendsData) {
     `;
 }
 
+let auditLedgerTypeFilter = "ALL";
+
 function filterAuditLedger() {
     const qEl = document.getElementById("audit-search-input");
     const stdEl = document.getElementById("audit-standard-filter");
+    const typeEl = document.getElementById("audit-type-filter");
     auditLedgerSearch = qEl ? qEl.value.trim().toLowerCase() : "";
     auditLedgerFilter = stdEl ? stdEl.value : "ALL";
+    auditLedgerTypeFilter = typeEl ? typeEl.value : "ALL";
     renderAuditFindingsLedger(state.auditFindings || []);
 }
 
@@ -2487,6 +2539,10 @@ function renderAuditFindingsLedger(findings) {
         if (auditLedgerFilter !== "ALL") {
             const matchesStd = (f.standards || []).some(s => s.includes(auditLedgerFilter));
             if (!matchesStd) return false;
+        }
+        if (auditLedgerTypeFilter !== "ALL") {
+            const fType = (f.scan_type || f.type || '').toLowerCase();
+            if (fType !== auditLedgerTypeFilter.toLowerCase()) return false;
         }
         if (auditLedgerSearch) {
             const matchText = `${f.title} ${f.cve_id || ''} ${f.cwe_id || ''} ${f.author_name || ''} ${f.file_path || ''}`.toLowerCase();
@@ -2503,7 +2559,25 @@ function renderAuditFindingsLedger(findings) {
     filtered.forEach(f => {
         const tr = document.createElement("tr");
 
-        let typeBadge = `<span class="badge badge-${f.scan_type === 'sca' ? 'high' : 'medium'}">${(f.scan_type || f.type || 'sast').toUpperCase()}</span>`;
+        const fType = (f.scan_type || f.type || 'sast').toLowerCase();
+        let typeBadgeClass = 'badge-medium';
+        let typeLabel = fType.toUpperCase();
+        if (fType === 'iac') {
+            typeBadgeClass = 'badge-high';
+            typeLabel = '🏗️ IAC';
+        } else if (fType === 'sca') {
+            typeBadgeClass = 'badge-high';
+            typeLabel = '📦 SCA';
+        } else if (fType === 'api') {
+            typeBadgeClass = 'badge-medium';
+            typeLabel = '🌐 API';
+        } else if (fType === 'secret') {
+            typeBadgeClass = 'badge-critical';
+            typeLabel = '🔑 SECRET';
+        } else {
+            typeLabel = '🛡️ SAST';
+        }
+        let typeBadge = `<span class="badge ${typeBadgeClass}">${typeLabel}</span>`;
         if (f.reachability) {
             const rColor = f.reachability === 'REACHABLE' ? '#ef4444' : (f.reachability === 'IMPORTED' ? '#f59e0b' : '#64748b');
             typeBadge += `<br><span style="font-size: 10px; font-weight: 700; color: ${rColor}; margin-top: 2px; display: inline-block;">● ${f.reachability}</span>`;
