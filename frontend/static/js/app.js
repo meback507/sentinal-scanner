@@ -32,14 +32,16 @@ window.fetch = function(url, options = {}) {
     return _originalFetch(url, options);
 };
 
-// --- Initialization ---
+/// --- Initialization ---
 document.addEventListener("DOMContentLoaded", async () => {
-    await checkAuth();
-    await loadProjects();
-    await loadDashboardStats();
-    await loadStandards();
-    await loadCustomRules();
-    await loadIntegrations();
+    const isAuthenticated = await checkAuth();
+    if (isAuthenticated) {
+        await loadProjects();
+        await loadDashboardStats();
+        await loadStandards();
+        await loadCustomRules();
+        await loadIntegrations();
+    }
 });
 
 // --- Toast Notifications ---
@@ -76,25 +78,171 @@ function navigate(viewName) {
     if (viewName === "users") loadUsers();
 }
 
-// --- Auth & RBAC ---
+// --- Auth & Session Lifecycle ---
+const DEMO_CREDENTIALS = {
+    admin: { username: "admin", password: "Admin@123!" },
+    sec_lead: { username: "sec_lead", password: "SecLead@123!" },
+    marcus: { username: "marcus", password: "Marcus@123!" },
+    elena: { username: "elena", password: "Elena@123!" },
+    sarah: { username: "sarah", password: "Sarah@123!" },
+    developer: { username: "developer", password: "Dev@123!" },
+    auditor: { username: "auditor", password: "Auditor@123!" }
+};
+
+function showLoginView() {
+    const loginEl = document.getElementById("view-login");
+    const sidebar = document.getElementById("sidebar");
+    const mainContent = document.getElementById("main-content");
+    if (loginEl) loginEl.style.display = "flex";
+    if (sidebar) sidebar.style.display = "none";
+    if (mainContent) mainContent.style.display = "none";
+}
+
+function hideLoginView() {
+    const loginEl = document.getElementById("view-login");
+    const sidebar = document.getElementById("sidebar");
+    const mainContent = document.getElementById("main-content");
+    if (loginEl) loginEl.style.display = "none";
+    if (sidebar) sidebar.style.display = "flex";
+    if (mainContent) mainContent.style.display = "block";
+}
+
 async function checkAuth() {
+    const savedToken = localStorage.getItem("aegis_token");
+    if (!savedToken) {
+        showLoginView();
+        return false;
+    }
+
+    state.currentUser.token = savedToken;
     try {
-        const savedToken = localStorage.getItem("aegis_token");
-        if (savedToken) {
-            state.currentUser.token = savedToken;
-        }
         const resp = await fetch("/api/auth/me");
         if (resp.ok) {
             const u = await resp.json();
-            state.currentUser = { ...u, token: state.currentUser.token };
+            state.currentUser = { ...u, token: savedToken };
+            hideLoginView();
             updateUserDisplay();
-        } else if (savedToken) {
+            return true;
+        } else {
             localStorage.removeItem("aegis_token");
+            localStorage.removeItem("aegis_user");
             state.currentUser.token = "";
+            showLoginView();
+            return false;
         }
     } catch (e) {
         console.error("Auth check failed:", e);
+        showLoginView();
+        return false;
     }
+}
+
+async function loginWithCredentials(username, password) {
+    const errAlert = document.getElementById("login-error-alert");
+    const submitBtn = document.getElementById("btn-login-submit");
+    const btnText = document.getElementById("login-btn-text");
+    const spinner = document.getElementById("login-spinner");
+
+    if (errAlert) errAlert.style.display = "none";
+    if (submitBtn) submitBtn.disabled = true;
+    if (btnText) btnText.textContent = "Authenticating...";
+    if (spinner) spinner.style.display = "inline-block";
+
+    try {
+        const resp = await _originalFetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+        });
+
+        if (resp.ok) {
+            const data = await resp.json();
+            state.currentUser = {
+                ...data.user,
+                token: data.access_token
+            };
+            localStorage.setItem("aegis_token", data.access_token);
+            localStorage.setItem("aegis_user", JSON.stringify(data.user));
+
+            hideLoginView();
+            updateUserDisplay();
+
+            const isDev = (data.user.role === "developer");
+            const scopeDesc = isDev 
+                ? `Developer (${data.user.username}) - Scoped View Active` 
+                : `${data.user.role.replace('_', ' ').toUpperCase()} (Global View)`;
+            showToast(`Welcome, ${data.user.username}! Signed in as ${scopeDesc}`, "success");
+
+            const pwdInput = document.getElementById("login-password");
+            if (pwdInput) pwdInput.value = "";
+
+            await loadProjects();
+            await loadDashboardStats();
+            await loadFindings();
+            await loadStandards();
+            await loadCustomRules();
+            await loadIntegrations();
+        } else {
+            const errData = await resp.json().catch(() => ({ detail: "Invalid username or password" }));
+            if (errAlert) {
+                errAlert.textContent = errData.detail || "Invalid username or password. Please verify credentials.";
+                errAlert.style.display = "flex";
+            }
+        }
+    } catch (err) {
+        console.error("Login request error:", err);
+        if (errAlert) {
+            errAlert.textContent = "Connection error while reaching AegisSec authentication service.";
+            errAlert.style.display = "flex";
+        }
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+        if (btnText) btnText.textContent = "Authenticate & Enter";
+        if (spinner) spinner.style.display = "none";
+    }
+}
+
+function handleLoginFormSubmit(event) {
+    event.preventDefault();
+    const u = document.getElementById("login-username")?.value.trim();
+    const p = document.getElementById("login-password")?.value;
+    if (!u || !p) return;
+    loginWithCredentials(u, p);
+}
+
+function quickLogin(roleKey) {
+    const cred = DEMO_CREDENTIALS[roleKey];
+    if (!cred) return;
+    const uEl = document.getElementById("login-username");
+    const pEl = document.getElementById("login-password");
+    if (uEl) uEl.value = cred.username;
+    if (pEl) pEl.value = cred.password;
+    loginWithCredentials(cred.username, cred.password);
+}
+
+function togglePasswordVisibility() {
+    const pInput = document.getElementById("login-password");
+    const toggleBtn = document.getElementById("btn-toggle-password");
+    if (!pInput) return;
+    if (pInput.type === "password") {
+        pInput.type = "text";
+        if (toggleBtn) toggleBtn.textContent = "Hide";
+    } else {
+        pInput.type = "password";
+        if (toggleBtn) toggleBtn.textContent = "Show";
+    }
+}
+
+function logout() {
+    localStorage.removeItem("aegis_token");
+    localStorage.removeItem("aegis_user");
+    state.currentUser = {
+        username: "",
+        role: "",
+        token: ""
+    };
+    showLoginView();
+    showToast("You have been signed out of AegisSec", "info");
 }
 
 function updateDeveloperIsolationUI() {
@@ -140,17 +288,7 @@ function updateUserDisplay() {
 }
 
 async function switchDemoRole(roleKey) {
-    const creds = {
-        admin: { username: "admin", password: "Admin@123!" },
-        sec_lead: { username: "sec_lead", password: "SecLead@123!" },
-        marcus: { username: "marcus", password: "Marcus@123!" },
-        elena: { username: "elena", password: "Elena@123!" },
-        sarah: { username: "sarah", password: "Sarah@123!" },
-        developer: { username: "developer", password: "Dev@123!" },
-        auditor: { username: "auditor", password: "Auditor@123!" }
-    };
-
-    const target = creds[roleKey] || creds.admin;
+    const target = DEMO_CREDENTIALS[roleKey] || DEMO_CREDENTIALS.admin;
     try {
         const resp = await _originalFetch("/api/auth/login", {
             method: "POST",
