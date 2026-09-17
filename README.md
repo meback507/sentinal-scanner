@@ -46,8 +46,13 @@
 7. **Role-Based Access Control (RBAC)**:
    - `admin`: Full system control, integrations, custom rules, user management, and projects.
    - `security_engineer`: Project management, scans, custom rule generation, reports, and ticket dispatch.
-   - `developer`: View projects, inspect vulnerability lines, mark false positives, review fixes.
+   - `developer`: Scoped to authored code only. Inspect code flaws, review fixes, triage status.
    - `auditor`: Read-only compliance matrices, standards reports, and audit logs.
+
+8. **Developer-Scoped Vulnerability Isolation & Git Blame Attribution**:
+   - **Automatic Git Blame**: Tracks `author_name`, `author_email`, `commit_hash`, and commit date per line.
+   - **Author-Scoped Visibility**: When a developer logs in, the platform restricts the triage table, finding detail modals, dashboard analytics, and report exports **strictly to vulnerabilities in code authored by that developer**.
+   - **Cross-Developer Tamper Guards**: Direct access or status manipulation of another developer's code flaws is blocked with `403 Forbidden`.
 
 ---
 
@@ -68,16 +73,18 @@ The containerized platform will be accessible on port 8000 with persistent data 
 
 ---
 
-## Default RBAC Demo Credentials
+## Default RBAC & Developer Demo Credentials
 
-| Role | Username | Password | Permissions |
-| :--- | :--- | :--- | :--- |
-| **Super Admin** | `admin` | `Admin@123!` | Full administrative & system access |
-| **Security Lead** | `sec_lead` | `SecLead@123!` | Scans, custom rules, ticket dispatch, projects |
-| **Developer** | `developer` | `Dev@123!` | Triage, false-positive flagging, code inspection |
-| **Auditor** | `auditor` | `Auditor@123!` | Read-only compliance inspection & report exports |
+| Role | Username | Password | Authored Code Scope | Permissions |
+| :--- | :--- | :--- | :--- | :--- |
+| **Super Admin** | `admin` | `Admin@123!` | Global (All developers) | Full administrative & system access |
+| **Security Lead** | `sec_lead` | `SecLead@123!` | Global (All developers) | Scans, custom rules, ticket dispatch |
+| **Developer** | `marcus` | `Marcus@123!` | Marcus Vance (`app.py`) | **Scoped**: Only Python flaws authored by Marcus |
+| **Developer** | `elena` | `Elena@123!` | Dr. Elena Rostova (`ecu_controller.cpp`) | **Scoped**: Only MISRA C flaws authored by Elena |
+| **Developer** | `sarah` | `Sarah@123!` | Sarah Lin (`dashboard.js`) | **Scoped**: Only JavaScript flaws authored by Sarah |
+| **Auditor** | `auditor` | `Auditor@123!` | Global (All developers) | Read-only compliance inspection & exports |
 
-*Note: You can instantly switch active roles using the top/sidebar role switcher in the UI.*
+*Note: Switch active developer accounts anytime using the role switcher dropdown in the UI sidebar.*
 
 ---
 
