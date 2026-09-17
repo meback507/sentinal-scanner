@@ -209,3 +209,13 @@ class AIRemediationResponse(BaseModel):
     verification_steps: Optional[str] = None
     is_mock: bool = False
 
+
+class GateCheckRequest(BaseModel):
+    project_id: str
+    commit_sha: Optional[str] = "HEAD"
+    branch: Optional[str] = "main"
+    strict_mode: Optional[bool] = False
+    max_critical: Optional[int] = 0
+    max_high: Optional[int] = 2
+
+

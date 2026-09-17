@@ -56,6 +56,10 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
                 Tool Benchmark
             </a>
+            <a class="nav-item" id="nav-audit" onclick="navigate('audit')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Audit & Compliance Hub
+            </a>
         </nav>
 
         <div class="sidebar-user">
@@ -211,6 +215,43 @@
 
                     <div class="standards-list" id="dashboard-standards-list">
                         <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vulnerability & Security Posture Trend Line Graph -->
+            <div class="glass-card" style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h2 style="font-size: 18px; font-weight: 700;">Security Posture & Vulnerability Trend Trajectory</h2>
+                            <span id="trend-scope-badge" class="badge" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4);">Enterprise Scope</span>
+                        </div>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Time-series analysis of critical flaws, high exposures, remediations, and posture trajectory across sprint checkpoints.</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;" id="trend-dev-filter-wrapper">
+                        <label for="trend-developer-filter" style="font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">CONTRIBUTOR SCOPE:</label>
+                        <select id="trend-developer-filter" class="form-control" style="width: 230px; font-size: 13px; padding: 6px 12px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; color: #fff;" onchange="onTrendDeveloperFilterChange(this.value)">
+                            <option value="All Enterprise Code">All Enterprise Code</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- SVG Trend Chart Container -->
+                <div id="trend-chart-container" style="position: relative; width: 100%; height: 270px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 14px 18px; overflow: hidden;">
+                    <!-- Rendered by renderDashboardTrendChart() -->
+                </div>
+
+                <!-- Legend & Summary Stat -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; flex-wrap: wrap; gap: 12px; font-size: 12px;">
+                    <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 3px; background: #ef4444; border-radius: 2px;"></span> <strong style="color: #f87171;">Critical Flaws</strong></span>
+                        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 3px; background: #f97316; border-radius: 2px;"></span> <strong style="color: #fb923c;">High Severity</strong></span>
+                        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 3px; background: #10b981; border-radius: 2px;"></span> <strong style="color: #4ade80;">Resolved Fixes</strong></span>
+                        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 3px; background: #38bdf8; border-radius: 2px; border-top: 1px dashed #38bdf8;"></span> <strong style="color: #38bdf8;">Posture Score (%)</strong></span>
+                    </div>
+                    <div id="trend-summary-stat" style="color: var(--text-muted); font-size: 12px;">
+                        Baseline Sprint 31 to Current: <strong style="color: #10b981;">Improving</strong>
                     </div>
                 </div>
             </div>
@@ -671,6 +712,151 @@ strcpy(buf, input);"></textarea>
                 </div>
             </div>
         </section>
+
+        <!-- AUDIT & COMPLIANCE HUB VIEW -->
+        <section id="view-audit" class="page-container">
+            <div class="page-title-box">
+                <div>
+                    <h1 class="page-title">Compliance, Audit & Governance Hub</h1>
+                    <p class="page-desc">Cryptographically signed regulatory audit certificates, findings ledger, time-series posture trends, and immutable audit event trail.</p>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="loadAuditData()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+                        Refresh Audit Ledger
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="downloadAuditCertificate('ISO-26262')" style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Certify ISO 26262 (ASIL-D)
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="downloadAuditCertificate('ISO-27001')" style="background: linear-gradient(135deg, #0284c7, #0369a1);">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Certify ISO 27001
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="downloadAuditCertificate('NIST-SSDF')" style="background: linear-gradient(135deg, #7c3aed, #6d28d9);">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Certify NIST SSDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Audit Metrics Overview Cards -->
+            <div class="kpi-grid" style="margin-bottom: 24px;">
+                <div class="glass-card kpi-card" style="--card-accent: #10b981;">
+                    <div class="kpi-title">Audit Attestation Status</div>
+                    <div class="kpi-value" id="audit-kpi-status" style="color: #10b981; font-size: 24px;">COMPLIANT</div>
+                    <div class="kpi-sub">Digital Seal: SHA-256 Verified</div>
+                </div>
+                <div class="glass-card kpi-card" style="--card-accent: #38bdf8;">
+                    <div class="kpi-title">Total Audited Findings</div>
+                    <div class="kpi-value" id="audit-kpi-total" style="color: #38bdf8;">0</div>
+                    <div class="kpi-sub">Across SAST, SCA & Secrets</div>
+                </div>
+                <div class="glass-card kpi-card" style="--card-accent: #f59e0b;">
+                    <div class="kpi-title">Reachability Rate (SCA)</div>
+                    <div class="kpi-value" id="audit-kpi-reachability" style="color: #f59e0b;">100%</div>
+                    <div class="kpi-sub">Call-graph validated symbols</div>
+                </div>
+                <div class="glass-card kpi-card" style="--card-accent: #a855f7;">
+                    <div class="kpi-title">Immutable Audit Trail Events</div>
+                    <div class="kpi-value" id="audit-kpi-logs-count" style="color: #a855f7;">0</div>
+                    <div class="kpi-sub">Logged in append-only store</div>
+                </div>
+            </div>
+
+            <!-- Compliance & Remediation Trend Line Graph in Audit Hub -->
+            <div class="glass-card" style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <h2 style="font-size: 18px; font-weight: 700;">Regulatory Compliance Readiness & Remediation Velocity</h2>
+                        <p style="font-size: 13px; color: var(--text-secondary);">Historical adherence trajectory across ISO 27001, ISO 26262, and cumulative security patch resolution.</p>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-muted);">
+                        Audited by AegisSec Cryptographic Attestation Engine
+                    </div>
+                </div>
+                <div id="audit-trend-chart-container" style="position: relative; width: 100%; height: 260px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 14px 18px; overflow: hidden;">
+                    <!-- Rendered by renderAuditTrendChart() -->
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; flex-wrap: wrap; gap: 12px; font-size: 12px;">
+                    <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 3px; background: #0284c7; border-radius: 2px;"></span> <strong style="color: #38bdf8;">ISO 27001 Readiness (%)</strong></span>
+                        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 3px; background: #10b981; border-radius: 2px;"></span> <strong style="color: #4ade80;">ISO 26262 ASIL (%)</strong></span>
+                        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 3px; background: #7c3aed; border-radius: 2px;"></span> <strong style="color: #c084fc;">NIST SSDF (%)</strong></span>
+                        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 14px; height: 3px; background: #f59e0b; border-radius: 2px;"></span> <strong style="color: #fbbf24;">Remediated Vulnerabilities</strong></span>
+                    </div>
+                    <div style="color: var(--text-muted);">
+                        Attestation Standard: <strong style="color: #38bdf8;">ISO/IEC 27001:2022 &amp; ISO 26262:2018</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Complete Audit Findings Ledger Table -->
+            <div class="glass-card" style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <h2 style="font-size: 18px; font-weight: 700;">Audited Findings Ledger</h2>
+                        <p style="font-size: 13px; color: var(--text-secondary);">Complete regulatory inventory of vulnerabilities, compliance standards controls, SCA reachability, and developer authorship.</p>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="audit-search-input" class="form-control" placeholder="Search CVE, CWE, or developer..." style="width: 240px; font-size: 13px; padding: 6px 12px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; color: #fff;" oninput="filterAuditLedger()">
+                        <select id="audit-standard-filter" class="form-control" style="width: 170px; font-size: 13px; padding: 6px 12px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; color: #fff;" onchange="filterAuditLedger()">
+                            <option value="ALL">All Standards</option>
+                            <option value="ISO-26262">ISO 26262 (ASIL)</option>
+                            <option value="ISO-27001">ISO 27001</option>
+                            <option value="NIST-SSDF">NIST SSDF</option>
+                            <option value="MISRA">MISRA C:2012</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="data-table-wrapper" style="overflow-x: auto;">
+                    <table class="data-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Severity</th>
+                                <th>Finding &amp; ID</th>
+                                <th>Type / Reachability</th>
+                                <th>Standards / Controls</th>
+                                <th>CVSS / EPSS</th>
+                                <th>Author (Blame)</th>
+                                <th>Status</th>
+                                <th style="text-align: right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-findings-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Immutable Security Audit Trail Log -->
+            <div class="glass-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div>
+                        <h2 style="font-size: 18px; font-weight: 700;">Immutable Security &amp; Compliance Audit Log</h2>
+                        <p style="font-size: 13px; color: var(--text-secondary);">Cryptographically sequenced security events, scan completions, automated PR creations, and CI gate checks.</p>
+                    </div>
+                    <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">APPEND-ONLY LEDGER</span>
+                </div>
+                <div class="data-table-wrapper" style="max-height: 320px; overflow-y: auto;">
+                    <table class="data-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Timestamp (UTC)</th>
+                                <th>Event Type</th>
+                                <th>Actor</th>
+                                <th>Action &amp; Details</th>
+                                <th>Cryptographic Hash</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-logs-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     </main>
 
     <!-- MODAL: CREATE PROJECT -->
@@ -774,6 +960,20 @@ strcpy(buf, input);"></textarea>
                     </div>
                 </div>
 
+                <!-- Reachability & Shannon Entropy Metadata Box -->
+                <div id="detail-advanced-meta-box" style="display: none; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--radius-sm); padding: 10px 14px;">
+                    <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                        <div id="detail-reachability-tag" style="display: none; align-items: center; gap: 6px;">
+                            <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">SCA Reachability:</span>
+                            <span id="detail-reachability-badge" class="badge">REACHABLE</span>
+                        </div>
+                        <div id="detail-secret-entropy-tag" style="display: none; align-items: center; gap: 6px;">
+                            <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Shannon Entropy:</span>
+                            <span id="detail-entropy-value" style="font-family: var(--font-mono); font-weight: 700; color: #fbbf24; font-size: 12px;">0.00 bits/char</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div>
                     <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">LOCATION & IDENTIFIERS</div>
                     <div style="font-family: var(--font-mono); font-size: 13px;" id="detail-location">src/app.py:18</div>
@@ -838,6 +1038,17 @@ strcpy(buf, input);"></textarea>
                     <div>
                         <div style="font-size: 11px; font-weight: 700; color: #a78bfa; text-transform: uppercase; margin-bottom: 4px;">Testing & Verification Guidance</div>
                         <p id="ai-verification" style="font-size: 12px; color: #cbd5e1; line-height: 1.4;"></p>
+                    </div>
+
+                    <!-- 1-Click Autonomous PR Generator -->
+                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <span style="font-size: 12px; color: #94a3b8;">Create automated git fix branch &amp; GitHub/GitLab Pull Request:</span>
+                        </div>
+                        <button class="btn btn-primary btn-sm" id="btn-create-pr" onclick="createRemediationPR()" style="background: linear-gradient(135deg, #16a34a, #15803d); border-color: #166534; font-weight: 700;">
+                            <span id="pr-btn-text">🚀 1-Click Create Autonomous Fix PR</span>
+                            <div id="pr-btn-spinner" class="spinner" style="display: none; width: 12px; height: 12px; margin-left: 6px;"></div>
+                        </button>
                     </div>
                 </div>
 

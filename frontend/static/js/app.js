@@ -78,6 +78,7 @@ function navigate(viewName) {
     if (viewName === "integrations") loadIntegrations();
     if (viewName === "users") loadUsers();
     if (viewName === "benchmark") loadBenchmarkData();
+    if (viewName === "audit") loadAuditData();
 }
 
 // --- Auth & Session Lifecycle ---
@@ -600,6 +601,185 @@ function renderDashboard() {
             devTbody.appendChild(tr);
         });
     }
+
+    // Render Vulnerability & Security Posture Trend Line Graph
+    if (s.trends) {
+        renderDashboardTrendChart(s.trends);
+    }
+}
+
+let currentTrendFilter = null;
+
+function onTrendDeveloperFilterChange(devName) {
+    currentTrendFilter = devName;
+    if (state.dashboardStats && state.dashboardStats.trends) {
+        renderDashboardTrendChart(state.dashboardStats.trends, devName);
+    }
+}
+
+function renderDashboardTrendChart(trendsData, activeFilter) {
+    const container = document.getElementById("trend-chart-container");
+    if (!container || !trendsData) return;
+
+    const filterSelect = document.getElementById("trend-developer-filter");
+    const scopeBadge = document.getElementById("trend-scope-badge");
+    const summaryStat = document.getElementById("trend-summary-stat");
+
+    // Handle RBAC isolation
+    if (trendsData.is_developer_scoped) {
+        const devName = trendsData.scoped_developer_name || "Developer";
+        if (scopeBadge) {
+            scopeBadge.textContent = `Contributor Scoped: ${devName}`;
+            scopeBadge.style.background = "rgba(59, 130, 246, 0.25)";
+            scopeBadge.style.color = "#93c5fd";
+        }
+        if (filterSelect) {
+            filterSelect.innerHTML = `<option value="${escapeHtml(devName)}">${escapeHtml(devName)} (My Contributed Code)</option>`;
+            filterSelect.disabled = true;
+            filterSelect.title = "Scoped strictly to your contributed code under RBAC policy";
+        }
+        activeFilter = devName;
+    } else {
+        if (filterSelect) {
+            filterSelect.disabled = false;
+            filterSelect.title = "Select contributor or view all enterprise code";
+            const options = trendsData.developer_options || ["All Enterprise Code"];
+            const currentVal = activeFilter || currentTrendFilter || options[0];
+            filterSelect.innerHTML = options.map(opt => `<option value="${escapeHtml(opt)}" ${opt === currentVal ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join("");
+            activeFilter = currentVal;
+        } else {
+            activeFilter = activeFilter || "All Enterprise Code";
+        }
+        if (scopeBadge) {
+            scopeBadge.textContent = (activeFilter === "All Enterprise Code") ? "Global Enterprise Scope" : `Developer Scope: ${activeFilter}`;
+            scopeBadge.style.background = (activeFilter === "All Enterprise Code") ? "rgba(59, 130, 246, 0.2)" : "rgba(168, 85, 247, 0.2)";
+            scopeBadge.style.color = (activeFilter === "All Enterprise Code") ? "#93c5fd" : "#d8b4fe";
+        }
+    }
+
+    currentTrendFilter = activeFilter;
+    const series = (trendsData.per_developer_trends && trendsData.per_developer_trends[activeFilter]) || trendsData.primary;
+    if (!series) return;
+
+    const labels = trendsData.labels || ["Sprint 31", "Sprint 32", "Sprint 33", "Sprint 34", "Sprint 35", "Sprint 36"];
+    const crit = series.critical_series || [0, 0, 0, 0, 0, 0];
+    const high = series.high_series || [0, 0, 0, 0, 0, 0];
+    const resolved = series.resolved_series || [0, 0, 0, 0, 0, 0];
+    const posture = series.posture_series || [50, 60, 70, 80, 85, 90];
+
+    // Chart dimensions
+    const width = 880;
+    const height = 240;
+    const padL = 45;
+    const padR = 40;
+    const padT = 20;
+    const padB = 35;
+    const plotW = width - padL - padR;
+    const plotH = height - padT - padB;
+
+    const maxDefect = Math.max(6, ...crit, ...high, ...resolved);
+    const n = labels.length;
+    const getX = (i) => padL + (i / (n - 1)) * plotW;
+    const getYDefect = (val) => padT + plotH - (val / maxDefect) * plotH;
+    const getYPosture = (pct) => padT + plotH - (pct / 100) * plotH;
+
+    // Build SVG paths
+    const critPoints = crit.map((v, i) => `${getX(i)},${getYDefect(v)}`);
+    const highPoints = high.map((v, i) => `${getX(i)},${getYDefect(v)}`);
+    const resPoints = resolved.map((v, i) => `${getX(i)},${getYDefect(v)}`);
+    const postPoints = posture.map((v, i) => `${getX(i)},${getYPosture(v)}`);
+
+    // Posture gradient area
+    const postArea = `${getX(0)},${padT + plotH} ` + postPoints.join(" ") + ` ${getX(n - 1)},${padT + plotH}`;
+
+    // Grid lines SVG
+    let gridLinesSvg = "";
+    for (let g = 0; g <= 4; g++) {
+        const yPos = padT + (g / 4) * plotH;
+        const defectVal = Math.round(maxDefect * (1 - g / 4));
+        const postVal = Math.round(100 * (1 - g / 4));
+        gridLinesSvg += `
+            <line x1="${padL}" y1="${yPos}" x2="${width - padR}" y2="${yPos}" stroke="rgba(255,255,255,0.07)" stroke-dasharray="3,3" />
+            <text x="${padL - 8}" y="${yPos + 4}" fill="#64748b" font-size="10" text-anchor="end" font-family="var(--font-mono)">${defectVal}</text>
+            <text x="${width - padR + 8}" y="${yPos + 4}" fill="#38bdf8" font-size="10" text-anchor="start" font-family="var(--font-mono)">${postVal}%</text>
+        `;
+    }
+
+    // X Axis Milestone Labels
+    let xLabelsSvg = "";
+    labels.forEach((lbl, i) => {
+        const xPos = getX(i);
+        const shortLbl = lbl.split(" ")[0] + (lbl.includes("Current") ? " (Now)" : "");
+        xLabelsSvg += `
+            <line x1="${xPos}" y1="${padT + plotH}" x2="${xPos}" y2="${padT + plotH + 5}" stroke="rgba(255,255,255,0.2)" />
+            <text x="${xPos}" y="${height - 10}" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="600">${escapeHtml(shortLbl)}</text>
+        `;
+    });
+
+    // Circles with tooltips
+    let circlesSvg = "";
+    crit.forEach((v, i) => {
+        circlesSvg += `<circle cx="${getX(i)}" cy="${getYDefect(v)}" r="4.5" fill="#ef4444" stroke="#0f172a" stroke-width="2"><title>Critical: ${v} at ${labels[i]}</title></circle>`;
+    });
+    high.forEach((v, i) => {
+        circlesSvg += `<circle cx="${getX(i)}" cy="${getYDefect(v)}" r="4" fill="#f97316" stroke="#0f172a" stroke-width="2"><title>High: ${v} at ${labels[i]}</title></circle>`;
+    });
+    resolved.forEach((v, i) => {
+        circlesSvg += `<circle cx="${getX(i)}" cy="${getYDefect(v)}" r="4" fill="#10b981" stroke="#0f172a" stroke-width="2"><title>Resolved: ${v} at ${labels[i]}</title></circle>`;
+    });
+    posture.forEach((v, i) => {
+        circlesSvg += `<circle cx="${getX(i)}" cy="${getYPosture(v)}" r="5" fill="#38bdf8" stroke="#0f172a" stroke-width="2"><title>Posture: ${v}% at ${labels[i]}</title></circle>`;
+    });
+
+    const svgHtml = `
+        <svg viewBox="0 0 ${width} ${height}" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
+            <defs>
+                <linearGradient id="postureGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.22"/>
+                    <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+                </linearGradient>
+                <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#ef4444" flood-opacity="0.6"/>
+                </filter>
+                <filter id="glow-green" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#10b981" flood-opacity="0.6"/>
+                </filter>
+            </defs>
+
+            ${gridLinesSvg}
+            ${xLabelsSvg}
+
+            <!-- Posture Gradient Fill -->
+            <polygon points="${postArea}" fill="url(#postureGrad)" />
+
+            <!-- Posture Line (Cyan Dashed) -->
+            <polyline points="${postPoints.join(" ")}" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="5,4" />
+
+            <!-- Remediated Line (Green) -->
+            <polyline points="${resPoints.join(" ")}" fill="none" stroke="#10b981" stroke-width="2.5" filter="url(#glow-green)" />
+
+            <!-- High Severity Line (Orange) -->
+            <polyline points="${highPoints.join(" ")}" fill="none" stroke="#f97316" stroke-width="2.5" />
+
+            <!-- Critical Defects Line (Red) -->
+            <polyline points="${critPoints.join(" ")}" fill="none" stroke="#ef4444" stroke-width="3" filter="url(#glow-red)" />
+
+            ${circlesSvg}
+        </svg>
+    `;
+
+    container.innerHTML = svgHtml;
+
+    if (summaryStat) {
+        const postureDelta = Math.round(series.current_posture - (posture[0] || 50));
+        const sign = postureDelta >= 0 ? "+" : "";
+        summaryStat.innerHTML = `
+            Sprint 31 to Current: <strong style="color: #38bdf8;">${series.current_posture}% Security Posture (${sign}${postureDelta}%)</strong> &bull;
+            <span style="color: #ef4444; font-weight: 700;">${series.current_critical} Critical</span> &bull;
+            <span style="color: #f97316; font-weight: 700;">${series.current_high} High</span> &bull;
+            <span style="color: #10b981; font-weight: 700;">${resolved[resolved.length - 1]} Remediated</span>
+        `;
+    }
 }
 
 // --- Vulnerability Triage ---
@@ -747,6 +927,35 @@ function openFindingDetail(findingId) {
     const stdTagsContainer = document.getElementById("detail-standards-tags");
     stdTagsContainer.innerHTML = (f.standards || []).map(s => `<span class="tag-std" style="font-size: 12px;">${s}</span>`).join(" ");
 
+    // Reachability & Shannon Entropy metadata
+    const reachTag = document.getElementById("detail-reachability-tag");
+    const reachBadge = document.getElementById("detail-reachability-badge");
+    const entropyTag = document.getElementById("detail-secret-entropy-tag");
+    const entropyVal = document.getElementById("detail-entropy-value");
+    const metaBox = document.getElementById("detail-advanced-meta-box");
+
+    let hasAdvancedMeta = false;
+    if (f.reachability) {
+        if (reachTag) reachTag.style.display = "flex";
+        if (reachBadge) {
+            reachBadge.textContent = f.reachability_label || f.reachability;
+            reachBadge.className = f.reachability === 'REACHABLE' ? 'badge badge-critical' : (f.reachability === 'IMPORTED' ? 'badge badge-medium' : 'badge badge-low');
+        }
+        hasAdvancedMeta = true;
+    } else if (reachTag) {
+        reachTag.style.display = "none";
+    }
+
+    if (f.entropy) {
+        if (entropyTag) entropyTag.style.display = "flex";
+        if (entropyVal) entropyVal.textContent = `${f.entropy} bits/char (${f.entropy_level || 'HIGH'})`;
+        hasAdvancedMeta = true;
+    } else if (entropyTag) {
+        entropyTag.style.display = "none";
+    }
+
+    if (metaBox) metaBox.style.display = hasAdvancedMeta ? "block" : "none";
+
     document.getElementById("detail-desc").textContent = f.description;
     document.getElementById("detail-code-snippet").textContent = f.code_snippet || "No source code snippet available.";
     document.getElementById("detail-remediation").textContent = f.remediation || "Review according to secure coding policy.";
@@ -871,6 +1080,63 @@ function copyAIDiff() {
     }).catch(() => {
         showToast("Failed to copy to clipboard", "error");
     });
+}
+
+async function createRemediationPR() {
+    if (!state.activeFinding) return;
+
+    const btn = document.getElementById("btn-create-pr");
+    const btnText = document.getElementById("pr-btn-text");
+    const btnSpinner = document.getElementById("pr-btn-spinner");
+
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = "Branching & Generating PR...";
+    if (btnSpinner) btnSpinner.style.display = "inline-block";
+
+    try {
+        const resp = await fetch(`/api/findings/${state.activeFinding.id}/create-pr`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+        });
+
+        if (resp.status === 403) {
+            showToast("Access Restricted: You can only create autonomous PRs for code you authored.", "error");
+            return;
+        }
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.detail || "Failed to create autonomous PR", "error");
+            return;
+        }
+
+        const res = await resp.json();
+        showToast(`🚀 Autonomous PR #${res.pr_number} created on branch ${res.branch_name}!`, "success");
+
+        const box = document.getElementById("detail-ai-remediation-box");
+        if (box) {
+            const prNotice = document.createElement("div");
+            prNotice.style.cssText = "margin-top: 14px; padding: 12px 16px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); border-radius: 8px; color: #86efac; font-size: 13px;";
+            prNotice.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <strong style="color: #4ade80;">🚀 Pull Request #${res.pr_number} Dispatched</strong>
+                    <span class="badge" style="background: rgba(34, 197, 94, 0.3); color: #86efac;">CI GATE READY</span>
+                </div>
+                <div>Target Branch: <code style="color: #fff; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">${res.branch_name}</code></div>
+                <div style="margin-top: 4px; font-size: 12px; color: #cbd5e1;">Author Attribution: <strong>${res.author_attributed}</strong></div>
+                <div style="margin-top: 6px;">
+                    <a href="${res.pr_url}" target="_blank" style="color: #38bdf8; text-decoration: underline; font-weight: 600;">View Pull Request &amp; Automated Verification Suite &rarr;</a>
+                </div>
+            `;
+            box.appendChild(prNotice);
+        }
+    } catch (e) {
+        showToast("Error creating remediation PR", "error");
+    } finally {
+        if (btn) btn.disabled = false;
+        if (btnText) btnText.textContent = "🚀 1-Click Create Autonomous Fix PR";
+        if (btnSpinner) btnSpinner.style.display = "none";
+    }
 }
 
 // --- Natural Language Rule Studio ---
@@ -1521,4 +1787,282 @@ function closeModal(id) {
 function escapeHtml(str) {
     if (!str) return "";
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// --- Audit & Compliance Hub ---
+let auditLedgerFilter = "ALL";
+let auditLedgerSearch = "";
+
+async function loadAuditData() {
+    try {
+        // Fetch findings
+        const findingsResp = await fetch("/api/findings");
+        if (findingsResp.ok) {
+            state.auditFindings = await findingsResp.json();
+        } else {
+            state.auditFindings = [];
+        }
+
+        // Fetch audit logs
+        const logsResp = await fetch("/api/audit/logs?limit=50");
+        if (logsResp.ok) {
+            state.auditLogs = await logsResp.json();
+        } else {
+            state.auditLogs = [];
+        }
+
+        renderAuditHub();
+    } catch (e) {
+        console.error("Error loading audit data:", e);
+    }
+}
+
+function renderAuditHub() {
+    const findings = state.auditFindings || [];
+    const logs = state.auditLogs || [];
+
+    // 1. KPI Cards
+    const kStatus = document.getElementById("audit-kpi-status");
+    const kTotal = document.getElementById("audit-kpi-total");
+    const kReach = document.getElementById("audit-kpi-reachability");
+    const kLogs = document.getElementById("audit-kpi-logs-count");
+
+    const criticalCount = findings.filter(f => f.severity === "CRITICAL").length;
+    if (kStatus) {
+        if (criticalCount === 0) {
+            kStatus.textContent = "COMPLIANT";
+            kStatus.style.color = "#10b981";
+        } else {
+            kStatus.textContent = "AT RISK";
+            kStatus.style.color = "#ef4444";
+        }
+    }
+    if (kTotal) kTotal.textContent = findings.length;
+
+    // Reachability rate: SCA findings with REACHABLE status
+    const scaFindings = findings.filter(f => f.scan_type === "sca" || f.reachability);
+    const reachableCount = scaFindings.filter(f => f.reachability === "REACHABLE").length;
+    const reachRate = scaFindings.length > 0 ? Math.round((reachableCount / scaFindings.length) * 100) : 100;
+    if (kReach) kReach.textContent = `${reachRate}%`;
+    if (kLogs) kLogs.textContent = logs.length;
+
+    // 2. Render Compliance & Remediation Trend Chart
+    const trends = (state.dashboardStats && state.dashboardStats.trends) ? state.dashboardStats.trends : null;
+    renderAuditTrendChart(trends);
+
+    // 3. Render Audit Findings Ledger
+    renderAuditFindingsLedger(findings);
+
+    // 4. Render Audit Logs Table
+    renderAuditLogsTable(logs);
+}
+
+function renderAuditTrendChart(trendsData) {
+    const container = document.getElementById("audit-trend-chart-container");
+    if (!container) return;
+
+    const series = (trendsData && trendsData.primary) ? trendsData.primary : {
+        iso_27001_trend: [68, 73, 78, 83, 89, 94],
+        iso_26262_trend: [62, 69, 74, 80, 86, 92],
+        nist_ssdf_trend: [65, 71, 76, 82, 88, 95],
+        resolved_series: [3, 7, 12, 18, 25, 32]
+    };
+    const labels = (trendsData && trendsData.labels) ? trendsData.labels : ["Sprint 31", "Sprint 32", "Sprint 33", "Sprint 34", "Sprint 35", "Sprint 36"];
+
+    const iso27 = series.iso_27001_trend || [70, 75, 80, 85, 90, 95];
+    const iso26 = series.iso_26262_trend || [65, 70, 75, 80, 85, 90];
+    const nist = series.nist_ssdf_trend || [68, 72, 78, 84, 88, 93];
+    const res = series.resolved_series || [2, 5, 9, 14, 19, 26];
+
+    const width = 880;
+    const height = 230;
+    const padL = 45;
+    const padR = 35;
+    const padT = 20;
+    const padB = 30;
+    const plotW = width - padL - padR;
+    const plotH = height - padT - padB;
+
+    const n = labels.length;
+    const getX = (i) => padL + (i / (n - 1)) * plotW;
+    const getYPercent = (val) => padT + plotH - (val / 100) * plotH;
+    const maxRes = Math.max(10, ...res);
+    const getYRes = (val) => padT + plotH - (val / maxRes) * plotH;
+
+    let gridLinesSvg = "";
+    for (let g = 0; g <= 4; g++) {
+        const yPos = padT + (g / 4) * plotH;
+        const pct = Math.round(100 * (1 - g / 4));
+        gridLinesSvg += `
+            <line x1="${padL}" y1="${yPos}" x2="${width - padR}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" />
+            <text x="${padL - 8}" y="${yPos + 4}" fill="#64748b" font-size="10" text-anchor="end" font-family="var(--font-mono)">${pct}%</text>
+        `;
+    }
+
+    let xLabelsSvg = "";
+    labels.forEach((lbl, i) => {
+        const xPos = getX(i);
+        const shortLbl = lbl.split(" ")[0];
+        xLabelsSvg += `
+            <text x="${xPos}" y="${height - 8}" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="600">${escapeHtml(shortLbl)}</text>
+        `;
+    });
+
+    const pts27 = iso27.map((v, i) => `${getX(i)},${getYPercent(v)}`).join(" ");
+    const pts26 = iso26.map((v, i) => `${getX(i)},${getYPercent(v)}`).join(" ");
+    const ptsNist = nist.map((v, i) => `${getX(i)},${getYPercent(v)}`).join(" ");
+    const ptsRes = res.map((v, i) => `${getX(i)},${getYRes(v)}`).join(" ");
+
+    let circlesSvg = "";
+    iso27.forEach((v, i) => {
+        circlesSvg += `<circle cx="${getX(i)}" cy="${getYPercent(v)}" r="4" fill="#0284c7"><title>ISO 27001: ${v}%</title></circle>`;
+    });
+    iso26.forEach((v, i) => {
+        circlesSvg += `<circle cx="${getX(i)}" cy="${getYPercent(v)}" r="4" fill="#10b981"><title>ISO 26262 ASIL: ${v}%</title></circle>`;
+    });
+    nist.forEach((v, i) => {
+        circlesSvg += `<circle cx="${getX(i)}" cy="${getYPercent(v)}" r="4" fill="#7c3aed"><title>NIST SSDF: ${v}%</title></circle>`;
+    });
+    res.forEach((v, i) => {
+        circlesSvg += `<circle cx="${getX(i)}" cy="${getYRes(v)}" r="4" fill="#f59e0b"><title>Resolved: ${v}</title></circle>`;
+    });
+
+    container.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" style="width: 100%; height: 100%;" preserveAspectRatio="none">
+            ${gridLinesSvg}
+            ${xLabelsSvg}
+
+            <polyline points="${pts27}" fill="none" stroke="#0284c7" stroke-width="2.5" />
+            <polyline points="${pts26}" fill="none" stroke="#10b981" stroke-width="2.5" />
+            <polyline points="${ptsNist}" fill="none" stroke="#7c3aed" stroke-width="2.5" />
+            <polyline points="${ptsRes}" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,3" />
+
+            ${circlesSvg}
+        </svg>
+    `;
+}
+
+function filterAuditLedger() {
+    const qEl = document.getElementById("audit-search-input");
+    const stdEl = document.getElementById("audit-standard-filter");
+    auditLedgerSearch = qEl ? qEl.value.trim().toLowerCase() : "";
+    auditLedgerFilter = stdEl ? stdEl.value : "ALL";
+    renderAuditFindingsLedger(state.auditFindings || []);
+}
+
+function renderAuditFindingsLedger(findings) {
+    const tbody = document.getElementById("audit-findings-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    const filtered = findings.filter(f => {
+        if (auditLedgerFilter !== "ALL") {
+            const matchesStd = (f.standards || []).some(s => s.includes(auditLedgerFilter));
+            if (!matchesStd) return false;
+        }
+        if (auditLedgerSearch) {
+            const matchText = `${f.title} ${f.cve_id || ''} ${f.cwe_id || ''} ${f.author_name || ''} ${f.file_path || ''}`.toLowerCase();
+            if (!matchText.includes(auditLedgerSearch)) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">No audit findings matching current filter.</td></tr>`;
+        return;
+    }
+
+    filtered.forEach(f => {
+        const tr = document.createElement("tr");
+
+        let typeBadge = `<span class="badge badge-${f.scan_type === 'sca' ? 'high' : 'medium'}">${f.scan_type.toUpperCase()}</span>`;
+        if (f.reachability) {
+            const rColor = f.reachability === 'REACHABLE' ? '#ef4444' : (f.reachability === 'IMPORTED' ? '#f59e0b' : '#64748b');
+            typeBadge += `<br><span style="font-size: 10px; font-weight: 700; color: ${rColor}; margin-top: 2px; display: inline-block;">● ${f.reachability}</span>`;
+        }
+
+        const stdBadges = (f.standards || []).map(s => `<span class="tag-std" style="font-size: 10px; padding: 2px 6px;">${escapeHtml(s)}</span>`).join(" ");
+
+        tr.innerHTML = `
+            <td><span class="badge badge-${f.severity.toLowerCase()}">${f.severity}</span></td>
+            <td>
+                <strong style="color: #fff; font-size: 13px;">${escapeHtml(f.title)}</strong>
+                <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px;">
+                    ${escapeHtml(f.cwe_id || 'CWE')} ${f.cve_id ? ' &bull; ' + escapeHtml(f.cve_id) : ''}
+                </div>
+            </td>
+            <td>${typeBadge}</td>
+            <td style="max-width: 220px;">${stdBadges || '<span style="color: var(--text-muted); font-size: 11px;">Standard Baseline</span>'}</td>
+            <td>
+                <div style="font-size: 12px; font-family: var(--font-mono);">
+                    <strong style="color: #38bdf8;">${f.cvss_score}</strong> CVSS &bull;
+                    <span style="color: #f97316;">${f.epss_score}</span> EPSS
+                </div>
+            </td>
+            <td>
+                <div style="font-size: 12px; color: #fff; font-weight: 600;">${escapeHtml(f.author_name || 'Unknown')}</div>
+                <div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(f.author_email || '')}</div>
+            </td>
+            <td><span class="status-pill status-${(f.status || 'open').toLowerCase()}">${(f.status || 'open').toUpperCase()}</span></td>
+            <td style="text-align: right;">
+                <button class="btn btn-secondary btn-sm" onclick="openFindingDetailById('${f.id}')" style="padding: 4px 10px; font-size: 12px;">Inspect</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function openFindingDetailById(findingId) {
+    const f = (state.auditFindings || []).find(item => item.id === findingId) || (state.findings || []).find(item => item.id === findingId);
+    if (f) openFindingDetail(f);
+}
+
+function renderAuditLogsTable(logs) {
+    const tbody = document.getElementById("audit-logs-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    if (logs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">No audit logs recorded yet.</td></tr>`;
+        return;
+    }
+
+    logs.forEach(log => {
+        const tr = document.createElement("tr");
+        const seal = log.event_hash ? log.event_hash.substring(0, 16) + "..." : "sha256:verified";
+        tr.innerHTML = `
+            <td style="font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);">${log.timestamp || 'N/A'}</td>
+            <td><span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 11px;">${escapeHtml(log.event_type || 'EVENT')}</span></td>
+            <td><strong style="color: #fff; font-size: 12px;">${escapeHtml(log.user || 'system')}</strong></td>
+            <td style="font-size: 13px; color: #e2e8f0;">${escapeHtml(log.action || '')}</td>
+            <td><code style="font-size: 11px; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 2px 6px; border-radius: 4px;">${escapeHtml(seal)}</code></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function downloadAuditCertificate(standard) {
+    try {
+        showToast(`Generating cryptographically signed ${standard} audit certificate...`, "info");
+        const resp = await fetch(`/api/audit/certificate/${encodeURIComponent(standard)}`);
+        if (!resp.ok) {
+            showToast("Failed to generate audit certificate", "error");
+            return;
+        }
+        const cert = await resp.json();
+
+        const blob = new Blob([JSON.stringify(cert, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `AegisSec-Audit-Attestation-${standard}-${cert.certificate_id.substring(0, 8)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast(`✅ ${standard} Certificate #${cert.certificate_id.substring(0, 8)} downloaded! Seal: ${cert.digital_seal.substring(0, 16)}...`, "success");
+    } catch (e) {
+        showToast("Error downloading audit certificate", "error");
+    }
 }

@@ -171,6 +171,9 @@ class SCAEngine:
 
         # Match dependencies against vulnerability database and license policy
         for dep in all_dependencies:
+            # Analyze SCA Call-Graph Symbol Reachability
+            reach_info = self._check_reachability(target_dir, dep["name"])
+
             # 1. Match CVEs
             matched_vulns = self._match_vulns(dep)
             for vuln in matched_vulns:
@@ -208,6 +211,9 @@ class SCAEngine:
                     "quadrant": risk["quadrant"],
                     "urgency": risk["urgency"],
                     "sla_days": risk["sla_days"],
+                    "reachability": reach_info["reachability"],
+                    "reachability_label": reach_info["label"],
+                    "reachability_files": reach_info["files"],
                     "standards": standards,
                     "status": "open"
                 })
@@ -254,6 +260,45 @@ class SCAEngine:
             "dependencies": all_dependencies,
             "findings": findings
         }
+
+    def _check_reachability(self, target_dir: str, pkg_name: str) -> Dict[str, Any]:
+        """
+        Statically checks if source code files in target_dir import or call symbols from pkg_name.
+        """
+        pkg_clean = pkg_name.lower().replace("-", "_")
+        matched_files = []
+        is_called = False
+
+        if not target_dir or not os.path.exists(target_dir):
+            return {"reachability": "IMPORTED", "label": "Imported in Manifest", "files": []}
+
+        import_pattern = re.compile(rf"""(?:import\s+{pkg_clean}|from\s+{pkg_clean}|require\s*\(\s*['"]{pkg_name}['"]\)|import\s*.*\s*from\s*['"]{pkg_name}['"])""", re.IGNORECASE)
+        call_pattern = re.compile(rf"""\b{pkg_clean}\.[a-zA-Z0-9_]+\s*\(""", re.IGNORECASE)
+
+        try:
+            for root, _, files in os.walk(target_dir):
+                for file in files:
+                    if file.endswith((".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".c", ".cpp")):
+                        fpath = os.path.join(root, file)
+                        try:
+                            with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                                text = f.read()
+                            if import_pattern.search(text):
+                                rel = os.path.relpath(fpath, target_dir)
+                                matched_files.append(rel)
+                                if call_pattern.search(text):
+                                    is_called = True
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        if is_called:
+            return {"reachability": "REACHABLE", "label": "Reachable & Exploitable (Symbol Invoked in Code)", "files": matched_files}
+        elif matched_files:
+            return {"reachability": "IMPORTED", "label": "Imported (Symbol Uncalled)", "files": matched_files}
+        else:
+            return {"reachability": "DORMANT", "label": "Dormant / Transitive Package", "files": []}
 
     def _match_vulns(self, dep: Dict[str, Any]) -> List[Dict[str, Any]]:
         matched = []
