@@ -27,11 +27,10 @@ class TestLLMService(unittest.TestCase):
 
         # Ensure findings exist
         projects = db.list_projects()
-        if not projects:
-            p = db.create_project("Test-Repo", "Test Desc", "", "main", "", "admin")
-            cls.project_id = p["id"]
-        else:
-            cls.project_id = projects[0]["id"]
+        demo_proj = next((p for p in projects if "demo" in p["name"].lower() or not p.get("git_url")), None)
+        if not demo_proj:
+            demo_proj = db.create_project("Automotive-Cloud-Demo-Suite", "Test Desc", "", "main", "", "admin")
+        cls.project_id = demo_proj["id"]
 
         findings = db.list_findings(cls.project_id)
         if not findings:

@@ -220,6 +220,8 @@ class Database:
                 return None
             p = dict(row)
             p["git_pat_configured"] = bool(p.get("git_pat"))
+            cnt = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ?", (project_id,)).fetchone()["c"]
+            p["total_findings"] = cnt
             return p
 
     def create_project(self, name: str, description: str, git_url: str, git_branch: str, git_pat: str, created_by: str) -> Dict[str, Any]:

@@ -110,6 +110,42 @@ CURATED_VULN_DB = [
         "fixed_version": "2.6.6"
     },
     {
+        "ecosystem": "maven",
+        "package": "org.springframework.boot:spring-boot-starter-parent",
+        "affected_versions": ["<2.6.6"],
+        "cve": "CVE-2022-22965",
+        "cwe": "CWE-94",
+        "title": "Spring4Shell - Remote Code Execution via Data Binding",
+        "description": "Spring Boot starter parent contains Spring Framework component allowing unauthenticated Remote Code Execution via data binder ClassLoader access.",
+        "cvss": 9.8,
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "fixed_version": "2.6.6"
+    },
+    {
+        "ecosystem": "maven",
+        "package": "org.webjars:jquery",
+        "affected_versions": ["<3.5.0"],
+        "cve": "CVE-2020-11022",
+        "cwe": "CWE-79",
+        "title": "jQuery Cross-Site Scripting (XSS) via htmlPrefilter",
+        "description": "Regex in jQuery before 3.5.0 used for HTML cleaning leads to arbitrary JavaScript execution upon untrusted HTML parsing.",
+        "cvss": 6.1,
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+        "fixed_version": "3.5.0"
+    },
+    {
+        "ecosystem": "maven",
+        "package": "org.webjars:bootstrap",
+        "affected_versions": ["<3.4.1"],
+        "cve": "CVE-2018-14041",
+        "cwe": "CWE-79",
+        "title": "Bootstrap XSS via Collapse and Tooltip Attributes",
+        "description": "Vulnerability in Bootstrap data-target and tooltip attributes allows arbitrary script execution in client browsers.",
+        "cvss": 6.1,
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+        "fixed_version": "3.4.1"
+    },
+    {
         "ecosystem": "golang",
         "package": "golang.org/x/crypto",
         "affected_versions": ["<0.17.0"],
@@ -410,20 +446,47 @@ class SCAEngine:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-            # Simple regex parser for pom.xml dependencies
+
+            # Parse parent pom version
+            parent_match = re.search(r'<parent>[\s\S]*?<groupId>(.*?)<\/groupId>[\s\S]*?<artifactId>(.*?)<\/artifactId>[\s\S]*?<version>(.*?)<\/version>[\s\S]*?<\/parent>', content)
+            parent_ver = parent_match.group(3).strip() if parent_match else None
+            if parent_match:
+                p_group = parent_match.group(1).strip()
+                p_art = parent_match.group(2).strip()
+                deps.append({
+                    "ecosystem": "maven",
+                    "name": f"{p_group}:{p_art}",
+                    "version": parent_ver,
+                    "license": "Apache-2.0",
+                    "manifest_path": rel_path,
+                    "line": 1
+                })
+                # If parent is spring-boot-starter-parent, add spring-boot as well
+                if "spring-boot" in p_art:
+                    deps.append({
+                        "ecosystem": "maven",
+                        "name": "org.springframework.boot:spring-boot",
+                        "version": parent_ver,
+                        "license": "Apache-2.0",
+                        "manifest_path": rel_path,
+                        "line": 1
+                    })
+
             dep_blocks = re.findall(r'<dependency>[\s\S]*?<\/dependency>', content)
             for block in dep_blocks:
                 g_match = re.search(r'<groupId>(.*?)<\/groupId>', block)
                 a_match = re.search(r'<artifactId>(.*?)<\/artifactId>', block)
                 v_match = re.search(r'<version>(.*?)<\/version>', block)
                 if a_match:
-                    pkg_name = f"{g_match.group(1)}:{a_match.group(1)}" if g_match else a_match.group(1)
-                    version = v_match.group(1) if v_match else "1.0.0"
+                    group_id = g_match.group(1).strip() if g_match else ""
+                    art_id = a_match.group(1).strip()
+                    pkg_name = f"{group_id}:{art_id}" if group_id else art_id
+                    version = v_match.group(1).strip() if v_match else (parent_ver or "1.0.0")
                     deps.append({
                         "ecosystem": "maven",
                         "name": pkg_name,
                         "version": version,
-                        "license": LICENSE_REGISTRY.get(a_match.group(1).lower(), "Apache-2.0"),
+                        "license": LICENSE_REGISTRY.get(art_id.lower(), "Apache-2.0"),
                         "manifest_path": rel_path,
                         "line": 1
                     })
