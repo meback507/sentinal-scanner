@@ -1746,6 +1746,13 @@ async function generateRuleFromPrompt() {
             activeGeneratedRule = rule;
             const editor = document.getElementById("rule-yaml-editor");
             if (editor) editor.value = rule.yaml_representation;
+
+            // Auto-populate Live Code Test Bench with synthesized trigger code
+            const codeBox = document.getElementById("rule-sandbox-code");
+            if (codeBox && rule.sample_trigger_code) {
+                codeBox.value = rule.sample_trigger_code;
+            }
+
             const creator = rule.created_by || "AegisSec Synthesizer";
             showToast(`Rule synthesized successfully via ${creator}!`, "success");
         } else {

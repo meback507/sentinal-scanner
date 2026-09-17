@@ -304,91 +304,11 @@ Existing Remediation Summary: {finding.get('remediation', '')}"""
 
     @classmethod
     def _synthesize_ai_rule_mock(cls, human_prompt: str, target_ecosystem: str, model: str) -> Dict[str, Any]:
-        """Synthesizes high-fidelity AI-enhanced rule structure when in demo/sandbox mode."""
-        rule_id = f"AI-RULE-{uuid.uuid4().hex[:6].upper()}"
-        prompt_lower = human_prompt.lower()
-        is_misra = any(k in prompt_lower for k in ["malloc", "memory", "misra", "free", "c++", "safety"])
-        is_secret = any(k in prompt_lower for k in ["api_key", "secret", "token", "password", "key"])
-        is_sca = any(k in prompt_lower for k in ["dependency", "package", "library", "license", "npm", "pypi", "pom", "gpl", "agpl", "version"])
-
-        if is_sca and not any(k in prompt_lower for k in ["code", "function", "variable", "pointer"]):
-            license_match = re.search(r'\b(gpl-?[0-9\.]*|agpl-?[0-9\.]*|mit|apache-?[0-9\.]*|bsd)\b', prompt_lower)
-            banned_license = license_match.group(1).upper() if license_match else "AGPL-3.0"
-            pkg_match = re.search(r'(?:package|dependency|library)\s+([a-zA-Z0-9_\-\.\@\/]+)', prompt_lower)
-            banned_package = pkg_match.group(1) if pkg_match else "lodash"
-
-            rule_dict = {
-                "id": rule_id,
-                "name": f"AI SCA Policy: Banned Dependency ({banned_package}) or License ({banned_license})",
-                "type": "sca_policy",
-                "rule_category": "sca",
-                "nl_prompt": human_prompt,
-                "ecosystem": "npm" if target_ecosystem == "auto" else target_ecosystem,
-                "severity": "HIGH",
-                "banned_package": banned_package,
-                "banned_version_range": "<4.17.21",
-                "banned_license": banned_license,
-                "standards": ["ISO-27001 (A.8.28)", "OpenChain ISO/IEC 5230"],
-                "description": f"Enforces supply chain integrity. Generated via LLM ({model}).",
-                "remediation": f"Upgrade '{banned_package}' or replace copyleft licenses ({banned_license}) with permissive licenses.",
-                "is_active": True,
-                "created_by": f"LLM ({model} AI-Engine)"
-            }
-        elif is_misra:
-            rule_dict = {
-                "id": rule_id,
-                "name": f"AI Rule: {human_prompt.capitalize()}",
-                "type": "sast_pattern",
-                "rule_category": "sast",
-                "nl_prompt": human_prompt,
-                "languages": ["c", "cpp"],
-                "severity": "CRITICAL",
-                "cwe": "CWE-401",
-                "standards": ["ISO-26262-6 (ASIL-D)", "MISRA C:2012 Rule 21.3", "AUTOSAR C++14 Rule A18-5-2"],
-                "regex": r"""\b(?:malloc|calloc|realloc|free)\s*\(""",
-                "description": f"Enforces deterministic execution under ISO 26262. Generated via LLM ({model}).",
-                "remediation": "Replace heap allocations with statically allocated ring buffers or pool allocators initialized at system boot.",
-                "sample_trigger_code": "void* buf = malloc(1024); // Non-deterministic allocation",
-                "is_active": True,
-                "created_by": f"LLM ({model} AI-Engine)"
-            }
-        elif is_secret:
-            rule_dict = {
-                "id": rule_id,
-                "name": f"AI Rule: {human_prompt.capitalize()}",
-                "type": "sast_pattern",
-                "rule_category": "sast",
-                "nl_prompt": human_prompt,
-                "languages": ["python", "javascript", "typescript", "go", "java"],
-                "severity": "HIGH",
-                "cwe": "CWE-798",
-                "standards": ["ISO-27001 (A.8.12)", "NIST-SSDF (PW.4.1)", "OWASP Top 10 (A07:2021)"],
-                "regex": r"""(?i)(?:api_key|token|secret|password)\s*[:=]\s*['"][a-zA-Z0-9_\-\.]{16,}['"]""",
-                "description": f"Discovers hardcoded credentials and high-entropy secret assignments. Generated via LLM ({model}).",
-                "remediation": "Retrieve credentials dynamically from environment variables or a secure key management vault.",
-                "sample_trigger_code": 'api_key = "ghp_98472938472983749283749823"',
-                "is_active": True,
-                "created_by": f"LLM ({model} AI-Engine)"
-            }
-        else:
-            rule_dict = {
-                "id": rule_id,
-                "name": f"AI Rule: {human_prompt.capitalize()}",
-                "type": "sast_pattern",
-                "rule_category": "sast",
-                "nl_prompt": human_prompt,
-                "languages": ["python", "javascript", "typescript"],
-                "severity": "HIGH",
-                "cwe": "CWE-89",
-                "standards": ["ISO-27001 (A.8.28)", "OWASP:A03:2021"],
-                "regex": r"""(?i)(?:execute|query)\s*\(\s*f['"].*SELECT""",
-                "description": f"Synthesized pattern for: {human_prompt}. Generated via LLM ({model}).",
-                "remediation": "Sanitize inputs and utilize parameterized queries or ORM frameworks.",
-                "sample_trigger_code": 'cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")',
-                "is_active": True,
-                "created_by": f"LLM ({model} AI-Engine)"
-            }
-
+        """Synthesizes high-fidelity AI-enhanced rule structure when in demo/sandbox mode without hardcoded fallbacks."""
+        from ..rules.nl_rule_generator import NLRuleGenerator
+        rule_dict = NLRuleGenerator._synthesize_core_rule(human_prompt, target_ecosystem)
+        rule_dict["id"] = f"AI-RULE-{uuid.uuid4().hex[:6].upper()}"
+        rule_dict["created_by"] = f"LLM ({model} AI-Engine)"
         rule_dict["yaml_representation"] = yaml.dump(rule_dict, sort_keys=False)
         return {"success": True, "rule": rule_dict, "provider": "openai", "model": model, "is_mock": True}
 
