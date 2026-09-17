@@ -11,7 +11,7 @@ import datetime
 import hashlib
 from typing import List, Dict, Any, Optional
 
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aegis_sec.db")
+DB_FILE = os.getenv("SENTINEL_DB_PATH") or os.getenv("DATABASE_PATH") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "aegis_sec.db")
 
 
 def hash_password(password: str) -> str:
@@ -91,8 +91,11 @@ def enrich_finding_age(finding: Dict[str, Any], current_time: Optional[datetime.
 
 
 class Database:
-    def __init__(self, db_path: str = DB_FILE):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or os.getenv("SENTINEL_DB_PATH") or os.getenv("DATABASE_PATH") or DB_FILE
+        db_dir = os.path.dirname(os.path.abspath(self.db_path))
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
         self._init_schema()
         self._seed_default_data()
 

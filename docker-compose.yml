@@ -1,26 +1,32 @@
-version: '3.8'
-
 services:
-  aegissec:
+  sentinel:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: aegissec-platform
+    image: sentinel-appsec:latest
+    container_name: sentinel-platform
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${SENTINEL_PORT:-8000}:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - APP_ENV=production
+      - PORT=8000
+      - SENTINEL_DB_PATH=/app/data/sentinel.db
+      - WORKERS=2
     volumes:
-      - aegissec_data:/app/backend
+      # Persistent storage for SQLite database and generated audit reports
+      - sentinel_data:/app/data
+      - sentinel_reports:/app/reports
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/auth/me"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/api/health || exit 1"]
+      interval: 20s
+      timeout: 5s
       retries: 3
       start_period: 10s
 
 volumes:
-  aegissec_data:
+  sentinel_data:
+    driver: local
+  sentinel_reports:
     driver: local

@@ -1,0 +1,32 @@
+# Virtual Environments & Python cache
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Version Control
+.git/
+.github/
+
+# IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local runtime databases and temporary data
+backend/aegis_sec.db
+backend/aegis_sec.db-wal
+backend/aegis_sec.db-shm
+data/
+reports/
+*.log
+
+# Node dependencies (if any)
+node_modules/

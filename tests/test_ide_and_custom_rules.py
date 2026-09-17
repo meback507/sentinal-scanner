@@ -199,7 +199,21 @@ rules:
             self.assertIn("extension/src/extension.js", names)
             self.assertIn("extension/README.md", names)
 
+    def test_10_cloud_health_and_extension_download(self):
+        """Verify lightweight health probe and direct IDE plugin .vsix download."""
+        health_res = self.client.get("/api/health")
+        self.assertEqual(health_res.status_code, 200)
+        data = health_res.json()
+        self.assertEqual(data["status"], "healthy")
+        self.assertEqual(data["service"], "sentinel-appsec")
+
+        download_res = self.client.get("/api/extension/download")
+        self.assertEqual(download_res.status_code, 200)
+        self.assertIn("attachment; filename=\"sentinel-appsec-ide-1.0.0.vsix\"", download_res.headers.get("content-disposition", ""))
+        self.assertGreater(len(download_res.content), 10000)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

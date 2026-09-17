@@ -7,10 +7,11 @@ import os
 import json
 import shutil
 import tempfile
+import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, status, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models import (
@@ -57,6 +58,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Cloud Health & Service Probes ---
+@app.get("/api/health")
+@app.get("/healthz")
+def health_check():
+    """
+    Lightweight health check probe for cloud load balancers, container orchestrators,
+    and Docker health checks without requiring authentication.
+    """
+    return {
+        "status": "healthy",
+        "service": "sentinel-appsec",
+        "version": "1.0.0",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
+
+
+@app.get("/api/extension/download")
+@app.get("/download/ide-extension")
+def download_ide_extension():
+    """
+    Serves the packaged Sentinel IDE plugin (.vsix) directly for developer onboarding.
+    """
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    vsix_path = os.path.join(base_dir, "ide-extension", "sentinel-appsec-ide-1.0.0.vsix")
+    if not os.path.exists(vsix_path):
+        raise HTTPException(status_code=404, detail="IDE extension bundle not found on server")
+    return FileResponse(
+        vsix_path,
+        media_type="application/octet-stream",
+        filename="sentinel-appsec-ide-1.0.0.vsix"
+    )
 
 
 # --- Authentication Routes ---
