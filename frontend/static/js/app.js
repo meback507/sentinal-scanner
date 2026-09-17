@@ -337,11 +337,15 @@ async function loadProjects() {
             renderProjectsDropdown();
             renderProjectsTable();
 
-            if (!state.activeProjectId && state.projects.length > 0) {
+            const savedProjectId = localStorage.getItem("aegis_active_project_id");
+            if (savedProjectId && state.projects.some(p => p.id === savedProjectId)) {
+                state.activeProjectId = savedProjectId;
+            } else if ((!state.activeProjectId || !state.projects.some(p => p.id === state.activeProjectId)) && state.projects.length > 0) {
                 state.activeProjectId = state.projects[0].id;
-                const sel = document.getElementById("global-project-select");
-                if (sel) sel.value = state.activeProjectId;
+                localStorage.setItem("aegis_active_project_id", state.activeProjectId);
             }
+            const sel = document.getElementById("global-project-select");
+            if (sel && state.activeProjectId) sel.value = state.activeProjectId;
         }
     } catch (e) {
         console.error("Failed loading projects:", e);
@@ -364,6 +368,11 @@ function renderProjectsDropdown() {
 
 function onProjectChange(projectId) {
     state.activeProjectId = projectId;
+    if (projectId) {
+        localStorage.setItem("aegis_active_project_id", projectId);
+    } else {
+        localStorage.removeItem("aegis_active_project_id");
+    }
     loadFindings();
     loadDashboardStats();
     showToast(`Active project changed to: ${state.projects.find(p => p.id === projectId)?.name || projectId}`);

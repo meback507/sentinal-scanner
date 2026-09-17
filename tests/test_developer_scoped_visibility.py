@@ -20,8 +20,10 @@ class TestDeveloperScopedVisibility(unittest.TestCase):
         # Ensure a demo scan is present
         projects = db.list_projects()
         demo_proj = next((p for p in projects if "demo" in p["name"].lower() or not p.get("git_url")), None)
+        cls.created_project = False
         if not demo_proj:
             demo_proj = db.create_project("Automotive-Cloud-Demo-Suite", "Test Desc", "", "main", "", "admin")
+            cls.created_project = True
         cls.project_id = demo_proj["id"]
             
         findings = db.list_findings(cls.project_id)
@@ -172,6 +174,11 @@ class TestDeveloperScopedVisibility(unittest.TestCase):
         self.assertIn("Sarah Lin", csv_text)
         self.assertNotIn("Dr. Elena Rostova", csv_text)
         self.assertNotIn("Marcus Vance", csv_text)
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "created_project", False):
+            db.delete_project(cls.project_id)
 
 
 if __name__ == "__main__":
