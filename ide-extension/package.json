@@ -1,0 +1,154 @@
+{
+  "name": "sentinel-appsec-ide",
+  "displayName": "Sentinel AppSec & Custom Rule Engine",
+  "description": "Real-time AST security scanning, vulnerability diagnostics, hover tooltips, and project custom rules reflection (.sentinel/rules.yaml).",
+  "version": "1.0.0",
+  "publisher": "sentinel-security",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Security",
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "security",
+    "sast",
+    "iac",
+    "cisa-kev",
+    "secrets",
+    "owasp",
+    "misra",
+    "iso27001",
+    "custom-rules"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "workspaceContains:**/.sentinel/rules.yaml",
+    "workspaceContains:**/.sentinel/rules.json",
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:dockerfile",
+    "onLanguage:yaml",
+    "onLanguage:terraform"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sentinel-activity-bar",
+          "title": "Sentinel AppSec",
+          "icon": "resources/shield.svg"
+        }
+      ]
+    },
+    "views": {
+      "sentinel-activity-bar": [
+        {
+          "id": "sentinel.rulesExplorer",
+          "name": "Security & Custom Rules Explorer",
+          "icon": "resources/rules.svg"
+        },
+        {
+          "id": "sentinel.activeFlaws",
+          "name": "Active Vulnerabilities & Diagnostics"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "sentinel.scanCurrentFile",
+        "title": "Sentinel: Scan Active Document",
+        "category": "Sentinel AppSec",
+        "icon": "$(search)"
+      },
+      {
+        "command": "sentinel.scanWorkspace",
+        "title": "Sentinel: Scan Entire Workspace",
+        "category": "Sentinel AppSec",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "sentinel.refreshRules",
+        "title": "Sentinel: Refresh & Sync Custom Rules",
+        "category": "Sentinel AppSec",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "sentinel.inspectRule",
+        "title": "Sentinel: Inspect Security Rule",
+        "category": "Sentinel AppSec"
+      },
+      {
+        "command": "sentinel.openDashboard",
+        "title": "Sentinel: Open Web Dashboard",
+        "category": "Sentinel AppSec",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "sentinel.applyQuickFix",
+        "title": "Sentinel: Apply Remediation Fix",
+        "category": "Sentinel AppSec"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "sentinel.refreshRules",
+          "when": "view == sentinel.rulesExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "sentinel.openDashboard",
+          "when": "view == sentinel.rulesExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "sentinel.scanWorkspace",
+          "when": "view == sentinel.activeFlaws",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "sentinel.scanCurrentFile",
+          "group": "sentinel@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Sentinel AppSec Configuration",
+      "properties": {
+        "sentinel.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8000",
+          "description": "Base URL of the Sentinel / AegisSec backend server"
+        },
+        "sentinel.apiToken": {
+          "type": "string",
+          "default": "",
+          "description": "API Bearer Token or PAT for Sentinel backend authentication"
+        },
+        "sentinel.rulesFile": {
+          "type": "string",
+          "default": ".sentinel/rules.yaml",
+          "description": "Relative path to project-level custom rules YAML or JSON file"
+        },
+        "sentinel.scanOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically run security and custom rules audit on document save"
+        },
+        "sentinel.failOnSeverity": {
+          "type": "string",
+          "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+          "default": "HIGH",
+          "description": "Severity threshold for reporting blocking diagnostic errors"
+        }
+      }
+    }
+  }
+}

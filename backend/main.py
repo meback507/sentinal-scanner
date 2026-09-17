@@ -4,6 +4,7 @@ REST API, Background Scan Pipeline, Dynamic Prioritization, and Static File Serv
 """
 
 import os
+import json
 import shutil
 import tempfile
 from typing import List, Optional, Dict, Any
@@ -687,6 +688,46 @@ def save_custom_rule(rule: Dict[str, Any], user: UserModel = Depends(require_rol
 def delete_custom_rule(rule_id: str, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
     success = rule_manager.delete_rule(rule_id)
     return {"success": success}
+
+
+@app.get("/api/rules/catalog")
+def get_rule_catalog(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    """
+    Returns complete security rules catalog for IDE plugin and developer tooling,
+    reflecting built-in SAST, IaC, API Sec, platform custom rules, and project-level custom rules (.sentinel/rules.yaml).
+    """
+    workspace_dir = None
+    if project_id:
+        proj = db.get_project_by_id(project_id)
+        if proj and proj.get("workspace_path"):
+            workspace_dir = proj["workspace_path"]
+
+    catalog = rule_manager.get_complete_rule_catalog(workspace_dir)
+    return catalog
+
+
+@app.get("/api/rules/export")
+def export_rules(format: str = "yaml", user: UserModel = Depends(get_current_user)):
+    """
+    Exports project-compatible custom rules (.sentinel/rules.yaml) for developer IDE syncing.
+    """
+    import yaml
+    catalog = rule_manager.get_complete_rule_catalog()
+    all_custom = catalog["rules"]["platform_custom"] + catalog["rules"]["project_custom"]
+
+    if format.lower() == "json":
+        return Response(
+            content=json.dumps({"version": "1.0", "rules": all_custom}, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": 'attachment; filename="sentinel-rules.json"'}
+        )
+
+    yaml_content = yaml.dump({"version": "1.0", "rules": all_custom}, sort_keys=False)
+    return Response(
+        content=yaml_content,
+        media_type="application/x-yaml",
+        headers={"Content-Disposition": 'attachment; filename="sentinel-rules.yaml"'}
+    )
 
 
 # --- Standards Taxonomy ---

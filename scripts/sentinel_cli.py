@@ -13,11 +13,21 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+# Auto-detect local virtualenv site-packages if running with system python
+venv_base = os.path.join(REPO_ROOT, ".venv", "lib")
+if os.path.isdir(venv_base):
+    for entry in os.listdir(venv_base):
+        site_pkg = os.path.join(venv_base, entry, "site-packages")
+        if os.path.isdir(site_pkg) and site_pkg not in sys.path:
+            sys.path.insert(0, site_pkg)
+
 from backend.scanners.sast_engine import SASTEngine
 from backend.scanners.secret_scanner import SecretScanner
 from backend.scanners.iac_engine import IaCEngine
 from backend.scanners.api_sec_engine import APISecEngine
 from backend.prioritization.cisa_service import cisa_service
+from backend.rules.rule_manager import rule_manager
+import json
 
 
 # ANSI Color Codes
@@ -42,14 +52,69 @@ def print_banner():
 """)
 
 
-def run_scan(target_path: str, fail_on: str = "HIGH") -> int:
+def list_rules(target_path: str = ".", output_json: bool = False) -> int:
+    target_path = os.path.abspath(target_path)
+    catalog = rule_manager.get_complete_rule_catalog(target_path)
+
+    if output_json:
+        print(json.dumps(catalog, indent=2))
+        return 0
+
+    summary = catalog["summary"]
+    print(f"{CLR_BOLD}Active Security Rules Catalog:{CLR_RESET} {summary['total_active_rules']} total active rules")
+    print(f"  • {CLR_CYAN}Built-in SAST:{CLR_RESET} {summary['sast_builtin']}")
+    print(f"  • {CLR_CYAN}Built-in IaC & Containers:{CLR_RESET} {summary['iac_builtin']}")
+    print(f"  • {CLR_CYAN}Built-in API Security:{CLR_RESET} {summary['api_builtin']}")
+    print(f"  • {CLR_YELLOW}Platform Custom (DB):{CLR_RESET} {summary['platform_custom']}")
+    print(f"  • {CLR_GREEN}Project Custom (.sentinel/rules.yaml):{CLR_RESET} {summary['project_custom']}\n")
+
+    print(f"{CLR_BOLD}{'ID':<18} {'TYPE':<8} {'SEV':<10} {'TITLE'}{CLR_RESET}")
+    print("-" * 80)
+
+    # 1. Project Custom Rules
+    if catalog["rules"]["project_custom"]:
+        print(f"{CLR_GREEN}{CLR_BOLD}--- Project Custom Rules ({len(catalog['rules']['project_custom'])}) ---{CLR_RESET}")
+        for r in catalog["rules"]["project_custom"]:
+            sev = r.get("severity", "HIGH")
+            color = CLR_RED if sev == "CRITICAL" else (CLR_YELLOW if sev == "HIGH" else CLR_BLUE)
+            print(f"{CLR_GREEN}{r['id']:<18}{CLR_RESET} {r.get('type', 'sast').upper():<8} {color}{sev:<10}{CLR_RESET} {r.get('name', '')[:40]}")
+
+    # 2. Platform Custom Rules
+    if catalog["rules"]["platform_custom"]:
+        print(f"\n{CLR_YELLOW}{CLR_BOLD}--- Platform Custom Rules ({len(catalog['rules']['platform_custom'])}) ---{CLR_RESET}")
+        for r in catalog["rules"]["platform_custom"]:
+            sev = r.get("severity", "HIGH")
+            color = CLR_RED if sev == "CRITICAL" else (CLR_YELLOW if sev == "HIGH" else CLR_BLUE)
+            print(f"{CLR_YELLOW}{r.get('id', ''):<18}{CLR_RESET} {r.get('rule_category', 'sast').upper():<8} {color}{sev:<10}{CLR_RESET} {r.get('name', '')[:40]}")
+
+    # 3. Built-in SAST
+    print(f"\n{CLR_CYAN}{CLR_BOLD}--- Built-in SAST Rules ({len(catalog['rules']['sast_builtin'])}) ---{CLR_RESET}")
+    for r in catalog["rules"]["sast_builtin"]:
+        print(f"{r['id']:<18} {'SAST':<8} {'HIGH':<10} {r.get('name', '')[:45]}")
+
+    # 4. Built-in IaC
+    print(f"\n{CLR_CYAN}{CLR_BOLD}--- Built-in IaC & Container Rules ({len(catalog['rules']['iac_builtin'])}) ---{CLR_RESET}")
+    for r in catalog["rules"]["iac_builtin"]:
+        sev = r.get("severity", "HIGH")
+        color = CLR_RED if sev == "CRITICAL" else (CLR_YELLOW if sev == "HIGH" else CLR_BLUE)
+        print(f"{r['id']:<18} {'IAC':<8} {color}{sev:<10}{CLR_RESET} {r.get('name', '')[:45]}")
+
+    print("\n" + "=" * 80 + "\n")
+    return 0
+
+
+def run_scan(target_path: str, fail_on: str = "HIGH", output_json: bool = False, custom_rules_file: str = None) -> int:
     target_path = os.path.abspath(target_path)
     if not os.path.exists(target_path):
-        print(f"{CLR_RED}Error: Target path '{target_path}' does not exist.{CLR_RESET}")
+        if output_json:
+            print(json.dumps({"error": f"Target path '{target_path}' does not exist."}))
+        else:
+            print(f"{CLR_RED}Error: Target path '{target_path}' does not exist.{CLR_RESET}")
         return 1
 
-    print(f"{CLR_BOLD}Target Directory:{CLR_RESET} {target_path}")
-    print(f"{CLR_BOLD}Scanning engines:{CLR_RESET} SAST, High-Entropy Secrets, IaC/Containers, OpenAPI Specs\n")
+    if not output_json:
+        print(f"{CLR_BOLD}Target Directory:{CLR_RESET} {target_path}")
+        print(f"{CLR_BOLD}Scanning engines:{CLR_RESET} SAST, High-Entropy Secrets, IaC/Containers, OpenAPI Specs\n")
 
     all_findings = []
 
@@ -76,6 +141,10 @@ def run_scan(target_path: str, fail_on: str = "HIGH") -> int:
     # Enrich with CISA KEV
     for f in all_findings:
         cisa_service.enrich_finding_with_cisa_kev(f)
+
+    if output_json:
+        print(json.dumps(all_findings, indent=2))
+        return 0
 
     # Render results
     severity_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
@@ -160,20 +229,37 @@ def main():
     scan_p = subparsers.add_parser("scan", help="Scan local directory for security vulnerabilities")
     scan_p.add_argument("path", nargs="?", default=".", help="Target path to scan (default: current directory)")
     scan_p.add_argument("--fail-on", default="HIGH", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW"], help="Severity threshold that triggers a non-zero exit code")
+    scan_p.add_argument("--json", action="store_true", help="Output findings as structured JSON")
+    scan_p.add_argument("--rules", default=None, help="Path to custom rules YAML/JSON file")
+
+    # List rules command
+    rules_p = subparsers.add_parser("list-rules", help="List all active security rules (built-in and project custom)")
+    rules_p.add_argument("path", nargs="?", default=".", help="Workspace path to check for project custom rules")
+    rules_p.add_argument("--json", action="store_true", help="Output rule catalog as structured JSON")
 
     # Hook installer command
     subparsers.add_parser("install-hook", help="Install automated Git pre-commit security hook")
 
     args = parser.parse_args()
 
-    print_banner()
+    if getattr(args, "json", False):
+        # Don't print banner when JSON output requested
+        pass
+    else:
+        print_banner()
 
     if args.command == "install-hook":
         sys.exit(install_pre_commit_hook())
+    elif args.command == "list-rules":
+        target = getattr(args, "path", ".")
+        output_json = getattr(args, "json", False)
+        sys.exit(list_rules(target, output_json))
     elif args.command == "scan" or args.command is None:
         target = getattr(args, "path", ".")
         threshold = getattr(args, "fail_on", "HIGH")
-        sys.exit(run_scan(target, threshold))
+        output_json = getattr(args, "json", False)
+        custom_rules = getattr(args, "rules", None)
+        sys.exit(run_scan(target, threshold, output_json, custom_rules))
     else:
         parser.print_help()
         sys.exit(1)
@@ -181,3 +267,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

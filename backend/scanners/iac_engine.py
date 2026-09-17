@@ -177,10 +177,26 @@ IAC_RULES = [
 
 
 class IaCEngine:
-    def __init__(self):
-        pass
+    def __init__(self, custom_rules: List[Dict[str, Any]] = None):
+        self.rules = list(IAC_RULES)
+        if custom_rules:
+            self.rules.extend(custom_rules)
 
     def scan_directory(self, target_dir: str) -> List[Dict[str, Any]]:
+        # Automatically discover and load project-level custom rules (.sentinel/rules.yaml)
+        try:
+            from ..rules.rule_manager import rule_manager
+            proj_rules = rule_manager.load_project_rules(target_dir)
+            for r in proj_rules:
+                if r.get("type", "").lower() == "iac":
+                    rule_copy = dict(r)
+                    if "file_types" not in rule_copy:
+                        rule_copy["file_types"] = rule_copy.get("languages", ["dockerfile", "terraform", "k8s", "compose", "ci"])
+                    if not any(existing.get("id") == rule_copy.get("id") for existing in self.rules):
+                        self.rules.append(rule_copy)
+        except Exception:
+            pass
+
         findings = []
         if not os.path.exists(target_dir):
             return findings
@@ -204,8 +220,8 @@ class IaCEngine:
                     continue
 
                 # Run pattern-based checks
-                for rule in IAC_RULES:
-                    if file_type not in rule["file_types"]:
+                for rule in self.rules:
+                    if file_type not in rule.get("file_types", []):
                         continue
 
                     regex_pat = rule.get("regex")
@@ -246,23 +262,24 @@ class IaCEngine:
         return ""
 
     def _build_finding(self, rule: Dict[str, Any], file_path: str, line_start: int, line_end: int, snippet: str) -> Dict[str, Any]:
-        severity = rule["severity"]
+        severity = rule.get("severity", "HIGH")
         cvss = rule.get("cvss", 7.0)
         epss = rule.get("epss", 0.05)
+        standards = rule.get("standards", ["CIS:Docker:4.1"])
 
         prioritization = risk_engine.calculate_finding_priority(
             cvss_score=cvss,
             epss_score=epss,
-            standards=rule["standards"]
+            standards=standards
         )
 
         return {
             "type": "iac",
             "title": f"[{rule['id']}] {rule['name']}",
-            "description": rule["description"],
-            "remediation": rule["remediation"],
+            "description": rule.get("description", "Infrastructure as Code configuration vulnerability."),
+            "remediation": rule.get("remediation", "Update IaC manifest according to hardening benchmarks."),
             "severity": severity,
-            "cwe_id": rule["cwe"],
+            "cwe_id": rule.get("cwe", "CWE-250"),
             "cve_id": None,
             "language": "iac",
             "file_path": file_path,
@@ -277,6 +294,6 @@ class IaCEngine:
             "quadrant": prioritization["quadrant"],
             "urgency": prioritization["urgency"],
             "sla_days": prioritization["sla_days"],
-            "standards": rule["standards"],
+            "standards": standards,
             "status": "open"
         }

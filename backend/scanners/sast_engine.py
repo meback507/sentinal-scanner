@@ -160,6 +160,17 @@ class SASTEngine:
         """
         Recursively scans a directory for security flaws using regex and AST analysis.
         """
+        # Automatically discover and load project-level custom rules (.sentinel/rules.yaml)
+        try:
+            from ..rules.rule_manager import rule_manager
+            proj_rules = rule_manager.load_project_rules(target_dir)
+            for r in proj_rules:
+                if r.get("type", "sast").lower() in ["sast", "secret"]:
+                    if not any(existing.get("id") == r.get("id") for existing in self.rules):
+                        self.rules.append(r)
+        except Exception as e:
+            pass
+
         findings = []
         files_scanned = 0
 
