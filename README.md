@@ -61,6 +61,28 @@
    - **Developer-Scoped AI Access**: Developers can only trigger AI remediation on code they authored; cross-developer inspection requests are strictly blocked.
    - **100% Offline / Air-Gapped Resiliency**: Built-in deterministic AST synthesis engine ensures continuous operation with expert code diffs even when external LLM APIs are offline or unconfigured.
 
+10. **Compliance, Audit & Governance Hub (`#view-audit`)**:
+    - **Audited Findings Ledger**: Complete inventory of vulnerabilities with regulatory controls (ISO 26262 ASIL-D, ISO 27001, NIST SSDF), SCA reachability, and developer blame.
+    - **Signed Audit Attestation Certificates**: Generates downloadable, cryptographically signed compliance certificates with 64-character SHA-256 digital seals.
+    - **Immutable Audit Trail Log**: Append-only security log tracking scans, PR creations, CI evaluations, and attestation events.
+
+11. **Time-Series Trend Line Graphs & RBAC Contributor Scoping**:
+    - **Default Landing Page Trajectory (`#view-dashboard`)**: Visualizes 6-sprint historical security progress across Critical flaws, High severity, Remediated fixes, and Posture rating (%).
+    - **Strict Contributor Scoping**: When a Developer logs in, the graph renders **strictly their contributed code trajectory**; when an Admin logs in, shows Global Enterprise trends with an interactive Contributor Scope dropdown.
+    - **Audit Compliance Velocity Curve**: Dedicated trend chart in the Audit Hub showing ISO 27001, ISO 26262, and NIST SSDF adherence velocity over time.
+
+12. **1-Click Autonomous AI Remediation PR Generator**:
+    - Directly branches (`fix/aegissec-{id[:8]}-{cwe}`), patches code with verified AI diffs, attributes original authors, and opens pull requests with automated compliance and test verification suites.
+    - Enforces developer isolation: developers cannot generate PRs on foreign code (`403 Forbidden`).
+
+13. **CI/CD Quality Gates & Differential PR Webhooks**:
+    - Threat-informed gate checking (`POST /api/ci/gate-check`) that fails on active weaponized hazards (🚨 Act Now) or automotive safety violations (ASIL-D / MISRA Rule 21.3) while preserving routine velocity.
+    - GitHub/GitLab webhook integration (`POST /api/webhooks/github`) with automated Markdown review comments and remediation links.
+
+14. **True-Positive SCA Reachability & High-Entropy Secret Scanner**:
+    - Static call-graph symbol reachability analysis distinguishing `REACHABLE` from `IMPORTED` and `DORMANT` dependencies.
+    - Shannon Entropy detection ($H(X) \ge 4.0$ bits/char) with regex pattern matching for 50+ API and token formats.
+
 ---
 
 ## Quick Start
