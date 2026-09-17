@@ -62,10 +62,12 @@
                 </div>
                 <div>
                     <select id="role-switcher-select" class="role-switcher-select" onchange="switchDemoRole(this.value)" title="Switch Active RBAC Role for Testing">
-                        <option value="admin">Admin</option>
-                        <option value="sec_lead">Sec Lead</option>
-                        <option value="developer">Developer</option>
-                        <option value="auditor">Auditor</option>
+                        <option value="admin">Admin (Global View)</option>
+                        <option value="sec_lead">Sec Lead (Global View)</option>
+                        <option value="marcus">Dev Marcus Vance (Scoped)</option>
+                        <option value="elena">Dev Dr. Elena Rostova (Scoped)</option>
+                        <option value="sarah">Dev Sarah Lin (Scoped)</option>
+                        <option value="auditor">Auditor (Read-Only)</option>
                     </select>
                 </div>
             </div>
@@ -94,6 +96,15 @@
                 </button>
             </div>
         </header>
+
+        <!-- Developer Scoped Mode Active Notification Banner -->
+        <div id="developer-scoped-banner" class="scoped-alert-banner" style="display: none; margin: 0 32px 18px 32px; padding: 12px 20px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 8px; color: #93c5fd; font-size: 13px; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span><strong>Developer Isolation Active:</strong> Scoped strictly to vulnerabilities in code authored by <span id="scoped-author-name" style="font-weight: 700; color: #ffffff;">Developer</span> (<span id="scoped-author-email" style="color: #93c5fd;">email</span>). Code written by other developers is hidden.</span>
+            </div>
+            <span class="badge" style="background: rgba(59, 130, 246, 0.25); color: #bfdbfe; font-size: 11px; padding: 4px 10px; font-weight: 700;">RBAC ISOLATED</span>
+        </div>
 
         <!-- VIEW: DASHBOARD -->
         <section id="view-dashboard" class="page-container active">

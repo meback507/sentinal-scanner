@@ -16,7 +16,8 @@ from .models import (
     UserModel, UserCreateRequest, LoginRequest, LoginResponse,
     ProjectModel, ProjectCreateRequest, FindingModel, ScanModel,
     CustomRuleModel, RuleGenerateRequest, RuleTestRequest,
-    JiraConfigRequest, ZammadConfigRequest, CreateTicketRequest
+    JiraConfigRequest, ZammadConfigRequest, CreateTicketRequest,
+    RoleEnum
 )
 from .db import db, hash_password
 from .auth import (
@@ -328,6 +329,22 @@ django==4.1.0
     return temp_dir
 
 
+def _is_finding_authored_by_user(finding: Dict[str, Any], user: UserModel) -> bool:
+    """
+    Checks if a vulnerability is attributed to the logged-in developer.
+    Admins, Security Engineers, and Auditors have global visibility.
+    """
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_str != RoleEnum.DEVELOPER.value:
+        return True
+    u_name = user.username.lower()
+    u_email = user.email.lower()
+    f_author = (finding.get("author_name") or "").lower()
+    f_email = (finding.get("author_email") or "").lower()
+    return (u_name in f_author or (u_email and u_email == f_email) or (f_author and f_author in u_name) or
+            (u_name == "developer" and "marcus" in f_author))
+
+
 # --- Findings & Triage Routes ---
 @app.get("/api/findings", response_model=List[FindingModel])
 def list_findings(
@@ -335,7 +352,10 @@ def list_findings(
     scan_id: Optional[str] = None,
     user: UserModel = Depends(get_current_user)
 ):
-    return db.list_findings(project_id, scan_id)
+    findings = db.list_findings(project_id, scan_id)
+    if user.role in (RoleEnum.DEVELOPER, "developer"):
+        return [f for f in findings if _is_finding_authored_by_user(f, user)]
+    return findings
 
 
 @app.get("/api/findings/{finding_id}", response_model=FindingModel)
@@ -343,20 +363,33 @@ def get_finding(finding_id: str, user: UserModel = Depends(get_current_user)):
     f = db.get_finding_by_id(finding_id)
     if not f:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not _is_finding_authored_by_user(f, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to inspect vulnerabilities in code you authored."
+        )
     return f
 
 
 @app.patch("/api/findings/{finding_id}/status")
 def update_finding_status(
     finding_id: str,
-    status: str,
+    status_val: str,
     user: UserModel = Depends(require_roles(["admin", "security_engineer", "developer"]))
 ):
     valid_statuses = ["open", "in_triage", "confirmed", "false_positive", "resolved"]
-    if status not in valid_statuses:
+    if status_val not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
-    db.update_finding_status(finding_id, status)
-    return {"success": True, "status": status}
+    finding = db.get_finding_by_id(finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if not _is_finding_authored_by_user(finding, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to update findings in code you authored."
+        )
+    db.update_finding_status(finding_id, status_val)
+    return {"success": True, "status": status_val}
 
 
 @app.post("/api/findings/{finding_id}/ticket")
@@ -368,6 +401,11 @@ def create_ticket_for_finding(
     finding = db.get_finding_by_id(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not _is_finding_authored_by_user(finding, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to create tickets for findings in code you authored."
+        )
 
     if req.platform == "jira":
         res = JiraConnector.create_ticket(finding)
@@ -442,6 +480,8 @@ def export_html(project_id: str, user: UserModel = Depends(get_current_user)):
     scans = db.list_scans(project_id)
     latest_scan = scans[0] if scans else {"id": "N/A", "composite_risk_score": 0.0}
     findings = db.list_findings(project_id)
+    if user.role in (RoleEnum.DEVELOPER, "developer"):
+        findings = [f for f in findings if _is_finding_authored_by_user(f, user)]
 
     html_content = ReportGenerator.generate_html_report(proj, latest_scan, findings)
     return HTMLResponse(content=html_content)
@@ -456,6 +496,8 @@ def export_sarif(project_id: str, user: UserModel = Depends(get_current_user)):
     scans = db.list_scans(project_id)
     latest_scan = scans[0] if scans else {"id": "N/A"}
     findings = db.list_findings(project_id)
+    if user.role in (RoleEnum.DEVELOPER, "developer"):
+        findings = [f for f in findings if _is_finding_authored_by_user(f, user)]
 
     sarif_json = ReportGenerator.generate_sarif(proj, latest_scan, findings)
     return Response(content=sarif_json, media_type="application/sarif+json", headers={
@@ -470,6 +512,8 @@ def export_cyclonedx(project_id: str, user: UserModel = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Project not found")
 
     findings = db.list_findings(project_id)
+    if user.role in (RoleEnum.DEVELOPER, "developer"):
+        findings = [f for f in findings if _is_finding_authored_by_user(f, user)]
     sca_deps = []
     # Build unique dependencies from SCA findings
     seen_deps = set()
@@ -497,6 +541,8 @@ def export_csv(project_id: str, user: UserModel = Depends(get_current_user)):
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     findings = db.list_findings(project_id)
+    if user.role in (RoleEnum.DEVELOPER, "developer"):
+        findings = [f for f in findings if _is_finding_authored_by_user(f, user)]
     csv_str = ReportGenerator.generate_csv(findings)
     return Response(content=csv_str, media_type="text/csv", headers={
         "Content-Disposition": f'attachment; filename="aegissec-findings-{project_id}.csv"'
@@ -544,7 +590,10 @@ def test_integration(key: str, user: UserModel = Depends(require_roles(["admin",
 def get_dashboard_stats(user: UserModel = Depends(get_current_user)):
     projects = db.list_projects()
     scans = db.list_scans()
-    findings = db.list_findings()
+    all_raw_findings = db.list_findings()
+
+    is_developer_scoped = (user.role in (RoleEnum.DEVELOPER, "developer"))
+    findings = [f for f in all_raw_findings if _is_finding_authored_by_user(f, user)] if is_developer_scoped else all_raw_findings
 
     total_projects = len(projects)
     total_findings = len(findings)
@@ -617,6 +666,8 @@ def get_dashboard_stats(user: UserModel = Depends(get_current_user)):
         "quadrants": quadrants,
         "standards_summary": standards_summary,
         "developer_attribution": developer_attribution,
+        "is_developer_scoped": is_developer_scoped,
+        "scoped_developer_name": user.username if is_developer_scoped else None,
         "recent_scans": scans[:5]
     }
 

@@ -143,17 +143,21 @@ class Database:
 
     def _seed_default_data(self):
         with self._get_conn() as conn:
-            # Check if users already exist
-            cursor = conn.execute("SELECT COUNT(*) as cnt FROM users")
-            if cursor.fetchone()["cnt"] == 0:
-                now = datetime.datetime.now().isoformat()
-                default_users = [
-                    (str(uuid.uuid4()), "admin", "admin@aegissec.internal", hash_password("Admin@123!"), "admin", now),
-                    (str(uuid.uuid4()), "sec_lead", "seclead@aegissec.internal", hash_password("SecLead@123!"), "security_engineer", now),
-                    (str(uuid.uuid4()), "developer", "dev@aegissec.internal", hash_password("Dev@123!"), "developer", now),
-                    (str(uuid.uuid4()), "auditor", "auditor@aegissec.internal", hash_password("Auditor@123!"), "auditor", now)
-                ]
-                conn.executemany("INSERT INTO users VALUES (?, ?, ?, ?, ?, ?)", default_users)
+            now = datetime.datetime.now().isoformat()
+            default_users = [
+                ("u-admin", "admin", "admin@aegissec.internal", hash_password("Admin@123!"), "admin", now),
+                ("u-sec-lead", "sec_lead", "seclead@aegissec.internal", hash_password("SecLead@123!"), "security_engineer", now),
+                ("u-marcus", "marcus", "marcus.vance@cloudsec.internal", hash_password("Marcus@123!"), "developer", now),
+                ("u-elena", "elena", "elena.rostova@autocorp.de", hash_password("Elena@123!"), "developer", now),
+                ("u-sarah", "sarah", "sarah.lin@frontend.io", hash_password("Sarah@123!"), "developer", now),
+                ("u-developer", "developer", "dev@aegissec.internal", hash_password("Dev@123!"), "developer", now),
+                ("u-auditor", "auditor", "auditor@aegissec.internal", hash_password("Auditor@123!"), "auditor", now)
+            ]
+            for u in default_users:
+                conn.execute(
+                    "INSERT OR IGNORE INTO users (id, username, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    u
+                )
 
     # --- User Operations ---
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:

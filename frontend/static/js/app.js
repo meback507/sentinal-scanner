@@ -20,6 +20,18 @@ let state = {
     }
 };
 
+// --- Fetch Interceptor for JWT Authorization ---
+const _originalFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+    options = options || {};
+    const headers = options.headers ? new Headers(options.headers) : new Headers();
+    if (state.currentUser && state.currentUser.token && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${state.currentUser.token}`);
+    }
+    options.headers = headers;
+    return _originalFetch(url, options);
+};
+
 // --- Initialization ---
 document.addEventListener("DOMContentLoaded", async () => {
     await checkAuth();
@@ -67,14 +79,48 @@ function navigate(viewName) {
 // --- Auth & RBAC ---
 async function checkAuth() {
     try {
+        const savedToken = localStorage.getItem("aegis_token");
+        if (savedToken) {
+            state.currentUser.token = savedToken;
+        }
         const resp = await fetch("/api/auth/me");
         if (resp.ok) {
             const u = await resp.json();
-            state.currentUser = u;
+            state.currentUser = { ...u, token: state.currentUser.token };
             updateUserDisplay();
+        } else if (savedToken) {
+            localStorage.removeItem("aegis_token");
+            state.currentUser.token = "";
         }
     } catch (e) {
         console.error("Auth check failed:", e);
+    }
+}
+
+function updateDeveloperIsolationUI() {
+    const banner = document.getElementById("developer-scoped-banner");
+    const authorSpan = document.getElementById("scoped-author-name");
+    const emailSpan = document.getElementById("scoped-author-email");
+    const isDev = (state.currentUser && (state.currentUser.role === "developer" || state.currentUser.role === "DEVELOPER"));
+
+    if (banner) {
+        if (isDev) {
+            banner.style.display = "flex";
+            const devProfileMap = {
+                marcus: { name: "Marcus Vance", email: "marcus.vance@cloudsec.internal" },
+                elena: { name: "Dr. Elena Rostova", email: "elena.rostova@autocorp.de" },
+                sarah: { name: "Sarah Lin", email: "sarah.lin@frontend.io" },
+                developer: { name: "Marcus Vance", email: "marcus.vance@cloudsec.internal" }
+            };
+            const profile = devProfileMap[state.currentUser.username] || {
+                name: state.currentUser.username,
+                email: state.currentUser.email || "developer@internal"
+            };
+            if (authorSpan) authorSpan.textContent = profile.name;
+            if (emailSpan) emailSpan.textContent = profile.email;
+        } else {
+            banner.style.display = "none";
+        }
     }
 }
 
@@ -90,30 +136,51 @@ function updateUserDisplay() {
     if (switcher) {
         switcher.value = state.currentUser.username;
     }
+    updateDeveloperIsolationUI();
 }
 
 async function switchDemoRole(roleKey) {
     const creds = {
         admin: { username: "admin", password: "Admin@123!" },
         sec_lead: { username: "sec_lead", password: "SecLead@123!" },
+        marcus: { username: "marcus", password: "Marcus@123!" },
+        elena: { username: "elena", password: "Elena@123!" },
+        sarah: { username: "sarah", password: "Sarah@123!" },
         developer: { username: "developer", password: "Dev@123!" },
         auditor: { username: "auditor", password: "Auditor@123!" }
     };
 
     const target = creds[roleKey] || creds.admin;
     try {
-        const resp = await fetch("/api/auth/login", {
+        const resp = await _originalFetch("/api/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(target)
         });
         if (resp.ok) {
             const data = await resp.json();
-            state.currentUser = data.user;
+            state.currentUser = {
+                ...data.user,
+                token: data.access_token
+            };
+            localStorage.setItem("aegis_token", data.access_token);
+            localStorage.setItem("aegis_user", JSON.stringify(data.user));
             updateUserDisplay();
-            showToast(`Role switched to ${data.user.role.toUpperCase()}`, "success");
+
+            const isDev = (data.user.role === "developer");
+            const roleName = isDev 
+                ? `Developer (${data.user.username}) - Scoped View Active` 
+                : `${data.user.role.replace('_', ' ').toUpperCase()} (Global View)`;
+            showToast(`Switched account: ${roleName}`, "success");
+
+            // Immediately reload dashboard and findings to reflect user's authorization scope
+            await loadFindings();
+            await loadDashboardStats();
+        } else {
+            showToast("Login failed for selected role", "error");
         }
     } catch (e) {
+        console.error("Role switch failed:", e);
         showToast("Role switch failed", "error");
     }
 }
