@@ -75,7 +75,9 @@ function navigate(viewName) {
     if (viewName === "triage") loadFindings();
     if (viewName === "rules") loadCustomRules();
     if (viewName === "compliance") renderComplianceMatrix();
+    if (viewName === "integrations") loadIntegrations();
     if (viewName === "users") loadUsers();
+    if (viewName === "benchmark") loadBenchmarkData();
 }
 
 // --- Auth & Session Lifecycle ---
@@ -1342,6 +1344,171 @@ async function loadUsers() {
         }
     } catch (e) {
         console.error("Failed loading users:", e);
+    }
+}
+
+// --- Tool Benchmark & Comparison ---
+async function loadBenchmarkData() {
+    try {
+        const resp = await fetch("/api/benchmark");
+        if (!resp.ok) {
+            showToast("Failed to load benchmark data", "error");
+            return;
+        }
+        const data = await resp.json();
+
+        // 1. Render Scorecards
+        const scorecardsContainer = document.getElementById("benchmark-scorecards");
+        if (scorecardsContainer && data.tools) {
+            scorecardsContainer.innerHTML = "";
+            const toolOrder = ["aegissec", "semgrep", "sonarqube", "depcheck"];
+            toolOrder.forEach(key => {
+                const t = data.tools[key];
+                if (!t) return;
+                const isLeader = key === "aegissec";
+                const borderStyle = isLeader ? "border: 1px solid var(--accent-indigo); background: linear-gradient(180deg, rgba(99, 102, 241, 0.15), rgba(15, 23, 42, 0.8));" : "background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border);";
+                const badgeColor = isLeader ? "background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4);" : "background: rgba(148, 163, 184, 0.15); color: #94a3b8;";
+
+                const card = document.createElement("div");
+                card.className = "glass-card";
+                card.style.cssText = `${borderStyle} padding: 18px; border-radius: var(--radius-md); display: flex; flex-direction: column; justify-content: space-between; position: relative;`;
+
+                const strengthsList = (t.strengths || []).map(s => `<li style="font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">✔ ${s}</li>`).join("");
+                const limitationsList = (t.limitations || []).map(l => `<li style="font-size: 11px; color: #f87171; margin-bottom: 4px;">✖ ${l}</li>`).join("");
+
+                card.innerHTML = `
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                            <div>
+                                <h3 style="font-size: 18px; font-weight: 700; color: ${isLeader ? '#38bdf8' : '#fff'};">${t.name}</h3>
+                                <div style="font-size: 11px; color: var(--text-muted);">${t.vendor}</div>
+                            </div>
+                            <div style="font-size: 22px; font-weight: 800; color: ${isLeader ? 'var(--accent-cyan)' : '#e2e8f0'}; font-family: var(--font-mono);">${t.overall_score}<span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">/100</span></div>
+                        </div>
+                        <span class="badge" style="${badgeColor} font-size: 10px; margin-bottom: 12px; display: inline-block;">${t.category}</span>
+                        <div style="margin-top: 10px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">Key Highlights</div>
+                            <ul style="list-style: none; padding-left: 0; margin: 0;">
+                                ${strengthsList}
+                            </ul>
+                        </div>
+                    </div>
+                    ${limitationsList ? `
+                    <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
+                        <div style="font-size: 10px; font-weight: 700; color: #f87171; text-transform: uppercase; margin-bottom: 4px;">Limitations / Gaps</div>
+                        <ul style="list-style: none; padding-left: 0; margin: 0;">
+                            ${limitationsList}
+                        </ul>
+                    </div>
+                    ` : ''}
+                `;
+                scorecardsContainer.appendChild(card);
+            });
+        }
+
+        // 2. Render KPIs
+        const kpisContainer = document.getElementById("benchmark-kpis");
+        if (kpisContainer && data.benchmarks) {
+            kpisContainer.innerHTML = "";
+            const b = data.benchmarks;
+            const kpiConfigs = [
+                { key: "alert_fatigue_reduction", title: "Noise Reduction Rate", aegis: b.alert_fatigue_reduction.scores.aegissec, legacy: b.alert_fatigue_reduction.scores.sonarqube, desc: "Via EPSS weaponization telemetry" },
+                { key: "rule_synthesis_latency", title: "Rule Authoring Latency", aegis: b.rule_synthesis_latency.scores.aegissec, legacy: b.rule_synthesis_latency.scores.sonarqube, desc: "Natural Language vs Java/YAML" },
+                { key: "mean_time_to_remediation", title: "Remediation Acceleration", aegis: b.mean_time_to_remediation.scores.aegissec, legacy: b.mean_time_to_remediation.scores.semgrep, desc: "Via AI root cause & refactored diffs" },
+                { key: "compliance_standards_breadth", title: "Standards Breadth", aegis: b.compliance_standards_breadth.scores.aegissec, legacy: b.compliance_standards_breadth.scores.semgrep, desc: "ISO 26262, MISRA, ISO 27001, etc." }
+            ];
+
+            kpiConfigs.forEach(k => {
+                const el = document.createElement("div");
+                el.className = "stat-card";
+                el.innerHTML = `
+                    <div class="stat-label">${k.title}</div>
+                    <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;">
+                        <div class="stat-value" style="color: var(--accent-cyan); font-size: 24px;">${k.aegis}</div>
+                        <span style="font-size: 11px; color: var(--text-muted);">vs ${k.legacy}</span>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">${k.desc}</div>
+                `;
+                kpisContainer.appendChild(el);
+            });
+        }
+
+        // 3. Render Matrix Table
+        const matrixContainer = document.getElementById("benchmark-matrix-container");
+        if (matrixContainer && data.comparison_matrix) {
+            let html = `
+                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border);">
+                            <th style="width: 26%;">Capability / Evaluation Criteria</th>
+                            <th style="width: 26%; color: #38bdf8; background: rgba(56, 189, 248, 0.05);">AegisSec</th>
+                            <th style="width: 16%;">Semgrep</th>
+                            <th style="width: 16%;">SonarQube</th>
+                            <th style="width: 16%;">OWASP DepCheck</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.comparison_matrix.forEach(cat => {
+                html += `
+                    <tr style="background: rgba(255, 255, 255, 0.03);">
+                        <td colspan="5" style="padding: 12px 14px; font-weight: 700; color: var(--accent-cyan); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            📂 ${cat.category}
+                        </td>
+                    </tr>
+                `;
+
+                cat.features.forEach(f => {
+                    const aegisIcon = f.aegissec.supported ? '<span style="color: #4ade80;">✔</span>' : '<span style="color: #f87171;">✖</span>';
+                    const semgrepIcon = f.semgrep.supported ? '<span style="color: #4ade80;">✔</span>' : '<span style="color: #f87171;">✖</span>';
+                    const sonarIcon = f.sonarqube.supported ? '<span style="color: #4ade80;">✔</span>' : '<span style="color: #f87171;">✖</span>';
+                    const depIcon = f.depcheck.supported ? '<span style="color: #4ade80;">✔</span>' : '<span style="color: #f87171;">✖</span>';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 12px 14px;">
+                                <strong style="font-size: 13px; color: #fff;">${f.feature}</strong>
+                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">${f.description}</div>
+                            </td>
+                            <td style="padding: 12px 14px; background: rgba(56, 189, 248, 0.04); border-left: 2px solid var(--accent-cyan);">
+                                <div style="display: flex; align-items: flex-start; gap: 6px;">
+                                    ${aegisIcon}
+                                    <span style="font-size: 12px; font-weight: 600; color: #e2e8f0;">${f.aegissec.value}</span>
+                                </div>
+                            </td>
+                            <td style="padding: 12px 14px;">
+                                <div style="display: flex; align-items: flex-start; gap: 6px;">
+                                    ${semgrepIcon}
+                                    <span style="font-size: 12px; color: #cbd5e1;">${f.semgrep.value}</span>
+                                </div>
+                            </td>
+                            <td style="padding: 12px 14px;">
+                                <div style="display: flex; align-items: flex-start; gap: 6px;">
+                                    ${sonarIcon}
+                                    <span style="font-size: 12px; color: #cbd5e1;">${f.sonarqube.value}</span>
+                                </div>
+                            </td>
+                            <td style="padding: 12px 14px;">
+                                <div style="display: flex; align-items: flex-start; gap: 6px;">
+                                    ${depIcon}
+                                    <span style="font-size: 12px; color: #cbd5e1;">${f.depcheck.value}</span>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+            matrixContainer.innerHTML = html;
+        }
+    } catch (e) {
+        console.error("Error loading benchmark data:", e);
+        showToast("Error loading benchmark report", "error");
     }
 }
 

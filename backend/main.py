@@ -35,6 +35,7 @@ from .integrations.jira_connector import JiraConnector
 from .integrations.zammad_connector import ZammadConnector
 from .integrations.llm_service import LLMService
 from .exporters.report_generator import ReportGenerator
+from .benchmark.comparator import BenchmarkComparator
 
 app = FastAPI(
     title="AegisSec - Unified SAST & SCA Platform",
@@ -565,6 +566,12 @@ def export_csv(project_id: str, user: UserModel = Depends(get_current_user)):
     return Response(content=csv_str, media_type="text/csv", headers={
         "Content-Disposition": f'attachment; filename="aegissec-findings-{project_id}.csv"'
     })
+
+
+# --- Benchmark & Tool Comparison Routes ---
+@app.get("/api/benchmark")
+def get_tool_benchmarks(user: UserModel = Depends(get_current_user)):
+    return BenchmarkComparator.get_benchmark_report()
 
 
 # --- Integrations Config Routes ---
