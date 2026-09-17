@@ -13,6 +13,8 @@ let state = {
     dashboardStats: null,
     customRules: [],
     standards: {},
+    dashboardFindingFilter: 'ALL',
+    dashboardFindingSearch: '',
     currentUser: {
         username: "admin",
         role: "admin",
@@ -37,6 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const isAuthenticated = await checkAuth();
     if (isAuthenticated) {
         await loadProjects();
+        await loadFindings();
         await loadDashboardStats();
         await loadStandards();
         await loadCustomRules();
@@ -510,6 +513,9 @@ async function triggerScanForProject(projectId) {
 // --- Dashboard & Analytics ---
 async function loadDashboardStats() {
     try {
+        if (!state.findings || state.findings.length === 0) {
+            await loadFindings();
+        }
         const resp = await fetch("/api/dashboard/stats");
         if (resp.ok) {
             state.dashboardStats = await resp.json();
@@ -550,7 +556,7 @@ function renderDashboard() {
     if (qOpp) qOpp.textContent = s.quadrants.OPPORTUNISTIC || 0;
     if (qRoutine) qRoutine.textContent = s.quadrants.ROUTINE || 0;
 
-    // Standards summary breakdown
+    // Standards summary breakdown (Interactive click-to-guide)
     const stdList = document.getElementById("dashboard-standards-list");
     if (stdList && s.standards_summary) {
         stdList.innerHTML = "";
@@ -559,13 +565,16 @@ function renderDashboard() {
         for (const [std, count] of Object.entries(s.standards_summary)) {
             const pct = Math.round((count / maxVal) * 100);
             const item = document.createElement("div");
-            item.className = "standard-item";
+            item.className = "standard-item clickable-interactive";
+            item.style.cursor = "pointer";
+            item.title = `Click to filter and view all ${std} findings in triage table`;
+            item.onclick = () => filterByStandardAndNavigate(std);
             item.innerHTML = `
                 <div class="standard-meta">
-                    <span>${std}</span>
+                    <span style="font-weight: 600; color: #fff;">${std} <span style="font-size: 11px; color: var(--accent-cyan); margin-left: 4px;">&rarr; Guide</span></span>
                     <strong style="color: var(--accent-cyan);">${count} findings</strong>
                 </div>
-                <div class="progress-track">
+                <div class="progress-track" style="margin-top: 6px;">
                     <div class="progress-bar" style="width: ${pct}%;"></div>
                 </div>
             `;
@@ -573,12 +582,20 @@ function renderDashboard() {
         }
     }
 
-    // Developer Attribution Scorecard
+    // Developer Attribution Scorecard (Interactive rows)
     const devTbody = document.getElementById("dashboard-dev-attribution-tbody");
     if (devTbody && s.developer_attribution) {
         devTbody.innerHTML = "";
         s.developer_attribution.forEach(d => {
             const tr = document.createElement("tr");
+            tr.className = "clickable-interactive";
+            tr.style.cursor = "pointer";
+            tr.title = `Click to guide to all findings authored by ${escapeHtml(d.name)}`;
+            tr.onclick = (e) => {
+                if (!e.target.closest('button')) {
+                    filterByDeveloperAndNavigate(d.name);
+                }
+            };
             const initials = (d.name || 'DE').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
             tr.innerHTML = `
                 <td>
@@ -605,6 +622,9 @@ function renderDashboard() {
     if (s.trends) {
         renderDashboardTrendChart(s.trends);
     }
+
+    // Render Actionable Security Findings Feed on Dashboard
+    renderDashboardFindingsFeed();
 }
 
 let currentTrendFilter = null;
@@ -808,6 +828,7 @@ async function loadFindings() {
             }
 
             applyFilters();
+            renderDashboardFindingsFeed();
         }
     } catch (e) {
         console.error("Failed loading findings:", e);
@@ -849,6 +870,8 @@ function renderFindingsTable() {
 
     state.filteredFindings.forEach(f => {
         const tr = document.createElement("tr");
+        tr.id = `finding-row-${f.id}`;
+        tr.dataset.title = f.title;
         const sevClass = `badge-${f.severity.toLowerCase()}`;
         const stdBadges = (f.standards || []).slice(0, 3).map(s => `<span class="tag-std">${s}</span>`).join("");
 
@@ -893,10 +916,21 @@ function renderFindingsTable() {
     });
 }
 
-function openFindingDetail(findingId) {
-    const f = (typeof findingId === 'object' && findingId !== null) 
+async function openFindingDetail(findingId) {
+    let f = (typeof findingId === 'object' && findingId !== null) 
         ? findingId 
         : (state.findings || []).find(item => item.id === findingId) || (state.auditFindings || []).find(item => item.id === findingId);
+    if (!f && typeof findingId === 'string') {
+        try {
+            const resp = await fetch("/api/findings");
+            if (resp.ok) {
+                state.findings = await resp.json();
+                f = state.findings.find(item => item.id === findingId);
+            }
+        } catch (e) {
+            console.error("Error fetching finding detail:", e);
+        }
+    }
     if (!f) return;
     state.activeFinding = f;
 
@@ -1010,7 +1044,275 @@ function filterByDeveloperAndNavigate(devName) {
     navigate('triage');
     const devSel = document.getElementById('filter-developer');
     if (devSel) devSel.value = devName;
+
+    const searchInput = document.getElementById('filter-search');
+    const typeSelect = document.getElementById('filter-type');
+    const sevSelect = document.getElementById('filter-severity');
+    const quadSelect = document.getElementById('filter-quadrant');
+    const stdSelect = document.getElementById('filter-standard');
+
+    if (searchInput) searchInput.value = '';
+    if (typeSelect) typeSelect.value = '';
+    if (sevSelect) sevSelect.value = '';
+    if (quadSelect) quadSelect.value = '';
+    if (stdSelect) stdSelect.value = '';
+
     applyFilters();
+    showToast(`Guided to Triage: Showing findings authored by ${devName}`, 'info');
+}
+
+function filterBySeverityAndNavigate(severity) {
+    navigate('triage');
+    const sevSel = document.getElementById('filter-severity');
+    if (sevSel) sevSel.value = severity;
+
+    const searchInput = document.getElementById('filter-search');
+    const typeSelect = document.getElementById('filter-type');
+    const quadSelect = document.getElementById('filter-quadrant');
+    const stdSelect = document.getElementById('filter-standard');
+    const devSelect = document.getElementById('filter-developer');
+
+    if (searchInput) searchInput.value = '';
+    if (typeSelect) typeSelect.value = '';
+    if (quadSelect) quadSelect.value = '';
+    if (stdSelect) stdSelect.value = '';
+    if (devSelect) devSelect.value = '';
+
+    applyFilters();
+    showToast(`Guided to Triage: Filtered by severity ${severity}`, 'info');
+}
+
+function filterByQuadrantAndNavigate(quadrant) {
+    navigate('triage');
+    const quadSel = document.getElementById('filter-quadrant');
+    if (quadSel) quadSel.value = quadrant;
+
+    const searchInput = document.getElementById('filter-search');
+    const typeSelect = document.getElementById('filter-type');
+    const sevSelect = document.getElementById('filter-severity');
+    const stdSelect = document.getElementById('filter-standard');
+    const devSelect = document.getElementById('filter-developer');
+
+    if (searchInput) searchInput.value = '';
+    if (typeSelect) typeSelect.value = '';
+    if (sevSelect) sevSelect.value = '';
+    if (stdSelect) stdSelect.value = '';
+    if (devSelect) devSelect.value = '';
+
+    applyFilters();
+    const label = quadrant.replace('_', ' ');
+    showToast(`Guided to Triage: Filtered by prioritization quadrant ${label}`, 'info');
+}
+
+function filterByStandardAndNavigate(standard) {
+    navigate('triage');
+    const stdSel = document.getElementById('filter-standard');
+    if (stdSel) {
+        let matched = false;
+        for (let i = 0; i < stdSel.options.length; i++) {
+            if (stdSel.options[i].value === standard || stdSel.options[i].text.includes(standard)) {
+                stdSel.selectedIndex = i;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) stdSel.value = standard;
+    }
+
+    const searchInput = document.getElementById('filter-search');
+    const typeSelect = document.getElementById('filter-type');
+    const sevSelect = document.getElementById('filter-severity');
+    const quadSelect = document.getElementById('filter-quadrant');
+    const devSelect = document.getElementById('filter-developer');
+
+    if (searchInput) searchInput.value = '';
+    if (typeSelect) typeSelect.value = '';
+    if (sevSelect) sevSelect.value = '';
+    if (quadSelect) quadSelect.value = '';
+    if (devSelect) devSelect.value = '';
+
+    applyFilters();
+    showToast(`Guided to Triage: Filtered by standard ${standard}`, 'info');
+}
+
+async function guideToFinding(findingId) {
+    // If detail modal is open, close it
+    const modalEl = document.getElementById('modal-finding-detail');
+    if (modalEl) modalEl.classList.remove('active');
+
+    // Switch view to triage
+    navigate('triage');
+
+    // Reset table search & filters so the target finding is visible
+    const searchInput = document.getElementById('filter-search');
+    const typeSelect = document.getElementById('filter-type');
+    const sevSelect = document.getElementById('filter-severity');
+    const quadSelect = document.getElementById('filter-quadrant');
+    const stdSelect = document.getElementById('filter-standard');
+    const devSelect = document.getElementById('filter-developer');
+
+    if (searchInput) searchInput.value = '';
+    if (typeSelect) typeSelect.value = '';
+    if (sevSelect) sevSelect.value = '';
+    if (quadSelect) quadSelect.value = '';
+    if (stdSelect) stdSelect.value = '';
+    if (devSelect) devSelect.value = '';
+
+    if (!state.findings || state.findings.length === 0) {
+        await loadFindings();
+    } else {
+        applyFilters();
+    }
+
+    // Allow DOM to finish rendering
+    setTimeout(() => {
+        const rowId = `finding-row-${findingId}`;
+        const rowEl = document.getElementById(rowId);
+        if (rowEl) {
+            rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            rowEl.classList.remove('highlight-finding-pulse');
+            void rowEl.offsetWidth; // Force CSS reflow
+            rowEl.classList.add('highlight-finding-pulse');
+            showToast(`Guided directly to finding: ${rowEl.dataset.title || findingId}`, 'success');
+        } else {
+            console.warn(`Finding row ${rowId} not found in DOM.`);
+        }
+    }, 150);
+}
+
+function guideToActiveFinding() {
+    if (state.activeFinding && state.activeFinding.id) {
+        guideToFinding(state.activeFinding.id);
+    }
+}
+
+function onDashboardFindingsSearch(query) {
+    state.dashboardFindingSearch = query;
+    renderDashboardFindingsFeed();
+}
+
+function filterDashboardFindings(filterType) {
+    state.dashboardFindingFilter = filterType;
+    document.querySelectorAll('.dashboard-filter-btn').forEach(b => b.classList.remove('active'));
+    const btnMap = {
+        'ALL': 'dash-filter-all',
+        'ACT_NOW': 'dash-filter-actnow',
+        'CRITICAL': 'dash-filter-critical',
+        'TICKETED': 'dash-filter-ticketed'
+    };
+    const activeBtn = document.getElementById(btnMap[filterType]);
+    if (activeBtn) activeBtn.classList.add('active');
+    renderDashboardFindingsFeed();
+}
+
+function renderDashboardFindingsFeed() {
+    const container = document.getElementById("dashboard-findings-feed");
+    if (!container) return;
+
+    const findings = state.findings || [];
+    const filter = state.dashboardFindingFilter || 'ALL';
+    const searchQuery = (state.dashboardFindingSearch || '').toLowerCase().trim();
+
+    // Filter findings
+    const filtered = findings.filter(f => {
+        if (filter === 'ACT_NOW' && f.quadrant !== 'ACT_NOW') return false;
+        if (filter === 'CRITICAL' && f.severity !== 'CRITICAL') return false;
+        if (filter === 'TICKETED' && !(f.jira_key || f.zammad_id || f.ticket_assigned_to)) return false;
+
+        if (searchQuery) {
+            const matchTitle = (f.title || '').toLowerCase().includes(searchQuery);
+            const matchPath = (f.file_path || '').toLowerCase().includes(searchQuery);
+            const matchCve = (f.cve_id || '').toLowerCase().includes(searchQuery);
+            const matchAuthor = (f.author_name || '').toLowerCase().includes(searchQuery);
+            if (!matchTitle && !matchPath && !matchCve && !matchAuthor) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; background: rgba(15, 23, 42, 0.4); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 8px;">
+                <div style="font-size: 28px; margin-bottom: 8px;">🛡️</div>
+                <div style="font-weight: 600; color: #fff; font-size: 15px;">No findings match the selected filter</div>
+                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+                    ${searchQuery ? `No results matching query "${escapeHtml(searchQuery)}".` : 'Try selecting a different filter tab above.'}
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = "";
+
+    filtered.forEach(f => {
+        const row = document.createElement("div");
+        row.className = "dashboard-finding-row clickable-interactive";
+        row.id = `dash-finding-item-${f.id}`;
+        row.title = "Click to inspect vulnerability details, AI fix diff, and author ticket";
+
+        const sevClass = `badge-${f.severity.toLowerCase()}`;
+        const quadColor = f.quadrant === "ACT_NOW" ? "#ef4444" : f.quadrant === "CRITICAL_PATCH" ? "#f97316" : f.quadrant === "OPPORTUNISTIC" ? "#eab308" : "#10b981";
+        const quadLabel = f.quadrant ? f.quadrant.replace('_', ' ') : 'NORMAL';
+
+        const authorName = escapeHtml(f.author_name || "Unknown Author");
+        const ticketAssigned = f.ticket_assigned_to || f.author_name;
+        const hasTicket = !!(f.jira_key || f.zammad_id || f.ticket_assigned_to);
+
+        const ticketBadgeHtml = hasTicket
+            ? `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #d8b4fe; font-size: 11px; border: 1px solid rgba(168, 85, 247, 0.4);" title="Ticket assigned to author ${escapeHtml(ticketAssigned)}">
+                 🎫 ${f.jira_key ? 'Jira #' + f.jira_key : (f.zammad_id ? 'Zammad #' + f.zammad_id : 'Ticket')} &rarr; ${escapeHtml(ticketAssigned)}
+               </span>`
+            : `<span class="badge" style="background: rgba(255, 255, 255, 0.05); color: var(--text-muted); font-size: 11px;">Unassigned</span>`;
+
+        row.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 320px;">
+                <span class="badge ${sevClass}" style="min-width: 75px; text-align: center;">${f.severity}</span>
+                <div style="flex: 1;">
+                    <div class="dashboard-finding-title" style="cursor: pointer;" onclick="openFindingDetail('${f.id}')">
+                        ${escapeHtml(f.title)}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; font-size: 12px; flex-wrap: wrap;">
+                        <span style="color: var(--accent-cyan); font-family: var(--font-mono);">
+                            📁 ${escapeHtml(f.file_path)}:${f.line_start}
+                        </span>
+                        <span style="color: #94a3b8;">
+                            👤 Author: <strong style="color: #f1f5f9;">${authorName}</strong>
+                        </span>
+                        ${f.cve_id ? `<span style="color: #cbd5e1; font-family: var(--font-mono); font-size: 11px;">[${escapeHtml(f.cve_id)}]</span>` : ''}
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div style="text-align: right; min-width: 110px;">
+                    <div style="font-weight: 700; color: ${quadColor}; font-size: 13px;">${f.composite_risk_score}/100 Risk</div>
+                    <div style="font-size: 11px; text-transform: uppercase; font-weight: 600; color: ${quadColor};">${quadLabel} (${f.sla_days || 14}d)</div>
+                </div>
+
+                <div style="min-width: 140px;">
+                    ${ticketBadgeHtml}
+                </div>
+
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); openFindingDetail('${f.id}')" title="Inspect full finding details, AI code remediation, and ticket dispatch">
+                        🔍 Inspect
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); guideToFinding('${f.id}')" style="background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: var(--accent-cyan);" title="Guide directly to this finding row in Triage inventory">
+                        🧭 Locate in Triage
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Click row anywhere (except on buttons) to open details
+        row.onclick = (e) => {
+            if (!e.target.closest('button')) {
+                openFindingDetail(f.id);
+            }
+        };
+
+        container.appendChild(row);
+    });
 }
 
 async function changeFindingStatus(newStatus) {

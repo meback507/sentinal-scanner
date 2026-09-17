@@ -132,26 +132,27 @@
             </div>
 
             <!-- KPI Cards -->
+            <!-- KPI Cards (Interactive) -->
             <div class="kpi-grid">
-                <div class="glass-card kpi-card" style="--card-accent: #ef4444;">
-                    <div class="kpi-title">Critical Threat Exposure</div>
+                <div class="glass-card kpi-card clickable-interactive" style="--card-accent: #ef4444;" onclick="filterBySeverityAndNavigate('CRITICAL')" title="Click to inspect all Critical findings in Triage">
+                    <div class="kpi-title">Critical Threat Exposure ↗</div>
                     <div class="kpi-value" id="kpi-critical" style="color: #ef4444;">0</div>
-                    <div class="kpi-sub"><span id="kpi-actnow-count" style="color: #ef4444; font-weight: bold;">0</span> in "ACT NOW" quadrant</div>
+                    <div class="kpi-sub"><span id="kpi-actnow-count" style="color: #ef4444; font-weight: bold;">0</span> in "ACT NOW" quadrant (Click to filter)</div>
                 </div>
-                <div class="glass-card kpi-card" style="--card-accent: #f97316;">
-                    <div class="kpi-title">Active Exploits (EPSS &gt; 20%)</div>
+                <div class="glass-card kpi-card clickable-interactive" style="--card-accent: #f97316;" onclick="filterByQuadrantAndNavigate('ACT_NOW')" title="Click to inspect all Act Now / High EPSS findings in Triage">
+                    <div class="kpi-title">Active Exploits (EPSS &gt; 20%) ↗</div>
                     <div class="kpi-value" id="kpi-exploits" style="color: #f97316;">0</div>
-                    <div class="kpi-sub">High weaponization demand</div>
+                    <div class="kpi-sub">High weaponization demand (Click to filter)</div>
                 </div>
-                <div class="glass-card kpi-card" style="--card-accent: #38bdf8;">
-                    <div class="kpi-title">Average CVSS Score</div>
+                <div class="glass-card kpi-card clickable-interactive" style="--card-accent: #38bdf8;" onclick="navigate('triage')" title="Click to view all findings in Triage">
+                    <div class="kpi-title">Average CVSS Score ↗</div>
                     <div class="kpi-value" id="kpi-avg-cvss" style="color: #38bdf8;">0.0</div>
-                    <div class="kpi-sub">Average EPSS: <span id="kpi-avg-epss">0.0000</span></div>
+                    <div class="kpi-sub">Average EPSS: <span id="kpi-avg-epss">0.0000</span> (Click to view Triage)</div>
                 </div>
-                <div class="glass-card kpi-card" style="--card-accent: #10b981;">
-                    <div class="kpi-title">Compliance Posture</div>
+                <div class="glass-card kpi-card clickable-interactive" style="--card-accent: #10b981;" onclick="navigate('audit')" title="Click to view Compliance & Audit Hub">
+                    <div class="kpi-title">Compliance Posture ↗</div>
                     <div class="kpi-value" id="kpi-posture" style="color: #10b981;">100%</div>
-                    <div class="kpi-sub">Overall hygiene rating</div>
+                    <div class="kpi-sub">Overall hygiene rating (Click for Audit Hub)</div>
                 </div>
             </div>
 
@@ -161,45 +162,45 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                         <div>
                             <h2 style="font-size: 18px; font-weight: 700;">Vulnerability Prioritization Matrix (CVSS vs EPSS)</h2>
-                            <p style="font-size: 13px; color: var(--text-secondary);">Dynamic quadrant assignment balancing theoretical impact against real-world exploit probability.</p>
+                            <p style="font-size: 13px; color: var(--text-secondary);">Dynamic quadrant assignment. Click any quadrant box to guide directly to those findings.</p>
                         </div>
                     </div>
 
                     <div class="quadrant-grid">
-                        <div class="quad-box quad-patch">
+                        <div class="quad-box quad-patch" onclick="filterByQuadrantAndNavigate('CRITICAL_PATCH')" title="Click to guide to Critical Patch findings in Triage">
                             <div class="quad-header">
-                                <span class="quad-name" style="color: #f97316;">Critical Patch (High Impact / Low EPSS)</span>
+                                <span class="quad-name" style="color: #f97316;">Critical Patch (High Impact / Low EPSS) ↗</span>
                                 <span class="quad-count" id="count-quad-patch">0</span>
                             </div>
                             <div class="quad-desc">Severe architectural flaws with low current in-the-wild exploitation. Patch during next scheduled sprint.</div>
-                            <span class="quad-sla">SLA: 14 Days</span>
+                            <span class="quad-sla">SLA: 14 Days &bull; Click to View</span>
                         </div>
 
-                        <div class="quad-box quad-actnow">
+                        <div class="quad-box quad-actnow" onclick="filterByQuadrantAndNavigate('ACT_NOW')" title="Click to guide to Act Now emergency findings in Triage">
                             <div class="quad-header">
-                                <span class="quad-name" style="color: #ef4444;">Act Now (High Impact / High EPSS)</span>
+                                <span class="quad-name" style="color: #ef4444;">Act Now (High Impact / High EPSS) ↗</span>
                                 <span class="quad-count" id="count-quad-actnow">0</span>
                             </div>
                             <div class="quad-desc">Critical active hazard! Exploits circulating in-the-wild. Emergency mitigation required immediately.</div>
-                            <span class="quad-sla" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">SLA: 24-48 Hours</span>
+                            <span class="quad-sla" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">SLA: 24-48 Hours &bull; Click to View</span>
                         </div>
 
-                        <div class="quad-box quad-routine">
+                        <div class="quad-box quad-routine" onclick="filterByQuadrantAndNavigate('ROUTINE')" title="Click to guide to Routine Backlog findings in Triage">
                             <div class="quad-header">
-                                <span class="quad-name" style="color: #10b981;">Routine Backlog (Low Impact / Low EPSS)</span>
+                                <span class="quad-name" style="color: #10b981;">Routine Backlog (Low Impact / Low EPSS) ↗</span>
                                 <span class="quad-count" id="count-quad-routine">0</span>
                             </div>
                             <div class="quad-desc">Minor code smells, low severity advisories, and maintenance deprecations. Address during routine refactoring.</div>
-                            <span class="quad-sla">SLA: 90 Days</span>
+                            <span class="quad-sla">SLA: 90 Days &bull; Click to View</span>
                         </div>
 
-                        <div class="quad-box quad-opp">
+                        <div class="quad-box quad-opp" onclick="filterByQuadrantAndNavigate('OPPORTUNISTIC')" title="Click to guide to Opportunistic findings in Triage">
                             <div class="quad-header">
-                                <span class="quad-name" style="color: #eab308;">Opportunistic (Low Impact / High EPSS)</span>
+                                <span class="quad-name" style="color: #eab308;">Opportunistic (Low Impact / High EPSS) ↗</span>
                                 <span class="quad-count" id="count-quad-opp">0</span>
                             </div>
                             <div class="quad-desc">Low severity weaknesses frequently scanned by automated adversary botnets. Mitigate or deploy WAF rules.</div>
-                            <span class="quad-sla">SLA: 30 Days</span>
+                            <span class="quad-sla">SLA: 30 Days &bull; Click to View</span>
                         </div>
                     </div>
                 </div>
@@ -207,11 +208,36 @@
                 <!-- Standards Impact -->
                 <div class="glass-card">
                     <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 6px;">Standards Compliance Impact</h2>
-                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 18px;">Violations categorized by automotive, cloud, and ISO frameworks.</p>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 18px;">Click any framework to guide directly to its mapped findings.</p>
 
                     <div class="standards-list" id="dashboard-standards-list">
                         <!-- Populated dynamically -->
                     </div>
+                </div>
+            </div>
+
+            <!-- Interactive Prioritized Findings & Remediation Queue (Every Finding Clickable) -->
+            <div class="glass-card" style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h2 style="font-size: 18px; font-weight: 700;">Actionable Security Findings &amp; Remediation Queue</h2>
+                            <span class="badge badge-critical" style="font-size: 11px;">CLICK TO INSPECT OR GUIDE</span>
+                        </div>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Click any finding card to immediately inspect code context, author attribution, AI diffs, and assigned tickets.</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <input type="text" id="dashboard-findings-search" class="form-input" style="padding: 5px 12px; font-size: 12px; width: 220px;" placeholder="Search finding title or file..." oninput="onDashboardFindingsSearch(this.value)">
+                        <button class="dashboard-filter-btn active" id="dash-filter-all" onclick="filterDashboardFindings('ALL')">All Findings</button>
+                        <button class="dashboard-filter-btn" id="dash-filter-actnow" onclick="filterDashboardFindings('ACT_NOW')" style="color: #f87171;">🚨 Act Now</button>
+                        <button class="dashboard-filter-btn" id="dash-filter-critical" onclick="filterDashboardFindings('CRITICAL')" style="color: #fb923c;">⚠️ Critical</button>
+                        <button class="dashboard-filter-btn" id="dash-filter-ticketed" onclick="filterDashboardFindings('TICKETED')" style="color: #c084fc;">🎫 Ticket Assigned</button>
+                    </div>
+                </div>
+
+                <!-- Finding Items Feed -->
+                <div id="dashboard-findings-feed">
+                    <!-- Populated dynamically by renderDashboardFindingsFeed() -->
                 </div>
             </div>
 
@@ -884,7 +910,12 @@ strcpy(buf, input);"></textarea>
                     <span id="detail-severity-badge" class="badge">CRITICAL</span>
                     <h3 class="modal-title" id="detail-title" style="margin-top: 6px;">Finding Title</h3>
                 </div>
-                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 22px;" onclick="closeModal('modal-finding-detail')">&times;</button>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button class="btn btn-secondary btn-sm" id="btn-modal-locate-triage" onclick="guideToActiveFinding()" style="display: flex; align-items: center; gap: 6px; font-weight: 600; border-color: rgba(56, 189, 248, 0.4); color: var(--accent-cyan);" title="Highlight and scroll directly to this finding row in Triage inventory">
+                        <span>🧭 Locate in Triage Table</span>
+                    </button>
+                    <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 22px;" onclick="closeModal('modal-finding-detail')">&times;</button>
+                </div>
             </div>
             <div class="modal-body">
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: var(--bg-main); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border);">
