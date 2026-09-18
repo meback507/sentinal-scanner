@@ -311,7 +311,7 @@ class Database:
         with self._get_conn() as conn:
             now = datetime.datetime.now().isoformat()
             default_users = [
-                ("u-admin", "admin", "admin@aegissec.internal", hash_password("Admin@123!"), "admin", now),
+                ("u-admin", "admin", "admin@aegissec.internal", hash_password("admin"), "admin", now),
                 ("u-sec-lead", "sec_lead", "seclead@aegissec.internal", hash_password("SecLead@123!"), "security_engineer", now),
                 ("u-marcus", "marcus", "marcus.vance@cloudsec.internal", hash_password("Marcus@123!"), "developer", now),
                 ("u-elena", "elena", "elena.rostova@autocorp.de", hash_password("Elena@123!"), "developer", now),
@@ -324,6 +324,11 @@ class Database:
                     "INSERT OR IGNORE INTO users (id, username, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                     u
                 )
+            # Ensure existing admin user can login with password 'admin'
+            conn.execute(
+                "UPDATE users SET password_hash = ? WHERE username = 'admin' AND password_hash = ?",
+                (hash_password("admin"), hash_password("Admin@123!"))
+            )
 
     # --- User Operations ---
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
@@ -338,7 +343,7 @@ class Database:
 
     def list_users(self) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:
-            rows = conn.execute("SELECT id, username, email, role, created_at FROM users").fetchall()
+            rows = conn.execute("SELECT id, username, email, role, created_at FROM users ORDER BY created_at ASC").fetchall()
             return [dict(r) for r in rows]
 
     def create_user(self, username: str, email: str, password: str, role: str) -> Dict[str, Any]:
@@ -351,6 +356,36 @@ class Database:
                 (user_id, username, email, pwd_hash, role, now)
             )
         return {"id": user_id, "username": username, "email": email, "role": role, "created_at": now}
+
+    def update_user(self, user_id: str, role: Optional[str] = None, password: Optional[str] = None, email: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            user = self.get_user_by_id(user_id)
+            if not user:
+                return None
+            
+            updates = []
+            params = []
+            if role:
+                updates.append("role = ?")
+                params.append(role)
+            if password:
+                updates.append("password_hash = ?")
+                params.append(hash_password(password))
+            if email:
+                updates.append("email = ?")
+                params.append(email)
+            
+            if updates:
+                params.append(user_id)
+                conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", tuple(params))
+            
+            row = conn.execute("SELECT id, username, email, role, created_at FROM users WHERE id = ?", (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def delete_user(self, user_id: str) -> bool:
+        with self._get_conn() as conn:
+            cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            return cur.rowcount > 0
 
     # --- Project Operations ---
     def list_projects(self) -> List[Dict[str, Any]]:

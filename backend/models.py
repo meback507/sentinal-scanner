@@ -39,6 +39,12 @@ class UserCreateRequest(BaseModel):
     role: RoleEnum = RoleEnum.DEVELOPER
 
 
+class UserUpdateRequest(BaseModel):
+    role: Optional[RoleEnum] = None
+    password: Optional[str] = None
+    email: Optional[str] = None
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str

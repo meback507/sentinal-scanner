@@ -758,6 +758,7 @@ strcpy(buf, input);"></textarea>
                                 <th>Role</th>
                                 <th>Assigned Privileges</th>
                                 <th>Created At</th>
+                                <th style="text-align: right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="users-tbody">
@@ -927,6 +928,86 @@ strcpy(buf, input);"></textarea>
             </div>
         </section>
     </main>
+
+    <!-- MODAL: CREATE USER -->
+    <div class="modal-overlay" id="modal-create-user">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Create New System User</h3>
+                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" onclick="closeModal('modal-create-user')">&times;</button>
+            </div>
+            <form id="form-create-user" onsubmit="submitCreateUser(event)">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Username *</label>
+                        <input type="text" id="new-user-username" class="form-input" placeholder="e.g. jdoe" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email Address *</label>
+                        <input type="email" id="new-user-email" class="form-input" placeholder="jdoe@company.com" required autocomplete="email">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password *</label>
+                        <input type="password" id="new-user-password" class="form-input" placeholder="Enter secure user password..." required autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Assigned Role *</label>
+                        <select id="new-user-role" class="form-select" required>
+                            <option value="developer" selected>Developer (Inspect findings, false positives & fixes)</option>
+                            <option value="security_engineer">Security Engineer (Trigger scans, custom rules & tickets)</option>
+                            <option value="auditor">Compliance Auditor (Read-only reports & governance matrices)</option>
+                            <option value="admin">Administrator (Full system management, RBAC & integrations)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-user')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-create-user">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: UPDATE USER -->
+    <div class="modal-overlay" id="modal-update-user">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Update User Role & Password</h3>
+                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" onclick="closeModal('modal-update-user')">&times;</button>
+            </div>
+            <form id="form-update-user" onsubmit="submitUpdateUser(event)">
+                <input type="hidden" id="update-user-id">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Username</label>
+                        <input type="text" id="update-user-username" class="form-input" readonly style="opacity: 0.7; cursor: not-allowed;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email Address</label>
+                        <input type="email" id="update-user-email" class="form-input" required autocomplete="email">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Assigned Role *</label>
+                        <select id="update-user-role" class="form-select" required>
+                            <option value="developer">Developer (Inspect findings, false positives & fixes)</option>
+                            <option value="security_engineer">Security Engineer (Trigger scans, custom rules & tickets)</option>
+                            <option value="auditor">Compliance Auditor (Read-only reports & governance matrices)</option>
+                            <option value="admin">Administrator (Full system management, RBAC & integrations)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">New Password (optional)</label>
+                        <input type="password" id="update-user-password" class="form-input" placeholder="Leave blank to keep current password..." autocomplete="new-password">
+                        <small style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Only provide a value if you wish to reset or change this user's password.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-update-user')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-update-user">Update User</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- MODAL: CREATE PROJECT -->
     <div class="modal-overlay" id="modal-new-project">

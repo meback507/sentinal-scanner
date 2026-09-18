@@ -85,7 +85,7 @@ function navigate(viewName) {
 
 // --- Auth & Session Lifecycle ---
 const DEMO_CREDENTIALS = {
-    admin: { username: "admin", password: "Admin@123!" },
+    admin: { username: "admin", password: "admin" },
     sec_lead: { username: "sec_lead", password: "SecLead@123!" },
     marcus: { username: "marcus", password: "Marcus@123!" },
     elena: { username: "elena", password: "Elena@123!" },
@@ -2162,7 +2162,7 @@ function exportCurrentReport(format) {
     showToast(`Exporting ${format.toUpperCase()} report...`, "success");
 }
 
-// --- User Management ---
+// --- User Management & RBAC ---
 async function loadUsers() {
     try {
         const resp = await fetch("/api/users");
@@ -2181,18 +2181,149 @@ async function loadUsers() {
                     auditor: "Read-Only Compliance Reports, Standards Matrices, Audit Log Inspection"
                 };
 
+                const safeUsername = escapeHtml(u.username);
+                const safeEmail = escapeHtml(u.email);
+                const safeRole = escapeHtml(u.role);
+
                 tr.innerHTML = `
-                    <td><strong>${u.username}</strong></td>
-                    <td>${u.email}</td>
-                    <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan);">${u.role.toUpperCase()}</span></td>
+                    <td><strong>${safeUsername}</strong></td>
+                    <td>${safeEmail}</td>
+                    <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-weight: 600;">${safeRole.toUpperCase()}</span></td>
                     <td style="font-size: 12px; color: var(--text-secondary);">${privMap[u.role] || 'Standard Access'}</td>
                     <td style="font-size: 13px; color: var(--text-muted);">${new Date(u.created_at).toLocaleDateString()}</td>
+                    <td style="text-align: right;">
+                        <button class="btn btn-secondary btn-sm" onclick="openUpdateUserModal('${u.id}', '${safeUsername}', '${safeEmail}', '${safeRole}')" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 12px; font-weight: 600;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                            Update
+                        </button>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.detail || "Failed loading users", "error");
         }
     } catch (e) {
         console.error("Failed loading users:", e);
+    }
+}
+
+function openCreateUserModal() {
+    const form = document.getElementById("form-create-user");
+    if (form) form.reset();
+    const modal = document.getElementById("modal-create-user");
+    if (modal) modal.classList.add("active");
+    const userField = document.getElementById("new-user-username");
+    if (userField) userField.focus();
+}
+
+async function submitCreateUser(event) {
+    event.preventDefault();
+    const username = document.getElementById("new-user-username")?.value.trim();
+    const email = document.getElementById("new-user-email")?.value.trim();
+    const password = document.getElementById("new-user-password")?.value;
+    const role = document.getElementById("new-user-role")?.value;
+
+    if (!username || !email || !password || !role) {
+        showToast("Please fill in all required fields", "error");
+        return;
+    }
+
+    const btn = document.getElementById("btn-submit-create-user");
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = "Creating...";
+    }
+
+    try {
+        const resp = await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, email, password, role })
+        });
+
+        if (resp.ok) {
+            showToast(`User '${username}' created successfully!`, "success");
+            closeModal("modal-create-user");
+            await loadUsers();
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.detail || "Failed to create user", "error");
+        }
+    } catch (e) {
+        showToast("Network error creating user", "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = "Create User";
+        }
+    }
+}
+
+function openUpdateUserModal(id, username, email, role) {
+    const idField = document.getElementById("update-user-id");
+    const userField = document.getElementById("update-user-username");
+    const emailField = document.getElementById("update-user-email");
+    const roleField = document.getElementById("update-user-role");
+    const pwdField = document.getElementById("update-user-password");
+
+    if (idField) idField.value = id;
+    if (userField) userField.value = username;
+    if (emailField) emailField.value = email || "";
+    if (roleField) roleField.value = role || "developer";
+    if (pwdField) pwdField.value = "";
+
+    const modal = document.getElementById("modal-update-user");
+    if (modal) modal.classList.add("active");
+}
+
+async function submitUpdateUser(event) {
+    event.preventDefault();
+    const userId = document.getElementById("update-user-id")?.value;
+    const username = document.getElementById("update-user-username")?.value;
+    const email = document.getElementById("update-user-email")?.value.trim();
+    const role = document.getElementById("update-user-role")?.value;
+    const password = document.getElementById("update-user-password")?.value;
+
+    if (!userId) {
+        showToast("Missing user ID", "error");
+        return;
+    }
+
+    const payload = { role, email };
+    if (password && password.trim()) {
+        payload.password = password.trim();
+    }
+
+    const btn = document.getElementById("btn-submit-update-user");
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = "Updating...";
+    }
+
+    try {
+        const resp = await fetch(`/api/users/${userId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (resp.ok) {
+            showToast(`User '${username}' updated successfully!`, "success");
+            closeModal("modal-update-user");
+            await loadUsers();
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.detail || "Failed to update user", "error");
+        }
+    } catch (e) {
+        showToast("Network error updating user", "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = "Update User";
+        }
     }
 }
 
