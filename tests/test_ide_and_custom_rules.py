@@ -212,8 +212,28 @@ rules:
         self.assertIn("attachment; filename=\"sentinel-appsec-ide-1.0.0.vsix\"", download_res.headers.get("content-disposition", ""))
         self.assertGreater(len(download_res.content), 10000)
 
+    def test_11_docker_cloud_plugin_connectivity_resilience(self):
+        """Verify Docker configuration, allowInsecureTLS setting, and extension manifest for Docker compatibility."""
+        pkg_path = os.path.join(os.path.dirname(__file__), "..", "ide-extension", "package.json")
+        with open(pkg_path, "r") as f:
+            manifest = json.load(f)
+
+        props = manifest["contributes"]["configuration"]["properties"]
+        self.assertIn("sentinel.serverUrl", props)
+        self.assertIn("sentinel.apiToken", props)
+        self.assertIn("sentinel.allowInsecureTLS", props)
+        self.assertFalse(props["sentinel.allowInsecureTLS"]["default"])
+
+        # Check Dockerfile binds 0.0.0.0 and publishes/exposes port 8000
+        dockerfile_path = os.path.join(os.path.dirname(__file__), "..", "Dockerfile")
+        with open(dockerfile_path, "r") as f:
+            df_content = f.read()
+        self.assertIn("--host 0.0.0.0", df_content)
+        self.assertIn("EXPOSE 8000", df_content)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

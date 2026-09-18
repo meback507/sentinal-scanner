@@ -158,6 +158,11 @@
           "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
           "default": "HIGH",
           "description": "Severity threshold for reporting blocking diagnostic errors"
+        },
+        "sentinel.allowInsecureTLS": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow self-signed or unverified SSL/TLS certificates when connecting to Docker or private cloud servers"
         }
       }
     }

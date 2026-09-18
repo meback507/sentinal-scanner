@@ -135,11 +135,20 @@ You can also configure the server URL and token directly in your User or Workspa
 {
   "sentinel.serverUrl": "https://sentinel.your-company.com",
   "sentinel.apiToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "sentinel.allowInsecureTLS": false,
   "sentinel.rulesFile": ".sentinel/rules.yaml",
   "sentinel.scanOnSave": true,
   "sentinel.failOnSeverity": "HIGH"
 }
 ```
+
+> **🐳 Hosting in Docker Checklist:**
+> 1. **Port Publishing**: Ensure port 8000 is published (`docker run -p 8000:8000 ...` or `docker compose up -d`).
+> 2. **Interface Binding**: The container binds to `0.0.0.0:8000` by default, making it accessible from both `localhost` (local Docker) and your server's public/private IP (remote Docker).
+> 3. **Firewall / Security Group**: In AWS/GCP/Azure/VPS, permit inbound TCP traffic on port `8000` (or `443` if using HTTPS).
+> 4. **Self-Signed SSL/TLS**: If using self-signed HTTPS certificates, set `"sentinel.allowInsecureTLS": true` in your editor settings.
+> 5. **Subpaths & Proxies**: Works seamlessly behind reverse proxies (Nginx, Caddy, Traefik), whether at root domain or subpath (e.g., `https://domain.com/sentinel/`).
+
 
 ---
 

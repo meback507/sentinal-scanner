@@ -363,14 +363,40 @@ function activate(context) {
 }
 
 /**
- * Helper to perform HTTP or HTTPS requests for cloud sync & authentication
+ * Builds fully qualified API endpoint URL preserving any base subpaths (e.g. reverse proxy /sentinel/)
+ * and automatically normalizes scheme (http/https)
+ */
+function buildApiUrl(baseUrl, endpointPath) {
+    if (!baseUrl) return '';
+    let base = baseUrl.trim();
+    if (!/^https?:\/\//i.test(base)) {
+        base = 'http://' + base;
+    }
+    const cleanBase = base.replace(/\/+$/, '');
+    const cleanEndpoint = (endpointPath || '').replace(/^\/+/, '');
+    return cleanEndpoint ? `${cleanBase}/${cleanEndpoint}` : cleanBase;
+}
+
+/**
+ * Helper to perform HTTP or HTTPS requests for cloud sync & authentication.
+ * Hardened for Docker, remote cloud environments, and self-signed TLS proxies.
  */
 function makeApiRequest(urlStr, options = {}, postData = null) {
     return new Promise((resolve, reject) => {
         try {
-            const urlObj = new URL(urlStr);
+            let targetUrl = urlStr;
+            if (!/^https?:\/\//i.test(targetUrl)) {
+                targetUrl = 'http://' + targetUrl;
+            }
+            const urlObj = new URL(targetUrl);
             const isHttps = urlObj.protocol === 'https:';
             const client = isHttps ? https : http;
+
+            let allowInsecureTLS = false;
+            try {
+                const config = vscode.workspace.getConfiguration('sentinel');
+                allowInsecureTLS = config.get('allowInsecureTLS', false);
+            } catch (_) {}
 
             const reqOptions = {
                 hostname: urlObj.hostname,
@@ -382,8 +408,13 @@ function makeApiRequest(urlStr, options = {}, postData = null) {
                     'User-Agent': 'Sentinel-IDE-Plugin/1.0.0',
                     ...(options.headers || {})
                 },
-                timeout: 5000
+                timeout: 10000
             };
+
+            // Support self-signed certificates for Docker or private cloud clusters
+            if (isHttps && allowInsecureTLS) {
+                reqOptions.rejectUnauthorized = false;
+            }
 
             if (postData) {
                 reqOptions.headers['Content-Type'] = 'application/json';
@@ -398,10 +429,23 @@ function makeApiRequest(urlStr, options = {}, postData = null) {
                 });
             });
 
-            req.on('error', (err) => reject(err));
+            req.on('error', (err) => {
+                let friendlyMsg = err.message;
+                if (err.code === 'ECONNREFUSED') {
+                    friendlyMsg = `Connection refused at ${urlObj.hostname}:${reqOptions.port}. Ensure Sentinel Docker container is running and port ${reqOptions.port} is published (-p ${reqOptions.port}:${reqOptions.port}).`;
+                } else if (err.code === 'ETIMEDOUT' || err.code === 'ESOCKETTIMEDOUT') {
+                    friendlyMsg = `Connection timed out connecting to ${urlObj.hostname}:${reqOptions.port}. Check firewall or cloud security group rules.`;
+                } else if (err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT' || err.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE') {
+                    friendlyMsg = `Self-signed TLS certificate detected for ${urlObj.hostname}. Enable "sentinel.allowInsecureTLS" in VS Code settings to connect anyway.`;
+                }
+                const error = new Error(friendlyMsg);
+                error.code = err.code;
+                reject(error);
+            });
+
             req.on('timeout', () => {
                 req.destroy();
-                reject(new Error('Connection timed out'));
+                reject(new Error(`Connection to ${urlObj.hostname}:${reqOptions.port} timed out after 10 seconds. Check network and cloud firewall.`));
             });
 
             if (postData) {
@@ -419,7 +463,7 @@ function makeApiRequest(urlStr, options = {}, postData = null) {
  */
 async function loginToCloudServer(serverUrl, username, password) {
     const postBody = JSON.stringify({ username, password });
-    const url = new URL('/api/auth/login', serverUrl).toString();
+    const url = buildApiUrl(serverUrl, '/api/auth/login');
     const res = await makeApiRequest(url, { method: 'POST' }, postBody);
     if (res.statusCode >= 200 && res.statusCode < 300) {
         const json = JSON.parse(res.body);
@@ -444,7 +488,7 @@ async function fetchCloudRules(serverUrl, apiToken) {
         if (apiToken) {
             headers['Authorization'] = `Bearer ${apiToken.trim()}`;
         }
-        const url = new URL('/api/rules/catalog', serverUrl).toString();
+        const url = buildApiUrl(serverUrl, '/api/rules/catalog');
         const res = await makeApiRequest(url, { method: 'GET', headers });
         if (res.statusCode >= 200 && res.statusCode < 300) {
             const catalog = JSON.parse(res.body);
@@ -966,6 +1010,8 @@ function deactivate() {
 module.exports = {
     activate,
     deactivate,
+    buildApiUrl,
+    makeApiRequest,
     parseSimpleYamlRules,
     fetchCloudRules,
     loginToCloudServer,
