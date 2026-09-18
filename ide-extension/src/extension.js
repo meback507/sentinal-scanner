@@ -419,6 +419,23 @@ function activate(context) {
         })
     );
 
+    // 11. Auto-sync rules whenever editor window gains focus (e.g. switching back from browser)
+    context.subscriptions.push(
+        vscode.window.onDidChangeWindowState(state => {
+            if (state.focused) {
+                loadAllRules();
+            }
+        })
+    );
+
+    // 12. Periodic background rule synchronization every 30 seconds
+    const syncInterval = setInterval(() => {
+        loadAllRules();
+    }, 30000);
+    context.subscriptions.push({
+        dispose: () => clearInterval(syncInterval)
+    });
+
     // Initial scan of active editor
     if (vscode.window.activeTextEditor) {
         scanDocument(vscode.window.activeTextEditor.document);
