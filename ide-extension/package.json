@@ -98,10 +98,21 @@
         "title": "Sentinel: Connect to Cloud Server & API Token",
         "category": "Sentinel AppSec",
         "icon": "$(cloud)"
+      },
+      {
+        "command": "sentinel.openRulesYaml",
+        "title": "Sentinel: View / Open .sentinel/rules.yaml",
+        "category": "Sentinel AppSec",
+        "icon": "$(file-code)"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "sentinel.openRulesYaml",
+          "when": "view == sentinel.rulesExplorer",
+          "group": "navigation@0"
+        },
         {
           "command": "sentinel.configureCloud",
           "when": "view == sentinel.rulesExplorer",

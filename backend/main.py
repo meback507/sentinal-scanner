@@ -748,15 +748,54 @@ def list_custom_rules(user: UserModel = Depends(get_current_user)):
 
 
 @app.post("/api/rules")
-def save_custom_rule(rule: Dict[str, Any], user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
-    saved = rule_manager.save_rule(rule)
+def save_custom_rule(rule: Dict[str, Any], sync_to_yaml: bool = False, project_id: Optional[str] = None, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    workspace_dir = None
+    if project_id:
+        proj = db.get_project_by_id(project_id)
+        if proj and proj.get("workspace_path"):
+            workspace_dir = proj["workspace_path"]
+    saved = rule_manager.save_rule(rule, sync_to_yaml=sync_to_yaml, workspace_dir=workspace_dir)
     return saved
 
 
 @app.delete("/api/rules/{rule_id}")
-def delete_custom_rule(rule_id: str, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
-    success = rule_manager.delete_rule(rule_id)
+def delete_custom_rule(rule_id: str, project_id: Optional[str] = None, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    workspace_dir = None
+    if project_id:
+        proj = db.get_project_by_id(project_id)
+        if proj and proj.get("workspace_path"):
+            workspace_dir = proj["workspace_path"]
+    success = rule_manager.delete_rule(rule_id, workspace_dir=workspace_dir)
     return {"success": success}
+
+
+@app.get("/api/rules/file")
+def get_rules_file(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    """
+    Returns content and path of .sentinel/rules.yaml for developer viewing and editing.
+    """
+    workspace_dir = None
+    if project_id:
+        proj = db.get_project_by_id(project_id)
+        if proj and proj.get("workspace_path"):
+            workspace_dir = proj["workspace_path"]
+    return rule_manager.get_rules_yaml_content(workspace_dir)
+
+
+@app.put("/api/rules/file")
+def update_rules_file(payload: Dict[str, Any], project_id: Optional[str] = None, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    """
+    Saves edited content directly into .sentinel/rules.yaml.
+    """
+    content = payload.get("content", "")
+    if not content or not content.strip():
+        raise HTTPException(status_code=400, detail="YAML content cannot be empty")
+    workspace_dir = None
+    if project_id:
+        proj = db.get_project_by_id(project_id)
+        if proj and proj.get("workspace_path"):
+            workspace_dir = proj["workspace_path"]
+    return rule_manager.save_rules_yaml_content(content, workspace_dir)
 
 
 @app.get("/api/rules/catalog")

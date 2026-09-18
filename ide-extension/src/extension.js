@@ -280,6 +280,40 @@ function activate(context) {
 
         vscode.commands.registerCommand('sentinel.applyQuickFix', (documentUri, range, ruleId) => {
             applySuppressionComment(documentUri, range, ruleId);
+        }),
+
+        vscode.commands.registerCommand('sentinel.openRulesYaml', async () => {
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                vscode.window.showWarningMessage('🛡️ Sentinel: No active workspace folder open.');
+                return;
+            }
+            const rootPath = workspaceFolders[0].uri.fsPath;
+            const config = vscode.workspace.getConfiguration('sentinel');
+            const rulesRelPath = config.get('rulesFile') || '.sentinel/rules.yaml';
+            const rulesPath = path.join(rootPath, rulesRelPath);
+
+            if (!fs.existsSync(rulesPath)) {
+                const choice = await vscode.window.showInformationMessage(
+                    `Sentinel rules file not found at ${rulesRelPath}. Would you like to create it?`,
+                    'Create rules.yaml', 'Cancel'
+                );
+                if (choice === 'Create rules.yaml') {
+                    const dir = path.dirname(rulesPath);
+                    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                    const starter = `# Sentinel Enterprise Project-Specific Custom Security Rules\nversion: "1.0"\nproject: "custom"\n\nrules:\n  # Add your custom rules here\n`;
+                    fs.writeFileSync(rulesPath, starter, 'utf-8');
+                } else {
+                    return;
+                }
+            }
+
+            try {
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(rulesPath));
+                await vscode.window.showTextDocument(doc);
+            } catch (err) {
+                vscode.window.showErrorMessage(`Failed to open rules file: ${err.message}`);
+            }
         })
     );
 
@@ -353,6 +387,35 @@ function activate(context) {
 
         vscode.workspace.onDidCloseTextDocument(doc => {
             diagnosticCollection.delete(doc.uri);
+        })
+    );
+
+    // 9. Real-time File System Watcher on project rules (.sentinel/rules.yaml)
+    const rulesWatcher = vscode.workspace.createFileSystemWatcher('**/.sentinel/rules.*');
+    rulesWatcher.onDidChange(() => {
+        console.log('[Sentinel IDE] Detected modification to .sentinel/rules.*, reloading rules and updating diagnostics...');
+        loadAllRules();
+    });
+    rulesWatcher.onDidCreate(() => {
+        console.log('[Sentinel IDE] Detected creation of .sentinel/rules.*, reloading...');
+        loadAllRules();
+    });
+    rulesWatcher.onDidDelete(() => {
+        console.log('[Sentinel IDE] Detected deletion of .sentinel/rules.*, resetting and purging stale diagnostics...');
+        loadAllRules();
+    });
+    context.subscriptions.push(rulesWatcher);
+
+    // 10. Live buffer scanning on edit (debounced 400ms)
+    let liveScanTimer = null;
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument(e => {
+            if (e.document.uri.scheme === 'file') {
+                if (liveScanTimer) clearTimeout(liveScanTimer);
+                liveScanTimer = setTimeout(() => {
+                    scanDocument(e.document);
+                }, 400);
+            }
         })
     );
 
@@ -612,6 +675,22 @@ async function loadAllRules() {
         }
     }
 
+    // Purge stale diagnostics so deleted rules immediately stop reflecting in open code
+    if (diagnosticCollection) {
+        diagnosticCollection.clear();
+    }
+
+    // Re-evaluate all currently open/visible documents with updated rules
+    try {
+        if (vscode.window.visibleTextEditors) {
+            for (const editor of vscode.window.visibleTextEditors) {
+                if (editor.document && editor.document.uri && editor.document.uri.scheme === 'file') {
+                    scanDocument(editor.document);
+                }
+            }
+        }
+    } catch (_) {}
+
     if (rulesTreeProvider) {
         rulesTreeProvider.refresh();
     }
@@ -870,9 +949,20 @@ class SentinelRulesTreeProvider {
                 'secret'
             ));
 
-            return Promise.resolve(categories);
         } else if (element instanceof RuleCategoryItem) {
-            const items = element.rules.map(r => new RuleItem(r));
+            const items = [];
+            if (element.categoryType === 'project_custom') {
+                const openItem = new vscode.TreeItem('📄 Open .sentinel/rules.yaml', vscode.TreeItemCollapsibleState.None);
+                openItem.description = 'Edit / View';
+                openItem.tooltip = 'Click to open and edit workspace .sentinel/rules.yaml';
+                openItem.iconPath = new vscode.ThemeIcon('file-code', new vscode.ThemeColor('charts.blue'));
+                openItem.command = {
+                    command: 'sentinel.openRulesYaml',
+                    title: 'Open rules.yaml'
+                };
+                items.push(openItem);
+            }
+            items.push(...element.rules.map(r => new RuleItem(r)));
             return Promise.resolve(items);
         }
         return Promise.resolve([]);

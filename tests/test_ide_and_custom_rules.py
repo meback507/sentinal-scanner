@@ -231,9 +231,57 @@ rules:
         self.assertIn("--host 0.0.0.0", df_content)
         self.assertIn("EXPOSE 8000", df_content)
 
+    def test_12_rules_yaml_view_and_purge_synchronization(self):
+        """Verify GET /api/rules/file, PUT /api/rules/file, and complete rule deletion from both DB and YAML."""
+        # 1. Test GET /api/rules/file
+        res = self.client.get("/api/rules/file", headers={"Authorization": f"Bearer {self.admin_token}"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["found"])
+        self.assertIn("rules:", data["content"])
+        self.assertIn(".sentinel/rules.yaml", data["file_path"])
+
+        # 2. Test saving a new rule with sync_to_yaml=True in a temporary directory
+        temp_dir = tempfile.mkdtemp()
+        try:
+            test_rule = {
+                "id": "RULE-TEST-DIVZERO",
+                "name": "Prohibit Division by Zero",
+                "type": "sast",
+                "severity": "CRITICAL",
+                "languages": ["python"],
+                "regex": r"(?i)/ 0\b",
+                "description": "Zero division hazard",
+                "remediation": "Check divisor"
+            }
+            # Save rule and sync to temp workspace
+            rule_manager.save_rule(test_rule, sync_to_yaml=True, workspace_dir=temp_dir)
+
+            # Verify saved into temp .sentinel/rules.yaml
+            loaded_rules = rule_manager.load_project_rules(temp_dir)
+            self.assertTrue(any(r["id"] == "RULE-TEST-DIVZERO" for r in loaded_rules))
+
+            # Delete the rule
+            deleted = rule_manager.delete_rule("RULE-TEST-DIVZERO", workspace_dir=temp_dir)
+            self.assertTrue(deleted)
+
+            # Verify it is completely purged from the YAML file
+            reloaded_rules = rule_manager.load_project_rules(temp_dir)
+            self.assertFalse(any(r["id"] == "RULE-TEST-DIVZERO" for r in reloaded_rules))
+        finally:
+            shutil.rmtree(temp_dir)
+
+        # 3. Verify extension package.json contains openRulesYaml command
+        pkg_path = os.path.join(os.path.dirname(__file__), "..", "ide-extension", "package.json")
+        with open(pkg_path, "r") as f:
+            manifest = json.load(f)
+        cmd_ids = [c["command"] for c in manifest["contributes"]["commands"]]
+        self.assertIn("sentinel.openRulesYaml", cmd_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

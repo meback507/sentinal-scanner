@@ -460,6 +460,10 @@
                     <p class="page-desc">Synthesize production-ready SAST detection rules and SCA dependency policies from plain English instructions.</p>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
+                    <button class="btn btn-secondary btn-sm" onclick="openViewRulesYamlModal()" style="display: inline-flex; align-items: center; gap: 6px; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);" title="Inspect active .sentinel/rules.yaml file">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        <span>View rules.yaml</span>
+                    </button>
                     <a href="/api/extension/download" download="sentinel-appsec-ide-1.0.0.vsix" class="btn btn-secondary btn-sm" style="text-decoration: none; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); display: inline-flex; align-items: center; gap: 6px;" title="Download IDE Extension to enforce rules in VS Code / Cursor">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                         <span>IDE Plugin (.vsix)</span>
@@ -494,11 +498,17 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
                 <!-- Generated Rule YAML -->
                 <div class="glass-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h3 style="font-size: 16px;">Generated Rule (YAML)</h3>
-                        <button class="btn btn-primary btn-sm" id="btn-save-rule" onclick="saveActiveRule()">
-                            Save & Activate Rule
-                        </button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                        <h3 style="font-size: 16px; margin: 0;">Generated Rule (YAML)</h3>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label style="font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Automatically add rule to project .sentinel/rules.yaml">
+                                <input type="checkbox" id="check-sync-to-yaml" checked>
+                                <span>Sync to <code>.sentinel/rules.yaml</code></span>
+                            </label>
+                            <button class="btn btn-primary btn-sm" id="btn-save-rule" onclick="saveActiveRule()">
+                                Save & Activate Rule
+                            </button>
+                        </div>
                     </div>
                     <textarea id="rule-yaml-editor" class="form-textarea" rows="18" placeholder="# Synthesized rule YAML will appear here..."></textarea>
                 </div>
@@ -524,7 +534,19 @@ strcpy(buf, input);"></textarea>
 
             <!-- Active Custom Rules List -->
             <div class="glass-card">
-                <h3 style="font-size: 16px; margin-bottom: 14px;">Active Custom Rules Repository</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                    <h3 style="font-size: 16px; margin: 0;">Active Custom Rules Repository</h3>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button class="btn btn-secondary btn-sm" onclick="openViewRulesYamlModal()" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                            View rules.yaml
+                        </button>
+                        <a href="/api/rules/export?format=yaml" download="sentinel-rules.yaml" class="btn btn-secondary btn-sm" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                            Export YAML
+                        </a>
+                    </div>
+                </div>
                 <div class="data-table-wrapper">
                     <table class="data-table">
                         <thead>
@@ -1065,6 +1087,56 @@ strcpy(buf, input);"></textarea>
             </div>
         </div>
     </div>
+
+    <!-- MODAL: VIEW / EDIT RULES.YAML -->
+    <div class="modal-overlay" id="modal-view-rules-yaml">
+        <div class="modal-content" style="max-width: 860px; width: 92%;">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        <span>Project Custom Rules: <code id="view-rules-yaml-path" style="color: #38bdf8;">.sentinel/rules.yaml</code></span>
+                    </h3>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                        Live reflection of security rules parsed by the Sentinel IDE Plugin, CLI, and AST Scan Engines.
+                    </div>
+                </div>
+                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px;" onclick="closeModal('modal-view-rules-yaml')">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="view-rules-yaml-status" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">ACTIVE CONFIGURATION</span>
+                        <span id="view-rules-yaml-count" style="font-size: 12px; color: var(--text-muted);">Loading rules...</span>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="copyRulesYamlContent()" id="btn-copy-rules-yaml" style="display: inline-flex; align-items: center; gap: 5px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            <span>Copy YAML</span>
+                        </button>
+                        <a href="/api/rules/export?format=yaml" download="sentinel-rules.yaml" class="btn btn-secondary btn-sm" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                            <span>Download</span>
+                        </a>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="fetchRulesYamlContent()" title="Reload from server">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <textarea id="view-rules-yaml-editor" class="form-textarea" rows="20" style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 13px; line-height: 1.5; background: #070b14; color: #38bdf8; border: 1px solid var(--border); width: 100%; border-radius: 6px; padding: 14px;" placeholder="# Loading .sentinel/rules.yaml..."></textarea>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="font-size: 12px; color: var(--text-muted);">
+                    💡 Changes saved here write directly to <code>.sentinel/rules.yaml</code>. The IDE extension will auto-reload.
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-view-rules-yaml')">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="saveRulesYamlFile()" id="btn-save-rules-yaml">Save Changes to rules.yaml</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <!-- MODAL: FINDING DETAIL & TICKET DISPATCH -->
     <div class="modal-overlay" id="modal-finding-detail">

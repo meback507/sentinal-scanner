@@ -1819,6 +1819,8 @@ async function saveActiveRule() {
         return;
     }
 
+    const syncToYaml = document.getElementById("check-sync-to-yaml")?.checked !== false;
+
     try {
         let ruleObj = activeGeneratedRule;
         if (!ruleObj) {
@@ -1834,14 +1836,18 @@ async function saveActiveRule() {
             ruleObj.yaml_representation = editor.value;
         }
 
-        const resp = await fetch("/api/rules", {
+        const url = `/api/rules?sync_to_yaml=${syncToYaml}${state.activeProjectId ? `&project_id=${state.activeProjectId}` : ''}`;
+        const resp = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(ruleObj)
         });
 
         if (resp.ok) {
-            showToast("Custom rule saved and activated for all future scans!", "success");
+            const msg = syncToYaml
+                ? "Custom rule saved to catalog & synced to .sentinel/rules.yaml!"
+                : "Custom rule saved and activated for all future scans!";
+            showToast(msg, "success");
             await loadCustomRules();
         } else {
             showToast("Failed to save rule", "error");
@@ -1869,24 +1875,24 @@ function renderCustomRulesTable() {
     tbody.innerHTML = "";
 
     if (state.customRules.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No custom rules active. Generate one above!</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">No custom platform rules active in database. Click "View rules.yaml" to inspect project rules!</td></tr>';
         return;
     }
 
     state.customRules.forEach(r => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-            <td><code>${r.id}</code></td>
+            <td><code>${escapeHtml(r.id)}</code></td>
             <td>
-                <strong>${r.name}</strong>
-                <div style="font-size: 12px; color: var(--text-muted);">${r.nl_prompt || r.description}</div>
+                <strong>${escapeHtml(r.name)}</strong>
+                <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(r.nl_prompt || r.description || '')}</div>
             </td>
-            <td><span class="badge" style="background: rgba(255,255,255,0.06);">${r.rule_category.toUpperCase()}</span></td>
-            <td><span class="badge badge-${(r.severity || 'medium').toLowerCase()}">${r.severity || 'MEDIUM'}</span></td>
-            <td><code>${r.cwe || 'CWE-699'}</code></td>
+            <td><span class="badge" style="background: rgba(255,255,255,0.06);">${(r.rule_category || 'sast').toUpperCase()}</span></td>
+            <td><span class="badge badge-${(r.severity || 'medium').toLowerCase()}">${escapeHtml(r.severity || 'MEDIUM')}</span></td>
+            <td><code>${escapeHtml(r.cwe || 'CWE-699')}</code></td>
             <td><span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">ACTIVE</span></td>
             <td style="text-align: right;">
-                <button class="btn btn-danger btn-sm" onclick="deleteRule('${r.id}')">Delete</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteRule('${escapeHtml(r.id)}')">Delete</button>
             </td>
         `;
         tbody.appendChild(tr);
@@ -1894,15 +1900,141 @@ function renderCustomRulesTable() {
 }
 
 async function deleteRule(ruleId) {
+    if (!confirm(`Are you sure you want to permanently delete rule "${ruleId}" from the database and project .sentinel/rules.yaml?`)) {
+        return;
+    }
+
     try {
-        const resp = await fetch(`/api/rules/${ruleId}`, { method: "DELETE" });
+        const url = `/api/rules/${encodeURIComponent(ruleId)}${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
+        const resp = await fetch(url, { method: "DELETE" });
         if (resp.ok) {
-            showToast("Rule removed", "success");
+            showToast(`Rule ${ruleId} permanently purged from catalog and .sentinel/rules.yaml`, "success");
+
+            // Purge active editor & sandbox if the deleted rule was loaded
+            const editor = document.getElementById("rule-yaml-editor");
+            if (activeGeneratedRule && (activeGeneratedRule.id === ruleId || (activeGeneratedRule.name && activeGeneratedRule.name.includes(ruleId)))) {
+                activeGeneratedRule = null;
+                if (editor) editor.value = "";
+                const codeBox = document.getElementById("rule-sandbox-code");
+                if (codeBox) codeBox.value = "";
+                const resultsBox = document.getElementById("rule-test-results");
+                if (resultsBox) resultsBox.innerHTML = '<span style="color: var(--text-muted);">Awaiting test execution...</span>';
+            } else if (editor && editor.value.includes(ruleId)) {
+                editor.value = "";
+            }
+
             await loadCustomRules();
+
+            // Refresh open YAML view if modal is open
+            const modalYaml = document.getElementById("modal-view-rules-yaml");
+            if (modalYaml && modalYaml.classList.contains("active")) {
+                await fetchRulesYamlContent();
+            }
+        } else {
+            showToast("Failed to delete rule", "error");
         }
     } catch (e) {
         showToast("Error deleting rule", "error");
     }
+}
+
+// --- rules.yaml Viewer & Editor Functions ---
+async function openViewRulesYamlModal() {
+    openModal("modal-view-rules-yaml");
+    await fetchRulesYamlContent();
+}
+
+async function fetchRulesYamlContent() {
+    const editor = document.getElementById("view-rules-yaml-editor");
+    const pathEl = document.getElementById("view-rules-yaml-path");
+    const statusEl = document.getElementById("view-rules-yaml-status");
+    const countEl = document.getElementById("view-rules-yaml-count");
+
+    if (editor) editor.value = "# Fetching .sentinel/rules.yaml from server...";
+
+    try {
+        const url = `/api/rules/file${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
+        const resp = await fetch(url);
+        if (resp.ok) {
+            const data = await resp.json();
+            if (editor) editor.value = data.content;
+            if (pathEl) pathEl.textContent = data.file_path || ".sentinel/rules.yaml";
+            if (statusEl) {
+                if (data.found) {
+                    statusEl.textContent = "ACTIVE FILE ON DISK";
+                    statusEl.style.background = "rgba(16, 185, 129, 0.2)";
+                    statusEl.style.color = "#10b981";
+                } else {
+                    statusEl.textContent = "SYNTHESIZED FROM ACTIVE CATALOG";
+                    statusEl.style.background = "rgba(56, 189, 248, 0.2)";
+                    statusEl.style.color = "#38bdf8";
+                }
+            }
+
+            // Count rules defined in YAML
+            const matchCount = (data.content.match(/^\s*-\s*id:\s*['"]?[a-zA-Z0-9_-]+/gm) || []).length;
+            if (countEl) {
+                countEl.textContent = `${matchCount} rule${matchCount === 1 ? '' : 's'} declared`;
+            }
+        } else {
+            if (editor) editor.value = "# Error loading .sentinel/rules.yaml from server";
+        }
+    } catch (e) {
+        if (editor) editor.value = `# Connection error: ${e.message}`;
+    }
+}
+
+async function saveRulesYamlFile() {
+    const editor = document.getElementById("view-rules-yaml-editor");
+    if (!editor) return;
+
+    const content = editor.value;
+    if (!content.trim()) {
+        showToast("rules.yaml cannot be empty", "error");
+        return;
+    }
+
+    const btn = document.getElementById("btn-save-rules-yaml");
+    if (btn) btn.disabled = true;
+
+    try {
+        const url = `/api/rules/file${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
+        const resp = await fetch(url, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content })
+        });
+
+        if (resp.ok) {
+            showToast("Successfully saved .sentinel/rules.yaml! Scanners and IDE will reload.", "success");
+            await fetchRulesYamlContent();
+            await loadCustomRules();
+        } else {
+            const err = await resp.json();
+            showToast(`Save failed: ${err.detail || 'Server error'}`, "error");
+        }
+    } catch (e) {
+        showToast(`Save error: ${e.message}`, "error");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function copyRulesYamlContent() {
+    const editor = document.getElementById("view-rules-yaml-editor");
+    if (!editor || !editor.value) return;
+
+    navigator.clipboard.writeText(editor.value).then(() => {
+        showToast("rules.yaml copied to clipboard!", "success");
+        const btn = document.getElementById("btn-copy-rules-yaml");
+        if (btn) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
+            setTimeout(() => { btn.innerHTML = originalText; }, 2000);
+        }
+    }).catch(() => {
+        showToast("Failed to copy to clipboard", "error");
+    });
 }
 
 // --- Standards & Compliance View ---
