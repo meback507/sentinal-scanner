@@ -73,17 +73,226 @@ const DEFAULT_RULES = [
         is_project_custom: true
     },
 
-    // Built-in SAST
+    // Built-in Secret Detection Rules (High-Entropy & Cloud Signatures)
     {
-        id: "SEC-001",
-        name: "Hardcoded API Key or Secret Token",
+        id: "SEC-AWS-001",
+        name: "AWS Access Key ID",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12", "CIS:SupplyChain:1.2", "NIST-800-53:IA-5"],
+        regex: "\\b(AKIA[0-9A-Z]{16})\\b",
+        min_entropy: 3.0,
+        description: "Hardcoded AWS Access Key ID detected.",
+        remediation: "Remove credentials and use AWS IAM roles, instance profiles, or AWS Secrets Manager."
+    },
+    {
+        id: "SEC-AWS-002",
+        name: "AWS Secret Access Key",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12", "CIS:SupplyChain:1.2", "NIST-800-53:IA-5"],
+        regex: "aws_secret_access_key\\s*[:=]\\s*['\"]?([A-Za-z0-9/+=]{40})['\"]?",
+        min_entropy: 4.0,
+        description: "Hardcoded AWS Secret Access Key detected.",
+        remediation: "Rotate secret immediately and use AWS Secrets Manager or environment variables."
+    },
+    {
+        id: "SEC-GH-001",
+        name: "GitHub Personal Access Token",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12", "CIS:SupplyChain:1.2"],
+        regex: "\\b((?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,255})\\b",
+        min_entropy: 3.5,
+        description: "GitHub Personal Access Token found in source code.",
+        remediation: "Revoke token on GitHub and inject via GitHub Actions secrets or environment variables."
+    },
+    {
+        id: "SEC-GH-002",
+        name: "GitHub Fine-Grained Personal Access Token",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12", "CIS:SupplyChain:1.2"],
+        regex: "\\b(github_pat_[0-9a-zA-Z_]{82})\\b",
+        min_entropy: 4.0,
+        description: "GitHub fine-grained PAT found in source code.",
+        remediation: "Revoke token immediately in GitHub settings and store in secure vault."
+    },
+    {
+        id: "SEC-GL-001",
+        name: "GitLab Personal Access Token",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12", "CIS:SupplyChain:1.2"],
+        regex: "\\b(glpat-[0-9a-zA-Z_\\-]{20,})\\b",
+        min_entropy: 3.5,
+        description: "GitLab Personal Access Token discovered.",
+        remediation: "Revoke token in GitLab and configure CI/CD masked variables."
+    },
+    {
+        id: "SEC-SLACK-001",
+        name: "Slack Bot or User Token",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12"],
+        regex: "\\b(xox[baprs]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*)",
+        min_entropy: 3.0,
+        description: "Slack API token embedded in plaintext.",
+        remediation: "Regenerate token in Slack Developer Portal and store securely."
+    },
+    {
+        id: "SEC-SLACK-002",
+        name: "Slack Incoming Webhook",
         type: "secret",
         severity: "HIGH",
-        languages: ["python", "javascript", "typescript", "java", "go"],
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12"],
+        regex: "(https://hooks\\.slack\\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+)",
+        min_entropy: 3.0,
+        description: "Slack webhook URL with embedded authentication tokens exposed.",
+        remediation: "Inject webhook URLs through environment variables."
+    },
+    {
+        id: "SEC-AI-001",
+        name: "OpenAI API Secret Key",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
         cwe: "CWE-798",
         standards: ["ISO-27001:A.8.12", "OWASP:A07:2021"],
-        regex: "(?:api_key|apikey|secret|token|password|passwd|private_key|aws_secret_access_key)\\s*[:=]\\s*['\"][a-zA-Z0-9_\\-\\.]{16,}['\"]",
-        description: "Hardcoded API keys or credentials embedded directly into source code.",
+        regex: "\\b(sk-[a-zA-Z0-9]{20,})\\b",
+        min_entropy: 3.5,
+        description: "OpenAI API Key detected in code.",
+        remediation: "Rotate key in OpenAI Dashboard and set OPENAI_API_KEY environment variable."
+    },
+    {
+        id: "SEC-AI-002",
+        name: "Anthropic Claude API Key",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12"],
+        regex: "\\b(sk-ant-[a-zA-Z0-9_\\-]{32,})\\b",
+        min_entropy: 3.5,
+        description: "Anthropic API Key discovered.",
+        remediation: "Rotate API key and configure via ANTHROPIC_API_KEY environment variable."
+    },
+    {
+        id: "SEC-AI-003",
+        name: "Hugging Face Access Token",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12"],
+        regex: "\\b(hf_[a-zA-Z0-9]{34,})\\b",
+        min_entropy: 3.5,
+        description: "Hugging Face authentication token found in source code.",
+        remediation: "Revoke token and store in HF_TOKEN secret."
+    },
+    {
+        id: "SEC-GOOGLE-001",
+        name: "Google Cloud / Firebase API Key",
+        type: "secret",
+        severity: "HIGH",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12"],
+        regex: "\\b(AIza[0-9A-Za-z\\-_]{35})\\b",
+        min_entropy: 3.5,
+        description: "Google Cloud API Key exposed in source code.",
+        remediation: "Restrict API key in GCP Console and inject at runtime."
+    },
+    {
+        id: "SEC-STRIPE-001",
+        name: "Stripe Live Secret Key",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12", "PCI-DSS:Req-3"],
+        regex: "\\b((?:sk|rk)_live_[0-9a-zA-Z]{24,})\\b",
+        min_entropy: 3.5,
+        description: "Stripe Live Secret Key detected. Allows unauthorized charge processing and refund actions.",
+        remediation: "Roll key immediately in Stripe Dashboard and store in KMS/Vault."
+    },
+    {
+        id: "SEC-TWILIO-001",
+        name: "Twilio API Key or Auth Token",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12"],
+        regex: "\\b((?:AC|SK)[0-9a-fA-F]{32})\\b",
+        min_entropy: 3.0,
+        description: "Twilio Account SID or API Key found.",
+        remediation: "Store in TWILIO_AUTH_TOKEN environment variable."
+    },
+    {
+        id: "SEC-SENDGRID-001",
+        name: "SendGrid API Key",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12"],
+        regex: "\\b(SG\\.[a-zA-Z0-9_\\-\\.]+\\.[a-zA-Z0-9_\\-]+)\\b",
+        min_entropy: 3.8,
+        description: "SendGrid API Key exposed.",
+        remediation: "Revoke key on SendGrid and provide via SENDGRID_API_KEY environment variable."
+    },
+    {
+        id: "SEC-PK-001",
+        name: "Private Cryptographic Key Block",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-312",
+        standards: ["ISO-27001:A.8.12", "FIPS-140-3"],
+        regex: "(-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----)",
+        min_entropy: 0.0,
+        description: "Private cryptographic key block directly committed to repository.",
+        remediation: "Remove private key immediately, rotate keypair, and mount from secure secret store."
+    },
+    {
+        id: "SEC-DB-001",
+        name: "Database Connection URI with Credentials",
+        type: "secret",
+        severity: "CRITICAL",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12", "OWASP:A07:2021"],
+        regex: "((?:postgres|postgresql|mysql|mongodb|redis):\\/\\/[a-zA-Z0-9_]+:[a-zA-Z0-9_!@#$%^&*()+\\-=\\[\\]{}]+@[a-zA-Z0-9_.\\-]+)",
+        min_entropy: 2.5,
+        description: "Database connection string containing plaintext username and password.",
+        remediation: "Construct connection string dynamically from environment variables DATABASE_URL."
+    },
+    {
+        id: "SEC-GEN-001",
+        name: "Generic High-Entropy Credential Assignment",
+        type: "secret",
+        severity: "HIGH",
+        languages: ["*"],
+        cwe: "CWE-798",
+        standards: ["ISO-27001:A.8.12", "OWASP:A07:2021"],
+        regex: "(?:api_key|apikey|secret|token|password|passwd|auth_token)\\s*[:=]\\s*['\"]([a-zA-Z0-9_\\-\\.]{20,})['\"]",
+        min_entropy: 3.8,
+        description: "Hardcoded API keys, tokens, or credentials embedded directly into source code.",
         remediation: "Extract secrets into environment variables or secrets manager (AWS Secrets Manager, HashiCorp Vault)."
     },
     {
@@ -848,6 +1057,41 @@ function parseSimpleYamlRules(yamlText) {
 }
 
 /**
+ * Calculates Shannon entropy (bits per character) of a string to distinguish high-randomness secrets from words
+ */
+function calculateShannonEntropy(data) {
+    if (!data || data.length === 0) return 0.0;
+    const freqs = {};
+    for (let i = 0; i < data.length; i++) {
+        const c = data[i];
+        freqs[c] = (freqs[c] || 0) + 1;
+    }
+    let entropy = 0.0;
+    const len = data.length;
+    for (const char in freqs) {
+        const p = freqs[char] / len;
+        entropy -= p * Math.log2(p);
+    }
+    return Math.round(entropy * 100) / 100;
+}
+
+const DUMMY_SUBSTRINGS = [
+    "example", "placeholder", "your_api_key", "your_secret",
+    "insert_here", "dummy", "test_key", "sample_key", "change_me",
+    "replace_me", "mysecretkey", "xxxxxx", "000000", "123456"
+];
+
+function isDummySecret(val) {
+    if (!val) return true;
+    const lower = val.toLowerCase();
+    for (const d of DUMMY_SUBSTRINGS) {
+        if (lower.includes(d)) return true;
+    }
+    if (new Set(val).size <= 2 && val.length > 8) return true;
+    return false;
+}
+
+/**
  * Scans an individual text document against active rules
  */
 function scanDocument(document) {
@@ -881,10 +1125,19 @@ function scanDocument(document) {
         try {
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
-                if (line.includes('sentinel-ignore')) continue;
+                if (line.includes('sentinel-ignore') || line.includes('pragma: allowlist secret')) continue;
 
                 const match = regex.exec(line);
                 if (match) {
+                    let secretEntropy = null;
+                    if (rule.type === 'secret') {
+                        const candidate = match[1] || match[0];
+                        if (isDummySecret(candidate)) continue;
+                        secretEntropy = calculateShannonEntropy(candidate);
+                        const minEntropy = rule.min_entropy !== undefined ? rule.min_entropy : 3.0;
+                        if (secretEntropy < minEntropy) continue;
+                    }
+
                     const startCol = match.index;
                     const endCol = match.index + match[0].length;
                     const range = new vscode.Range(i, startCol, i, endCol > startCol ? endCol : line.length);
@@ -900,9 +1153,11 @@ function scanDocument(document) {
                         originLabel = ' [Cloud Platform Custom]';
                     }
 
+                    const entropyLabel = secretEntropy !== null ? ` [Entropy: ${secretEntropy} bits/char]` : '';
+
                     const diag = new vscode.Diagnostic(
                         range,
-                        `[${rule.id}] ${rule.name}${originLabel}: ${rule.description}`,
+                        `[${rule.id}] ${rule.name}${originLabel}${entropyLabel}: ${rule.description}`,
                         severity
                     );
                     diag.code = rule.id;

@@ -200,6 +200,8 @@ class Database:
                 ai_confidence_rationale TEXT,
                 dependency_lag_versions TEXT,
                 reachability_status TEXT DEFAULT 'UNKNOWN',
+                entropy REAL,
+                masked_value TEXT,
                 FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
@@ -254,6 +256,10 @@ class Database:
                     conn.execute("ALTER TABLE findings ADD COLUMN dependency_lag_versions TEXT")
                 if "reachability_status" not in cols:
                     conn.execute("ALTER TABLE findings ADD COLUMN reachability_status TEXT DEFAULT 'UNKNOWN'")
+                if "entropy" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN entropy REAL")
+                if "masked_value" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN masked_value TEXT")
                 self._migrate_and_deduplicate_findings(conn)
             except Exception:
                 pass
@@ -531,6 +537,8 @@ class Database:
                 ai_confidence_rationale = f.get("ai_confidence_rationale")
                 dependency_lag_versions = f.get("dependency_lag_versions")
                 reachability_status = f.get("reachability_status") or f.get("reachability") or "UNKNOWN"
+                entropy_val = f.get("entropy")
+                masked_val = f.get("masked_value")
 
                 if fp in existing_by_fp:
                     # Repeating vulnerability: DO NOT re-create new row!
@@ -610,7 +618,9 @@ class Database:
                         ai_confidence_label = ?,
                         ai_confidence_rationale = ?,
                         dependency_lag_versions = ?,
-                        reachability_status = ?
+                        reachability_status = ?,
+                        entropy = ?,
+                        masked_value = ?
                     WHERE id = ?
                     """, (
                         scan_id, ftype, title, description, remediation, severity,
@@ -623,6 +633,7 @@ class Database:
                         orig_first_seen, now, fp,
                         cisa_kev_val, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
                         ai_confidence_rationale, dependency_lag_versions, reachability_status,
+                        entropy_val, masked_val,
                         finding_id
                     ))
                 else:
@@ -646,8 +657,9 @@ class Database:
                         jira_key, zammad_id, ticket_assigned_to, ticket_assigned_email,
                         first_seen, last_seen, fingerprint,
                         cisa_kev, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
-                        ai_confidence_rationale, dependency_lag_versions, reachability_status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ai_confidence_rationale, dependency_lag_versions, reachability_status,
+                        entropy, masked_value
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         finding_id, scan_id, project_id, ftype, title, description, remediation, severity,
                         cwe_id, cve_id, language, package_name, installed_version, fixed_version,
@@ -658,7 +670,8 @@ class Database:
                         f.get("jira_key"), f.get("zammad_id"), f.get("ticket_assigned_to"), f.get("ticket_assigned_email"),
                         first_seen, now, fp,
                         cisa_kev_val, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
-                        ai_confidence_rationale, dependency_lag_versions, reachability_status
+                        ai_confidence_rationale, dependency_lag_versions, reachability_status,
+                        entropy_val, masked_val
                     ))
 
             # Auto-resolve vulnerabilities that were not detected in this scan

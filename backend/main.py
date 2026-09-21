@@ -20,7 +20,8 @@ from .models import (
     ProjectModel, ProjectCreateRequest, FindingModel, ScanModel,
     CustomRuleModel, RuleGenerateRequest, RuleTestRequest,
     JiraConfigRequest, ZammadConfigRequest, CreateTicketRequest,
-    RoleEnum, LLMConfigRequest, AIRemediationResponse, GateCheckRequest
+    RoleEnum, LLMConfigRequest, AIRemediationResponse, GateCheckRequest,
+    SecretScanRequest
 )
 from .db import db, hash_password
 from .auth import (
@@ -377,6 +378,21 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
     finally:
         if should_cleanup and target_dir:
             shutil.rmtree(target_dir, ignore_errors=True)
+
+
+@app.post("/api/scan/secrets")
+def scan_secrets_content(req: SecretScanRequest, user: UserModel = Depends(get_current_user)):
+    """
+    Direct endpoint for scanning raw code/text content for hardcoded API keys, tokens, and secrets
+    with Shannon entropy calculation and credential masking.
+    """
+    scanner = SecretScanner()
+    findings = scanner.scan_content(req.content, req.filename or "input.txt")
+    return {
+        "status": "success",
+        "total_secrets": len(findings),
+        "findings": findings
+    }
 
 
 def _create_demo_project_fixture() -> str:

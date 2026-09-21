@@ -132,6 +132,13 @@ class FindingModel(BaseModel):
     ai_confidence_rationale: Optional[str] = None
     dependency_lag_versions: Optional[str] = None
     reachability_status: Optional[str] = "UNKNOWN"
+    entropy: Optional[float] = None
+    masked_value: Optional[str] = None
+
+
+class SecretScanRequest(BaseModel):
+    content: str
+    filename: Optional[str] = "input.txt"
 
 
 class ScanModel(BaseModel):

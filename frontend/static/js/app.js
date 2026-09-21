@@ -410,8 +410,9 @@ function renderProjectsTable() {
             <td><strong>${p.total_findings || 0}</strong> vulnerabilities</td>
             <td><strong style="color: ${riskColor};">${p.risk_score || 0.0}</strong> / 100</td>
             <td style="font-size: 13px; color: var(--text-secondary);">${lastScanned}</td>
-            <td style="text-align: right;">
+            <td style="text-align: right; display: flex; gap: 4px; justify-content: flex-end;">
                 <button class="btn btn-secondary btn-sm" onclick="triggerScanForProject('${p.id}')">Scan</button>
+                <button class="btn btn-secondary btn-sm" onclick="triggerScanForProject('${p.id}', 'secrets')" title="Scan secrets & credentials only" style="color: #f472b6; border-color: rgba(244, 114, 182, 0.4);">🔑 Secrets</button>
                 <button class="btn btn-danger btn-sm" onclick="promptDeleteProject('${p.id}', '${p.name.replace(/'/g, "\\'")}')">Delete</button>
             </td>
         `;
@@ -494,13 +495,14 @@ async function triggerQuickScan() {
     await triggerScanForProject(state.activeProjectId);
 }
 
-async function triggerScanForProject(projectId) {
-    showToast("Launching SAST & SCA scanning engine...", "info");
+async function triggerScanForProject(projectId, scanType = "full") {
+    const label = scanType === "secrets" ? "Secret & Credential Scanner" : "SAST & SCA scanning engine";
+    showToast(`Launching ${label}...`, "info");
     const scanBtn = document.getElementById("btn-quick-scan");
     if (scanBtn) scanBtn.disabled = true;
 
     try {
-        const resp = await fetch(`/api/projects/${projectId}/scan`, {
+        const resp = await fetch(`/api/projects/${projectId}/scan?scan_type=${scanType}`, {
             method: "POST"
         });
         const res = await resp.json();
@@ -957,6 +959,7 @@ function renderFindingsTable() {
                         🕒 ${escapeHtml(ageText)}
                     </span>
                     ${firstSeenDate ? `<span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">Seen: ${escapeHtml(firstSeenDate)}</span>` : ''}
+                    ${f.entropy ? `<span class="badge" style="background: rgba(236, 72, 153, 0.18); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.35); font-size: 10px;">🎲 Entropy: ${(typeof f.entropy === 'number' ? f.entropy.toFixed(2) : f.entropy)}</span>` : ''}
                     ${f.dependency_lag_versions ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; font-size: 10px;">📦 ${escapeHtml(f.dependency_lag_versions)}</span>` : ''}
                 </div>
             </td>
@@ -1120,7 +1123,8 @@ async function openFindingDetail(findingId) {
 
     if (f.entropy) {
         if (entropyTag) entropyTag.style.display = "flex";
-        if (entropyVal) entropyVal.textContent = `${f.entropy} bits/char (${f.entropy_level || 'HIGH'})`;
+        const maskedInfo = f.masked_value ? ` | Masked: ${f.masked_value}` : '';
+        if (entropyVal) entropyVal.textContent = `${typeof f.entropy === 'number' ? f.entropy.toFixed(2) : f.entropy} bits/char (${f.entropy_level || 'HIGH'})${maskedInfo}`;
         hasAdvancedMeta = true;
     } else if (entropyTag) {
         entropyTag.style.display = "none";
