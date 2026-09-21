@@ -1,10 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AegisSec | Enterprise SAST & SCA Platform</title>
     <meta name="description" content="Next-Gen Application Security Testing Platform with CVSS & EPSS Prioritization, Automotive & Cloud Compliance Standards, and Natural-Language Custom Rule Generation.">
+    <!-- Bootstrap 5.3.3 CSS & Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -301,8 +304,8 @@
                     </div>
                 </div>
 
-                <div class="data-table-wrapper">
-                    <table class="data-table">
+                <div class="table-responsive data-table-wrapper">
+                    <table class="table table-dark table-hover table-striped align-middle data-table mb-0">
                         <thead>
                             <tr>
                                 <th>Developer / Committer</th>
@@ -334,9 +337,9 @@
                 </button>
             </div>
 
-            <div class="glass-card">
-                <div class="data-table-wrapper">
-                    <table class="data-table" id="table-projects">
+            <div class="card glass-card border-0">
+                <div class="table-responsive data-table-wrapper">
+                    <table class="table table-dark table-hover table-striped align-middle data-table mb-0" id="table-projects">
                         <thead>
                             <tr>
                                 <th>Project Name</th>
@@ -428,9 +431,9 @@
             </div>
 
             <!-- Findings Table -->
-            <div class="glass-card">
-                <div class="data-table-wrapper">
-                    <table class="data-table">
+            <div class="card glass-card border-0">
+                <div class="table-responsive data-table-wrapper">
+                    <table class="table table-dark table-hover table-striped align-middle data-table mb-0">
                         <thead>
                             <tr>
                                 <th style="width: 110px;">Severity</th>
@@ -465,75 +468,89 @@
                         <span>View rules.yaml</span>
                     </button>
                     <a href="/api/extension/download" download="sentinel-appsec-ide-1.0.0.vsix" class="btn btn-secondary btn-sm" style="text-decoration: none; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); display: inline-flex; align-items: center; gap: 6px;" title="Download IDE Extension to enforce rules in VS Code / Cursor">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                        <i class="bi bi-download"></i>
                         <span>IDE Plugin (.vsix)</span>
                     </a>
+                    <button class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1" onclick="openAutoConfigModal()" title="Automatically connect VS Code to this hosted server IP">
+                        <i class="bi bi-broadcast"></i>
+                        <span>Auto-Connect IDE</span>
+                    </button>
                     <span id="rule-engine-status-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 6px 12px; font-size: 12px;">
                         🤖 LLM AI RULE ENGINE ACTIVE
                     </span>
                 </div>
             </div>
 
-            <div class="glass-card">
-                <h3 style="font-size: 16px; margin-bottom: 8px;">Describe the Rule in Natural Language</h3>
-                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Type a human command describing what vulnerability pattern, memory hazard, or dependency constraint you wish to enforce.</p>
+            <div class="card glass-card mb-4 border-0">
+                <div class="card-body p-4">
+                    <h3 style="font-size: 16px; margin-bottom: 8px;">Describe the Rule in Natural Language</h3>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Type a human command describing what vulnerability pattern, memory hazard, or dependency constraint you wish to enforce.</p>
 
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;">
-                    <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Detect hardcoded API keys or JWT tokens in Python and JavaScript')">🔑 Detect Hardcoded Secrets</button>
-                    <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Disallow dynamic memory allocation malloc or free in C/C++ for MISRA compliance')">🚗 Automotive MISRA Dynamic Memory</button>
-                    <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Detect SQL injection via string concatenation in Python')">💉 SQL Injection</button>
-                    <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Detect use of eval() or exec() with dynamic strings in Python')">⚡ Code Execution (eval/exec)</button>
-                    <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Ban package lodash below version 4.17.21 or any library with license AGPL-3.0')">📦 SCA Ban Version / License</button>
-                </div>
+                    <div class="d-flex gap-2 flex-wrap mb-3">
+                        <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Detect hardcoded API keys or JWT tokens in Python and JavaScript')">🔑 Detect Hardcoded Secrets</button>
+                        <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Disallow dynamic memory allocation malloc or free in C/C++ for MISRA compliance')">🚗 Automotive MISRA Dynamic Memory</button>
+                        <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Detect SQL injection via string concatenation in Python')">💉 SQL Injection</button>
+                        <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Detect use of eval() or exec() with dynamic strings in Python')">⚡ Code Execution (eval/exec)</button>
+                        <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Ban package lodash below version 4.17.21 or any library with license AGPL-3.0')">📦 SCA Ban Version / License</button>
+                    </div>
 
-                <div style="display: flex; gap: 12px;">
-                    <textarea id="nl-rule-prompt" class="form-textarea" rows="3" style="flex-grow: 1;" placeholder="e.g., Flag any Python file using pickle.loads or yaml.load without SafeLoader due to deserialization RCE"></textarea>
-                    <button class="btn btn-primary" id="btn-generate-rule" style="align-self: flex-start; height: 48px;" onclick="generateRuleFromPrompt()">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                        Synthesize Rule
-                    </button>
+                    <div class="d-flex gap-3">
+                        <textarea id="nl-rule-prompt" class="form-textarea form-control" rows="3" style="flex-grow: 1;" placeholder="e.g., Flag any Python file using pickle.loads or yaml.load without SafeLoader due to deserialization RCE"></textarea>
+                        <button class="btn btn-primary d-flex align-items-center gap-2" id="btn-generate-rule" style="align-self: flex-start; height: 48px; white-space: nowrap;" onclick="generateRuleFromPrompt()">
+                            <i class="bi bi-cpu-fill"></i>
+                            Synthesize Rule
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div class="row g-4 mb-4">
                 <!-- Generated Rule YAML -->
-                <div class="glass-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                        <h3 style="font-size: 16px; margin: 0;">Generated Rule (YAML)</h3>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <label style="font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Automatically add rule to project .sentinel/rules.yaml">
-                                <input type="checkbox" id="check-sync-to-yaml" checked>
-                                <span>Sync to <code>.sentinel/rules.yaml</code></span>
-                            </label>
-                            <button class="btn btn-primary btn-sm" id="btn-save-rule" onclick="saveActiveRule()">
-                                Save & Activate Rule
-                            </button>
+                <div class="col-lg-6">
+                    <div class="card glass-card h-100 border-0">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                                <h3 style="font-size: 16px; margin: 0;">Generated Rule (YAML)</h3>
+                                <div class="d-flex align-items-center gap-2">
+                                    <label class="form-check-label d-flex align-items-center gap-2 small text-muted" style="cursor: pointer;" title="Automatically add rule to project .sentinel/rules.yaml">
+                                        <input type="checkbox" class="form-check-input" id="check-sync-to-yaml" checked>
+                                        <span>Sync to <code>.sentinel/rules.yaml</code></span>
+                                    </label>
+                                    <button class="btn btn-primary btn-sm" id="btn-save-rule" onclick="saveActiveRule()">
+                                        Save &amp; Activate Rule
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea id="rule-yaml-editor" class="form-textarea form-control font-monospace" rows="18" placeholder="# Synthesized rule YAML will appear here..."></textarea>
                         </div>
                     </div>
-                    <textarea id="rule-yaml-editor" class="form-textarea" rows="18" placeholder="# Synthesized rule YAML will appear here..."></textarea>
                 </div>
 
                 <!-- Test Sandbox -->
-                <div class="glass-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h3 style="font-size: 16px;">Live Code Test Bench</h3>
-                        <button class="btn btn-secondary btn-sm" id="btn-test-rule" onclick="testRuleSandbox()">
-                            Run Rule on Test Code
-                        </button>
-                    </div>
-                    <textarea id="rule-sandbox-code" class="form-textarea" rows="10" placeholder="// Paste target source code to test against...
+                <div class="col-lg-6">
+                    <div class="card glass-card h-100 border-0">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3 style="font-size: 16px; margin: 0;">Live Code Test Bench</h3>
+                                <button class="btn btn-secondary btn-sm" id="btn-test-rule" onclick="testRuleSandbox()">
+                                    Run Rule on Test Code
+                                </button>
+                            </div>
+                            <textarea id="rule-sandbox-code" class="form-textarea form-control font-monospace" rows="10" placeholder="// Paste target source code to test against...
 char* buf = (char*)malloc(128);
 strcpy(buf, input);"></textarea>
 
-                    <h4 style="font-size: 14px; margin-top: 14px; margin-bottom: 6px;">Test Results:</h4>
-                    <div id="rule-test-results" style="background: var(--bg-main); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; min-height: 100px; font-size: 13px;">
-                        <span style="color: var(--text-muted);">Awaiting test execution...</span>
+                            <h4 style="font-size: 14px; margin-top: 14px; margin-bottom: 6px;">Test Results:</h4>
+                            <div id="rule-test-results" style="background: var(--bg-main); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; min-height: 100px; font-size: 13px;">
+                                <span style="color: var(--text-muted);">Awaiting test execution...</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Active Custom Rules List -->
-            <div class="glass-card">
+            <div class="card glass-card border-0">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
                     <h3 style="font-size: 16px; margin: 0;">Active Custom Rules Repository</h3>
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -547,8 +564,8 @@ strcpy(buf, input);"></textarea>
                         </a>
                     </div>
                 </div>
-                <div class="data-table-wrapper">
-                    <table class="data-table">
+                <div class="table-responsive data-table-wrapper">
+                    <table class="table table-dark table-hover table-striped align-middle data-table mb-0">
                         <thead>
                             <tr>
                                 <th>Rule ID</th>
@@ -770,9 +787,9 @@ strcpy(buf, input);"></textarea>
                 </button>
             </div>
 
-            <div class="glass-card">
-                <div class="data-table-wrapper">
-                    <table class="data-table">
+            <div class="card glass-card border-0">
+                <div class="table-responsive data-table-wrapper">
+                    <table class="table table-dark table-hover table-striped align-middle data-table mb-0">
                         <thead>
                             <tr>
                                 <th>Username</th>
@@ -900,8 +917,8 @@ strcpy(buf, input);"></textarea>
                         </select>
                     </div>
                 </div>
-                <div class="data-table-wrapper" style="overflow-x: auto;">
-                    <table class="data-table" style="width: 100%;">
+                <div class="table-responsive data-table-wrapper" style="overflow-x: auto;">
+                    <table class="table table-dark table-hover table-striped align-middle data-table mb-0" style="width: 100%;">
                         <thead>
                             <tr>
                                 <th>Severity</th>
@@ -923,7 +940,7 @@ strcpy(buf, input);"></textarea>
             </div>
 
             <!-- Immutable Security Audit Trail Log -->
-            <div class="glass-card">
+            <div class="card glass-card border-0">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                     <div>
                         <h2 style="font-size: 18px; font-weight: 700;">Immutable Security &amp; Compliance Audit Log</h2>
@@ -931,8 +948,8 @@ strcpy(buf, input);"></textarea>
                     </div>
                     <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">APPEND-ONLY LEDGER</span>
                 </div>
-                <div class="data-table-wrapper" style="max-height: 320px; overflow-y: auto;">
-                    <table class="data-table" style="width: 100%;">
+                <div class="table-responsive data-table-wrapper" style="max-height: 320px; overflow-y: auto;">
+                    <table class="table table-dark table-hover table-striped align-middle data-table mb-0" style="width: 100%;">
                         <thead>
                             <tr>
                                 <th>Timestamp (UTC)</th>
@@ -952,405 +969,477 @@ strcpy(buf, input);"></textarea>
     </main>
 
     <!-- MODAL: CREATE USER -->
-    <div class="modal-overlay" id="modal-create-user">
-        <div class="modal-content" style="max-width: 520px;">
-            <div class="modal-header">
-                <h3 class="modal-title">Create New System User</h3>
-                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" onclick="closeModal('modal-create-user')">&times;</button>
+    <div class="modal fade modal-overlay" id="modal-create-user" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 520px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create New System User</h5>
+                    <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeModal('modal-create-user')"></button>
+                </div>
+                <form id="form-create-user" onsubmit="submitCreateUser(event)">
+                    <div class="modal-body">
+                        <div class="form-group mb-3">
+                            <label class="form-label">Username *</label>
+                            <input type="text" id="new-user-username" class="form-input form-control" placeholder="e.g. jdoe" required autocomplete="username">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Email Address *</label>
+                            <input type="email" id="new-user-email" class="form-input form-control" placeholder="jdoe@company.com" required autocomplete="email">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Password *</label>
+                            <input type="password" id="new-user-password" class="form-input form-control" placeholder="Enter secure user password..." required autocomplete="new-password">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Assigned Role *</label>
+                            <select id="new-user-role" class="form-select" required>
+                                <option value="developer" selected>Developer (Inspect findings, false positives & fixes)</option>
+                                <option value="security_engineer">Security Engineer (Trigger scans, custom rules & tickets)</option>
+                                <option value="auditor">Compliance Auditor (Read-only reports & governance matrices)</option>
+                                <option value="admin">Administrator (Full system management, RBAC & integrations)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-user')">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="btn-submit-create-user">Create User</button>
+                    </div>
+                </form>
             </div>
-            <form id="form-create-user" onsubmit="submitCreateUser(event)">
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label class="form-label">Username *</label>
-                        <input type="text" id="new-user-username" class="form-input" placeholder="e.g. jdoe" required autocomplete="username">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Email Address *</label>
-                        <input type="email" id="new-user-email" class="form-input" placeholder="jdoe@company.com" required autocomplete="email">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Password *</label>
-                        <input type="password" id="new-user-password" class="form-input" placeholder="Enter secure user password..." required autocomplete="new-password">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Assigned Role *</label>
-                        <select id="new-user-role" class="form-select" required>
-                            <option value="developer" selected>Developer (Inspect findings, false positives & fixes)</option>
-                            <option value="security_engineer">Security Engineer (Trigger scans, custom rules & tickets)</option>
-                            <option value="auditor">Compliance Auditor (Read-only reports & governance matrices)</option>
-                            <option value="admin">Administrator (Full system management, RBAC & integrations)</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-user')">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="btn-submit-create-user">Create User</button>
-                </div>
-            </form>
         </div>
     </div>
 
     <!-- MODAL: UPDATE USER -->
-    <div class="modal-overlay" id="modal-update-user">
-        <div class="modal-content" style="max-width: 520px;">
-            <div class="modal-header">
-                <h3 class="modal-title">Update User Role & Password</h3>
-                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" onclick="closeModal('modal-update-user')">&times;</button>
+    <div class="modal fade modal-overlay" id="modal-update-user" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 520px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Update User Role & Password</h5>
+                    <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeModal('modal-update-user')"></button>
+                </div>
+                <form id="form-update-user" onsubmit="submitUpdateUser(event)">
+                    <input type="hidden" id="update-user-id">
+                    <div class="modal-body">
+                        <div class="form-group mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" id="update-user-username" class="form-input form-control" readonly style="opacity: 0.7; cursor: not-allowed;">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Email Address</label>
+                            <input type="email" id="update-user-email" class="form-input form-control" required autocomplete="email">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Assigned Role *</label>
+                            <select id="update-user-role" class="form-select" required>
+                                <option value="developer">Developer (Inspect findings, false positives & fixes)</option>
+                                <option value="security_engineer">Security Engineer (Trigger scans, custom rules & tickets)</option>
+                                <option value="auditor">Compliance Auditor (Read-only reports & governance matrices)</option>
+                                <option value="admin">Administrator (Full system management, RBAC & integrations)</option>
+                            </select>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">New Password (optional)</label>
+                            <input type="password" id="update-user-password" class="form-input form-control" placeholder="Leave blank to keep current password..." autocomplete="new-password">
+                            <small style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" class="d-block">Only provide a value if you wish to reset or change this user's password.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-update-user')">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="btn-submit-update-user">Update User</button>
+                    </div>
+                </form>
             </div>
-            <form id="form-update-user" onsubmit="submitUpdateUser(event)">
-                <input type="hidden" id="update-user-id">
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label class="form-label">Username</label>
-                        <input type="text" id="update-user-username" class="form-input" readonly style="opacity: 0.7; cursor: not-allowed;">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Email Address</label>
-                        <input type="email" id="update-user-email" class="form-input" required autocomplete="email">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Assigned Role *</label>
-                        <select id="update-user-role" class="form-select" required>
-                            <option value="developer">Developer (Inspect findings, false positives & fixes)</option>
-                            <option value="security_engineer">Security Engineer (Trigger scans, custom rules & tickets)</option>
-                            <option value="auditor">Compliance Auditor (Read-only reports & governance matrices)</option>
-                            <option value="admin">Administrator (Full system management, RBAC & integrations)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">New Password (optional)</label>
-                        <input type="password" id="update-user-password" class="form-input" placeholder="Leave blank to keep current password..." autocomplete="new-password">
-                        <small style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Only provide a value if you wish to reset or change this user's password.</small>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-update-user')">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="btn-submit-update-user">Update User</button>
-                </div>
-            </form>
         </div>
     </div>
 
     <!-- MODAL: CREATE PROJECT -->
-    <div class="modal-overlay" id="modal-new-project">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Create New Security Project</h3>
-                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" onclick="closeModal('modal-new-project')">&times;</button>
+    <div class="modal fade modal-overlay" id="modal-new-project" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 600px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create New Security Project</h5>
+                    <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeModal('modal-new-project')"></button>
+                </div>
+                <form id="form-create-project" onsubmit="submitCreateProject(event)">
+                    <div class="modal-body">
+                        <div class="form-group mb-3">
+                            <label class="form-label">Project Name *</label>
+                            <input type="text" id="new-proj-name" class="form-input form-control" placeholder="e.g. Telemetry-Gateway-Service" required>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Description</label>
+                            <input type="text" id="new-proj-desc" class="form-input form-control" placeholder="Automotive ECU microservice with cloud sync">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Git Repository URL (HTTPS or SSH)</label>
+                            <input type="text" id="new-proj-git-url" class="form-input form-control" placeholder="https://github.com/org/repo.git">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Git Branch</label>
+                            <input type="text" id="new-proj-git-branch" class="form-input form-control" value="main" placeholder="main">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="form-label">Personal Access Token (PAT)</label>
+                            <input type="password" id="new-proj-git-pat" class="form-input form-control" placeholder="ghp_xxxxxxxxxxxx or gitlab PAT...">
+                            <small style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" class="d-block">Tokens are encrypted and automatically masked from all logs and terminal output.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-project')">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Project</button>
+                    </div>
+                </form>
             </div>
-            <form id="form-create-project" onsubmit="submitCreateProject(event)">
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label class="form-label">Project Name *</label>
-                        <input type="text" id="new-proj-name" class="form-input" placeholder="e.g. Telemetry-Gateway-Service" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Description</label>
-                        <input type="text" id="new-proj-desc" class="form-input" placeholder="Automotive ECU microservice with cloud sync">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Git Repository URL (HTTPS or SSH)</label>
-                        <input type="text" id="new-proj-git-url" class="form-input" placeholder="https://github.com/org/repo.git">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Git Branch</label>
-                        <input type="text" id="new-proj-git-branch" class="form-input" value="main" placeholder="main">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Personal Access Token (PAT)</label>
-                        <input type="password" id="new-proj-git-pat" class="form-input" placeholder="ghp_xxxxxxxxxxxx or gitlab PAT...">
-                        <small style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Tokens are encrypted and automatically masked from all logs and terminal output.</small>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-project')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Project</button>
-                </div>
-            </form>
         </div>
     </div>
 
     <!-- MODAL: DELETE CONFIRMATION -->
-    <div class="modal-overlay" id="modal-delete-project">
-        <div class="modal-content" style="max-width: 480px;">
-            <div class="modal-header">
-                <h3 class="modal-title" style="color: var(--severity-critical);">Delete Project</h3>
-                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px;" onclick="closeModal('modal-delete-project')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to permanently delete project <strong id="delete-proj-name"></strong>?</p>
-                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">This will permanently remove all associated scans, vulnerability findings, and compliance histories.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('modal-delete-project')">Cancel</button>
-                <button type="button" class="btn btn-danger" id="btn-confirm-delete" onclick="confirmDeleteProject()">Delete Project</button>
+    <div class="modal fade modal-overlay" id="modal-delete-project" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 480px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" style="color: var(--severity-critical);">Delete Project</h5>
+                    <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeModal('modal-delete-project')"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to permanently delete project <strong id="delete-proj-name"></strong>?</p>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">This will permanently remove all associated scans, vulnerability findings, and compliance histories.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-delete-project')">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="btn-confirm-delete" onclick="confirmDeleteProject()">Delete Project</button>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- MODAL: VIEW / EDIT RULES.YAML -->
-    <div class="modal-overlay" id="modal-view-rules-yaml">
-        <div class="modal-content" style="max-width: 860px; width: 92%;">
-            <div class="modal-header">
-                <div>
-                    <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                        <span>Project Custom Rules: <code id="view-rules-yaml-path" style="color: #38bdf8;">.sentinel/rules.yaml</code></span>
-                    </h3>
-                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                        Live reflection of security rules parsed by the Sentinel IDE Plugin, CLI, and AST Scan Engines.
+    <div class="modal fade modal-overlay" id="modal-view-rules-yaml" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg" style="max-width: 880px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title d-flex align-items-center gap-2 mb-1">
+                            <i class="bi bi-file-earmark-code text-info"></i>
+                            <span>Project Custom Rules: <code id="view-rules-yaml-path" class="text-info">.sentinel/rules.yaml</code></span>
+                        </h5>
+                        <div style="font-size: 12px; color: var(--text-muted);">
+                            Live reflection of security rules parsed by the Sentinel IDE Plugin, CLI, and AST Scan Engines.
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeModal('modal-view-rules-yaml')"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="view-rules-yaml-status" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">ACTIVE CONFIGURATION</span>
+                            <span id="view-rules-yaml-count" style="font-size: 12px; color: var(--text-muted);">Loading rules...</span>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-secondary btn-sm d-inline-flex align-items-center gap-1" onclick="copyRulesYamlContent()" id="btn-copy-rules-yaml">
+                                <i class="bi bi-clipboard"></i>
+                                <span>Copy YAML</span>
+                            </button>
+                            <a href="/api/rules/export?format=yaml" download="sentinel-rules.yaml" class="btn btn-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none">
+                                <i class="bi bi-download"></i>
+                                <span>Download</span>
+                            </a>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="fetchRulesYamlContent()" title="Reload from server">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <textarea id="view-rules-yaml-editor" class="form-control font-monospace" rows="18" style="background: #070b14; color: #38bdf8; border: 1px solid var(--border);" placeholder="# Loading .sentinel/rules.yaml..."></textarea>
+                </div>
+                <div class="modal-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div style="font-size: 12px; color: var(--text-muted);">
+                        💡 Changes saved here write directly to <code>.sentinel/rules.yaml</code>. The IDE extension will auto-reload.
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-view-rules-yaml')">Close</button>
+                        <button type="button" class="btn btn-primary" onclick="saveRulesYamlFile()" id="btn-save-rules-yaml">Save Changes to rules.yaml</button>
                     </div>
                 </div>
-                <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px;" onclick="closeModal('modal-view-rules-yaml')">&times;</button>
             </div>
-            <div class="modal-body" style="padding: 16px 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span id="view-rules-yaml-status" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">ACTIVE CONFIGURATION</span>
-                        <span id="view-rules-yaml-count" style="font-size: 12px; color: var(--text-muted);">Loading rules...</span>
+    <!-- MODAL: AUTO-CONFIGURE IDE -->
+    <div class="modal fade modal-overlay" id="modal-auto-config" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 620px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title d-flex align-items-center gap-2 mb-1">
+                            <i class="bi bi-broadcast text-info"></i>
+                            <span>Auto-Connect VS Code / Cursor to Server</span>
+                        </h5>
+                        <div style="font-size: 12px; color: var(--text-muted);">
+                            Automatically captures the server's public/LAN IP and binds it into IDE configuration.
+                        </div>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="copyRulesYamlContent()" id="btn-copy-rules-yaml" style="display: inline-flex; align-items: center; gap: 5px;">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            <span>Copy YAML</span>
-                        </button>
-                        <a href="/api/rules/export?format=yaml" download="sentinel-rules.yaml" class="btn btn-secondary btn-sm" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                            <span>Download</span>
+                    <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeModal('modal-auto-config')"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="p-3 mb-3 rounded" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="text-uppercase fw-bold text-success" style="font-size: 11px;">Active Server Address</div>
+                                <div class="fs-5 fw-bold text-light font-monospace mt-1" id="auto-config-server-url">Detecting...</div>
+                            </div>
+                            <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-50 px-2 py-1">ONLINE</span>
+                        </div>
+                        <div class="small text-muted mt-2" id="auto-config-details">
+                            Public IP &bull; LAN IP &bull; Port 8000
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 mb-3">
+                        <a id="btn-1click-vscode" href="#" class="btn btn-primary btn-lg d-flex align-items-center justify-content-center gap-2 text-decoration-none">
+                            <i class="bi bi-lightning-charge-fill"></i>
+                            <span>1-Click Auto-Configure VS Code</span>
                         </a>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="fetchRulesYamlContent()" title="Reload from server">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    </div>
+
+                    <div class="d-flex gap-2 mb-3">
+                        <a href="/api/extension/settings.json" download="settings.json" class="btn btn-secondary btn-sm flex-fill d-flex align-items-center justify-content-center gap-1 text-decoration-none">
+                            <i class="bi bi-download"></i>
+                            <span>Download .vscode/settings.json</span>
+                        </a>
+                        <button type="button" class="btn btn-secondary btn-sm flex-fill d-flex align-items-center justify-content-center gap-1" onclick="applyWorkspaceAutoConfig()">
+                            <i class="bi bi-file-earmark-check"></i>
+                            <span>Write to .sentinel/config.json</span>
                         </button>
                     </div>
+
+                    <div>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold text-muted">VS Code Workspace Settings:</span>
+                            <button class="btn btn-link btn-sm text-info p-0 text-decoration-none" onclick="copyAutoConfigSettings()">Copy JSON</button>
+                        </div>
+                        <pre class="code-view m-0 p-3" id="auto-config-code" style="font-size: 12px; font-family: var(--font-mono);"></pre>
+                    </div>
                 </div>
-                <textarea id="view-rules-yaml-editor" class="form-textarea" rows="20" style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 13px; line-height: 1.5; background: #070b14; color: #38bdf8; border: 1px solid var(--border); width: 100%; border-radius: 6px; padding: 14px;" placeholder="# Loading .sentinel/rules.yaml..."></textarea>
-            </div>
-            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <div style="font-size: 12px; color: var(--text-muted);">
-                    💡 Changes saved here write directly to <code>.sentinel/rules.yaml</code>. The IDE extension will auto-reload.
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-view-rules-yaml')">Close</button>
-                    <button type="button" class="btn btn-primary" onclick="saveRulesYamlFile()" id="btn-save-rules-yaml">Save Changes to rules.yaml</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-auto-config')">Close</button>
                 </div>
             </div>
         </div>
     </div>
 
-
     <!-- MODAL: FINDING DETAIL & TICKET DISPATCH -->
-    <div class="modal-overlay" id="modal-finding-detail">
-        <div class="modal-content" style="max-width: 800px;">
-            <div class="modal-header">
-                <div>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <span id="detail-severity-badge" class="badge">CRITICAL</span>
-                        <span id="detail-cisa-badge" class="badge" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #f87171; font-weight: 700;">🚨 CISA KEV (ACTIVE WEAPONIZED EXPLOIT)</span>
-                    </div>
-                    <h3 class="modal-title" id="detail-title" style="margin-top: 6px;">Finding Title</h3>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <button class="btn btn-secondary btn-sm" id="btn-modal-locate-triage" onclick="guideToActiveFinding()" style="display: flex; align-items: center; gap: 6px; font-weight: 600; border-color: rgba(56, 189, 248, 0.4); color: var(--accent-cyan);" title="Highlight and scroll directly to this finding row in Triage inventory">
-                        <span>🧭 Locate in Triage Table</span>
-                    </button>
-                    <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 22px;" onclick="closeModal('modal-finding-detail')">&times;</button>
-                </div>
-            </div>
-            <div class="modal-body">
-                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; background: var(--bg-main); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+    <div class="modal fade modal-overlay" id="modal-finding-detail" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width: 860px;">
+            <div class="modal-content">
+                <div class="modal-header">
                     <div>
-                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">CVSS v3.1</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #38bdf8;" id="detail-cvss">9.8</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">EPSS Score</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #f97316;" id="detail-epss">0.85 (98%)</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Composite Risk</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #ef4444;" id="detail-composite">88.5/100</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Quadrant SLA</div>
-                        <div style="font-size: 15px; font-weight: 700; color: #fff;" id="detail-sla">ACT NOW (2d)</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Age &amp; First Seen</div>
-                        <div style="font-size: 15px; font-weight: 700; color: #34d399;" id="detail-age-display">Today (< 24h)</div>
-                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;" id="detail-first-seen">First seen: Today</div>
-                    </div>
-                </div>
-
-                <!-- AI Confidence & False-Positive Evaluation Card -->
-                <div id="detail-ai-confidence-box" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 14px;">
-                    <div>
-                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">AI Threat Confidence &amp; False-Positive Assessment</div>
-                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                            <span id="detail-ai-confidence-label" class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 12px; font-weight: 700;">94% High Confidence True Positive</span>
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                            <span id="detail-severity-badge" class="badge">CRITICAL</span>
+                            <span id="detail-cisa-badge" class="badge" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #f87171; font-weight: 700;">🚨 CISA KEV (ACTIVE WEAPONIZED EXPLOIT)</span>
                         </div>
-                        <p id="detail-ai-confidence-rationale" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 0;">Evaluation pending.</p>
+                        <h5 class="modal-title" id="detail-title">Finding Title</h5>
                     </div>
-                    <button class="btn btn-secondary btn-sm" id="btn-eval-confidence" onclick="triggerEvaluateConfidence()" style="white-space: nowrap; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-                        <span id="eval-conf-text">⚡ Evaluate AI Confidence</span>
-                        <div id="eval-conf-spinner" class="spinner" style="display: none; width: 10px; height: 10px;"></div>
-                    </button>
-                </div>
-
-                <!-- Developer Attribution (Git Blame) -->
-                <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); padding: 12px 16px; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-size: 11px; color: var(--accent-indigo); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Developer Attribution (Git Blame)</div>
-                        <div style="font-size: 15px; font-weight: 700; color: #fff; margin-top: 2px;" id="detail-author-name">Dr. Elena Rostova</div>
-                        <div style="font-size: 12px; color: var(--text-secondary);" id="detail-author-email">elena.rostova@autocorp.de</div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Commit Metadata</div>
-                        <div style="font-family: var(--font-mono); font-size: 12px; color: var(--accent-cyan); font-weight: 600;" id="detail-commit-hash">Commit #HEAD</div>
-                        <div style="font-size: 11px; color: var(--text-muted);" id="detail-commit-date">2026-09-17</div>
-                    </div>
-                </div>
-
-                <!-- Reachability & Shannon Entropy Metadata Box -->
-                <div id="detail-advanced-meta-box" style="display: none; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--radius-sm); padding: 10px 14px;">
-                    <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
-                        <div id="detail-reachability-tag" style="display: none; align-items: center; gap: 6px;">
-                            <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">SCA Reachability:</span>
-                            <span id="detail-reachability-badge" class="badge">REACHABLE</span>
-                        </div>
-                        <div id="detail-secret-entropy-tag" style="display: none; align-items: center; gap: 6px;">
-                            <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Shannon Entropy:</span>
-                            <span id="detail-entropy-value" style="font-family: var(--font-mono); font-weight: 700; color: #fbbf24; font-size: 12px;">0.00 bits/char</span>
-                        </div>
-                        <div id="detail-drift-tag" style="display: none; align-items: center; gap: 6px;">
-                            <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Dependency Drift:</span>
-                            <span id="detail-drift-badge" class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">1 Minor version behind</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div>
-                    <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">LOCATION & IDENTIFIERS</div>
-                    <div style="font-family: var(--font-mono); font-size: 13px;" id="detail-location">src/app.py:18</div>
-                    <div style="margin-top: 6px;" id="detail-cwe-cve">CWE-89 | CVE-2023-XXXX</div>
-                </div>
-
-                <div>
-                    <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">AFFECTED STANDARDS</div>
-                    <div id="detail-standards-tags"></div>
-                </div>
-
-                <div>
-                    <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">DESCRIPTION</div>
-                    <p style="font-size: 14px; line-height: 1.5;" id="detail-desc"></p>
-                </div>
-
-                <div>
-                    <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">CODE CONTEXT</div>
-                    <pre class="code-view" id="detail-code-snippet"></pre>
-                </div>
-
-                <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid var(--accent-cyan); padding: 14px 16px; border-radius: var(--radius-sm);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); text-transform: uppercase;">Standard Remediation</div>
-                        <button class="btn btn-secondary btn-sm" id="btn-ask-ai" onclick="requestAIRemediation()" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.3)); border-color: rgba(168, 85, 247, 0.5); color: #e9d5ff;">
-                            <span id="ai-btn-text">✨ Generate AI Remediation & Code Diff</span>
-                            <div id="ai-btn-spinner" class="spinner" style="display: none; width: 12px; height: 12px;"></div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="btn btn-secondary btn-sm d-flex align-items-center gap-1" id="btn-modal-locate-triage" onclick="guideToActiveFinding()" style="font-weight: 600; border-color: rgba(56, 189, 248, 0.4); color: var(--accent-cyan);" title="Highlight and scroll directly to this finding row in Triage inventory">
+                            <i class="bi bi-compass"></i>
+                            <span>Locate in Triage Table</span>
                         </button>
+                        <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeModal('modal-finding-detail')"></button>
                     </div>
-                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px;" id="detail-remediation"></div>
                 </div>
-
-                <!-- AI Contextual Remediation Panel (Dynamic) -->
-                <div id="detail-ai-remediation-box" style="display: none; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: var(--radius-md); padding: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 16px;">🤖</span>
-                            <strong style="font-size: 13px; color: #e9d5ff;">LLM Security Analysis & Refactored Fix</strong>
-                            <span id="ai-model-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #d8b4fe;">gpt-4o</span>
-                        </div>
-                        <span style="font-size: 11px; color: var(--text-muted);" id="ai-timestamp">Just now</span>
-                    </div>
-
-                    <div style="margin-bottom: 12px;">
-                        <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Root Cause & Exploit Mechanics</div>
-                        <p id="ai-root-cause" style="font-size: 13px; color: #f1f5f9; line-height: 1.5;"></p>
-                    </div>
-
-                    <!-- Interactive Remediation Playground (Side-by-Side Diff) -->
-                    <div style="margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">Interactive Remediation Playground (Side-by-Side Diff)</div>
-                            <button class="btn btn-secondary btn-sm" onclick="copyAIDiff()" style="padding: 2px 8px; font-size: 11px;">Copy Secure Fix</button>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <div>
-                                <div style="font-size: 11px; color: #f87171; font-weight: 600; margin-bottom: 4px;">🔴 Flagged Source Context</div>
-                                <pre class="code-view" id="playground-vulnerable-snippet" style="max-height: 200px; overflow-y: auto; color: #fca5a5; background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.25); font-family: var(--font-mono); font-size: 12px; line-height: 1.4;"></pre>
-                            </div>
-                            <div>
-                                <div style="font-size: 11px; color: #4ade80; font-weight: 600; margin-bottom: 4px;">🟢 Secure Remediated Patch</div>
-                                <pre class="code-view" id="ai-code-diff" style="max-height: 200px; overflow-y: auto; color: #86efac; background: rgba(34, 197, 94, 0.05); border-color: rgba(34, 197, 94, 0.25); font-family: var(--font-mono); font-size: 12px; line-height: 1.4;"></pre>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="margin-bottom: 10px;">
-                        <div style="font-size: 11px; font-weight: 700; color: #fbbf24; text-transform: uppercase; margin-bottom: 4px;">Compliance Standards Verification</div>
-                        <p id="ai-compliance" style="font-size: 12px; color: #cbd5e1; line-height: 1.4;"></p>
-                    </div>
-
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; color: #a78bfa; text-transform: uppercase; margin-bottom: 4px;">Testing & Verification Guidance</div>
-                        <p id="ai-verification" style="font-size: 12px; color: #cbd5e1; line-height: 1.4;"></p>
-                    </div>
-
-                    <!-- 1-Click Autonomous PR Generator -->
-                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div class="modal-body">
+                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; background: var(--bg-main); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border);">
                         <div>
-                            <span style="font-size: 12px; color: #94a3b8;">Create automated git fix branch &amp; GitHub/GitLab Pull Request:</span>
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">CVSS v3.1</div>
+                            <div style="font-size: 18px; font-weight: 700; color: #38bdf8;" id="detail-cvss">9.8</div>
                         </div>
-                        <button class="btn btn-primary btn-sm" id="btn-create-pr" onclick="createRemediationPR()" style="background: linear-gradient(135deg, #16a34a, #15803d); border-color: #166534; font-weight: 700;">
-                            <span id="pr-btn-text">🚀 1-Click Create Autonomous Fix PR</span>
-                            <div id="pr-btn-spinner" class="spinner" style="display: none; width: 12px; height: 12px; margin-left: 6px;"></div>
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">EPSS Score</div>
+                            <div style="font-size: 18px; font-weight: 700; color: #f97316;" id="detail-epss">0.85 (98%)</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Composite Risk</div>
+                            <div style="font-size: 18px; font-weight: 700; color: #ef4444;" id="detail-composite">88.5/100</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Quadrant SLA</div>
+                            <div style="font-size: 15px; font-weight: 700; color: #fff;" id="detail-sla">ACT NOW (2d)</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Age &amp; First Seen</div>
+                            <div style="font-size: 15px; font-weight: 700; color: #34d399;" id="detail-age-display">Today (< 24h)</div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;" id="detail-first-seen">First seen: Today</div>
+                        </div>
+                    </div>
+
+                    <!-- AI Confidence & False-Positive Evaluation Card -->
+                    <div id="detail-ai-confidence-box" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 14px;">
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">AI Threat Confidence &amp; False-Positive Assessment</div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                                <span id="detail-ai-confidence-label" class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 12px; font-weight: 700;">94% High Confidence True Positive</span>
+                            </div>
+                            <p id="detail-ai-confidence-rationale" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 0;">Evaluation pending.</p>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" id="btn-eval-confidence" onclick="triggerEvaluateConfidence()" style="white-space: nowrap; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                            <span id="eval-conf-text">⚡ Evaluate AI Confidence</span>
+                            <div id="eval-conf-spinner" class="spinner" style="display: none; width: 10px; height: 10px;"></div>
                         </button>
                     </div>
-                </div>
 
-                <!-- Ticket Assignment to Author Information Box -->
-                <div id="detail-ticket-assignment-box" style="margin-top: 14px; padding: 12px 16px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <!-- Developer Attribution (Git Blame) -->
+                    <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); padding: 12px 16px; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #93c5fd; font-weight: 700; margin-bottom: 2px;">Vulnerability Ticket Assignment</div>
-                            <div style="font-size: 13px; color: #fff;">
-                                👤 <span style="color: #94a3b8;">Assigned Code Author:</span> <strong id="detail-ticket-author-name">Marcus Vance</strong> <span id="detail-ticket-author-email" style="color: var(--text-secondary); font-size: 12px;">(marcus.vance@cloudsec.internal)</span>
+                            <div style="font-size: 11px; color: var(--accent-indigo); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Developer Attribution (Git Blame)</div>
+                            <div style="font-size: 15px; font-weight: 700; color: #fff; margin-top: 2px;" id="detail-author-name">Dr. Elena Rostova</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);" id="detail-author-email">elena.rostova@autocorp.de</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Commit Metadata</div>
+                            <div style="font-family: var(--font-mono); font-size: 12px; color: var(--accent-cyan); font-weight: 600;" id="detail-commit-hash">Commit #HEAD</div>
+                            <div style="font-size: 11px; color: var(--text-muted);" id="detail-commit-date">2026-09-17</div>
+                        </div>
+                    </div>
+
+                    <!-- Reachability & Shannon Entropy Metadata Box -->
+                    <div id="detail-advanced-meta-box" style="display: none; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--radius-sm); padding: 10px 14px;">
+                        <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                            <div id="detail-reachability-tag" style="display: none; align-items: center; gap: 6px;">
+                                <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">SCA Reachability:</span>
+                                <span id="detail-reachability-badge" class="badge">REACHABLE</span>
+                            </div>
+                            <div id="detail-secret-entropy-tag" style="display: none; align-items: center; gap: 6px;">
+                                <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Shannon Entropy:</span>
+                                <span id="detail-entropy-value" style="font-family: var(--font-mono); font-weight: 700; color: #fbbf24; font-size: 12px;">0.00 bits/char</span>
+                            </div>
+                            <div id="detail-drift-tag" style="display: none; align-items: center; gap: 6px;">
+                                <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Dependency Drift:</span>
+                                <span id="detail-drift-badge" class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">1 Minor version behind</span>
                             </div>
                         </div>
-                        <div id="detail-ticket-badge-container">
-                            <span id="detail-ticket-status-pill" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 12px;">Not Dispatched</span>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">LOCATION &amp; IDENTIFIERS</div>
+                        <div style="font-family: var(--font-mono); font-size: 13px;" id="detail-location">src/app.py:18</div>
+                        <div style="margin-top: 6px;" id="detail-cwe-cve">CWE-89 | CVE-2023-XXXX</div>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">AFFECTED STANDARDS</div>
+                        <div id="detail-standards-tags"></div>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">DESCRIPTION</div>
+                        <p style="font-size: 14px; line-height: 1.5;" id="detail-desc"></p>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">CODE CONTEXT</div>
+                        <pre class="code-view" id="detail-code-snippet"></pre>
+                    </div>
+
+                    <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid var(--accent-cyan); padding: 14px 16px; border-radius: var(--radius-sm);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); text-transform: uppercase;">Standard Remediation</div>
+                            <button class="btn btn-secondary btn-sm" id="btn-ask-ai" onclick="requestAIRemediation()" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.3)); border-color: rgba(168, 85, 247, 0.5); color: #e9d5ff;">
+                                <span id="ai-btn-text">✨ Generate AI Remediation &amp; Code Diff</span>
+                                <div id="ai-btn-spinner" class="spinner" style="display: none; width: 12px; height: 12px;"></div>
+                            </button>
+                        </div>
+                        <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px;" id="detail-remediation"></div>
+                    </div>
+
+                    <!-- AI Contextual Remediation Panel (Dynamic) -->
+                    <div id="detail-ai-remediation-box" style="display: none; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: var(--radius-md); padding: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 16px;">🤖</span>
+                                <strong style="font-size: 13px; color: #e9d5ff;">LLM Security Analysis &amp; Refactored Fix</strong>
+                                <span id="ai-model-badge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #d8b4fe;">gpt-4o</span>
+                            </div>
+                            <span style="font-size: 11px; color: var(--text-muted);" id="ai-timestamp">Just now</span>
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Root Cause &amp; Exploit Mechanics</div>
+                            <p id="ai-root-cause" style="font-size: 13px; color: #f1f5f9; line-height: 1.5;"></p>
+                        </div>
+
+                        <!-- Interactive Remediation Playground (Side-by-Side Diff) -->
+                        <div style="margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <div style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">Interactive Remediation Playground (Side-by-Side Diff)</div>
+                                <button class="btn btn-secondary btn-sm" onclick="copyAIDiff()" style="padding: 2px 8px; font-size: 11px;">Copy Secure Fix</button>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <div style="font-size: 11px; color: #f87171; font-weight: 600; margin-bottom: 4px;">🔴 Flagged Source Context</div>
+                                    <pre class="code-view" id="playground-vulnerable-snippet" style="max-height: 200px; overflow-y: auto; color: #fca5a5; background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.25); font-family: var(--font-mono); font-size: 12px; line-height: 1.4;"></pre>
+                                </div>
+                                <div>
+                                    <div style="font-size: 11px; color: #4ade80; font-weight: 600; margin-bottom: 4px;">🟢 Secure Remediated Patch</div>
+                                    <pre class="code-view" id="ai-code-diff" style="max-height: 200px; overflow-y: auto; color: #86efac; background: rgba(34, 197, 94, 0.05); border-color: rgba(34, 197, 94, 0.25); font-family: var(--font-mono); font-size: 12px; line-height: 1.4;"></pre>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 10px;">
+                            <div style="font-size: 11px; font-weight: 700; color: #fbbf24; text-transform: uppercase; margin-bottom: 4px;">Compliance Standards Verification</div>
+                            <p id="ai-compliance" style="font-size: 12px; color: #cbd5e1; line-height: 1.4;"></p>
+                        </div>
+
+                        <div>
+                            <div style="font-size: 11px; font-weight: 700; color: #a78bfa; text-transform: uppercase; margin-bottom: 4px;">Testing &amp; Verification Guidance</div>
+                            <p id="ai-verification" style="font-size: 12px; color: #cbd5e1; line-height: 1.4;"></p>
+                        </div>
+
+                        <!-- 1-Click Autonomous PR Generator -->
+                        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <span style="font-size: 12px; color: #94a3b8;">Create automated git fix branch &amp; GitHub/GitLab Pull Request:</span>
+                            </div>
+                            <button class="btn btn-primary btn-sm" id="btn-create-pr" onclick="createRemediationPR()" style="background: linear-gradient(135deg, #16a34a, #15803d); border-color: #166534; font-weight: 700;">
+                                <span id="pr-btn-text">🚀 1-Click Create Autonomous Fix PR</span>
+                                <div id="pr-btn-spinner" class="spinner" style="display: none; width: 12px; height: 12px; margin-left: 6px;"></div>
+                            </button>
                         </div>
                     </div>
-                </div>
 
-                <!-- Status & Ticketing Controls -->
-                <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--border);">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-size: 13px; font-weight: 600;">Status:</span>
-                        <select id="detail-status-select" class="form-select" onchange="changeFindingStatus(this.value)">
-                            <option value="open">Open</option>
-                            <option value="in_triage">In Triage</option>
-                            <option value="confirmed">Confirmed</option>
-                            <option value="false_positive">False Positive</option>
-                            <option value="resolved">Resolved</option>
-                        </select>
+                    <!-- Ticket Assignment to Author Information Box -->
+                    <div id="detail-ticket-assignment-box" style="margin-top: 14px; padding: 12px 16px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #93c5fd; font-weight: 700; margin-bottom: 2px;">Vulnerability Ticket Assignment</div>
+                                <div style="font-size: 13px; color: #fff;">
+                                    👤 <span style="color: #94a3b8;">Assigned Code Author:</span> <strong id="detail-ticket-author-name">Marcus Vance</strong> <span id="detail-ticket-author-email" style="color: var(--text-secondary); font-size: 12px;">(marcus.vance@cloudsec.internal)</span>
+                                </div>
+                            </div>
+                            <div id="detail-ticket-badge-container">
+                                <span id="detail-ticket-status-pill" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 12px;">Not Dispatched</span>
+                            </div>
+                        </div>
                     </div>
 
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-secondary btn-sm" id="btn-ticket-jira" onclick="dispatchTicket('jira')" title="Create Jira issue and automatically assign directly to the author of this vulnerable code">
-                            🎫 Assign Jira Ticket to Author
-                        </button>
-                        <button class="btn btn-secondary btn-sm" id="btn-ticket-zammad" onclick="dispatchTicket('zammad')" title="Create Zammad ticket and assign directly to the author of this vulnerable code">
-                            📨 Assign Zammad Ticket to Author
-                        </button>
+                    <!-- Status & Ticketing Controls -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--border);">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 13px; font-weight: 600;">Status:</span>
+                            <select id="detail-status-select" class="form-select" onchange="changeFindingStatus(this.value)">
+                                <option value="open">Open</option>
+                                <option value="in_triage">In Triage</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="false_positive">False Positive</option>
+                                <option value="resolved">Resolved</option>
+                            </select>
+                        </div>
+
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary btn-sm" id="btn-ticket-jira" onclick="dispatchTicket('jira')" title="Create Jira issue and automatically assign directly to the author of this vulnerable code">
+                                🎫 Assign Jira Ticket to Author
+                            </button>
+                            <button class="btn btn-secondary btn-sm" id="btn-ticket-zammad" onclick="dispatchTicket('zammad')" title="Create Zammad ticket and assign directly to the author of this vulnerable code">
+                                📨 Assign Zammad Ticket to Author
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1507,6 +1596,8 @@ strcpy(buf, input);"></textarea>
     <!-- Toast Notifications -->
     <div id="toast-container"></div>
 
+    <!-- Bootstrap 5.3.3 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

@@ -100,6 +100,12 @@
         "icon": "$(cloud)"
       },
       {
+        "command": "sentinel.autoDetectServer",
+        "title": "Sentinel: Auto-Detect & Connect to Server IP",
+        "category": "Sentinel AppSec",
+        "icon": "$(broadcast)"
+      },
+      {
         "command": "sentinel.openRulesYaml",
         "title": "Sentinel: View / Open .sentinel/rules.yaml",
         "category": "Sentinel AppSec",

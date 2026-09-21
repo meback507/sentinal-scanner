@@ -2626,9 +2626,37 @@ async function loadBenchmarkData() {
 }
 
 // --- Helper Utilities ---
+function openModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add("active");
+    if (window.bootstrap && bootstrap.Modal) {
+        try {
+            const instance = bootstrap.Modal.getOrCreateInstance(el);
+            instance.show();
+        } catch (e) {
+            el.style.display = "flex";
+        }
+    } else {
+        el.style.display = "flex";
+    }
+}
+
 function closeModal(id) {
     const el = document.getElementById(id);
-    if (el) el.classList.remove("active");
+    if (!el) return;
+    el.classList.remove("active");
+    if (window.bootstrap && bootstrap.Modal) {
+        try {
+            const instance = bootstrap.Modal.getInstance(el);
+            if (instance) instance.hide();
+        } catch (e) {}
+    }
+    el.style.display = "none";
+    document.querySelectorAll(".modal-backdrop").forEach(b => b.remove());
+    document.body.classList.remove("modal-open");
+    document.body.style.overflow = "";
+    document.body.style.paddingRight = "";
 }
 
 function escapeHtml(str) {
@@ -2969,3 +2997,70 @@ async function downloadAuditCertificate(standard) {
         showToast("Error downloading audit certificate", "error");
     }
 }
+
+// --- Auto-Configure IDE & Server IP Discovery ---
+let currentAutoConfigData = null;
+
+async function openAutoConfigModal() {
+    try {
+        openModal("modal-auto-config");
+        const urlEl = document.getElementById("auto-config-server-url");
+        const detailsEl = document.getElementById("auto-config-details");
+        const codeEl = document.getElementById("auto-config-code");
+        const oneClickBtn = document.getElementById("btn-1click-vscode");
+
+        if (urlEl) urlEl.textContent = "Detecting server IP...";
+
+        const resp = await fetch("/api/system/network-info");
+        if (resp.ok) {
+            currentAutoConfigData = await resp.json();
+            const serverUrl = currentAutoConfigData.client_accessible_url || currentAutoConfigData.server_url;
+            if (urlEl) urlEl.textContent = serverUrl;
+            if (detailsEl) {
+                detailsEl.textContent = `Public IP: ${currentAutoConfigData.public_ip} • LAN IP: ${currentAutoConfigData.lan_ip} • Port: ${currentAutoConfigData.port}`;
+            }
+            if (oneClickBtn) {
+                oneClickBtn.href = currentAutoConfigData.vscode_uri || `vscode://sentinel-security.sentinel-appsec-ide/connect?serverUrl=${encodeURIComponent(serverUrl)}`;
+            }
+            if (codeEl) {
+                codeEl.textContent = JSON.stringify(currentAutoConfigData.vscode_settings, null, 2);
+            }
+        } else {
+            const fallbackUrl = window.location.origin;
+            if (urlEl) urlEl.textContent = fallbackUrl;
+            if (codeEl) {
+                codeEl.textContent = JSON.stringify({ "sentinel.serverUrl": fallbackUrl }, null, 2);
+            }
+            if (oneClickBtn) {
+                oneClickBtn.href = `vscode://sentinel-security.sentinel-appsec-ide/connect?serverUrl=${encodeURIComponent(fallbackUrl)}`;
+            }
+        }
+    } catch (err) {
+        console.error("Failed fetching network info:", err);
+    }
+}
+
+async function applyWorkspaceAutoConfig() {
+    try {
+        const resp = await fetch("/api/system/auto-configure-workspace", { method: "POST" });
+        if (resp.ok) {
+            showToast("✅ Auto-configured .sentinel/config.json & .vscode/settings.json with server IP!", "success");
+        } else {
+            showToast("Failed to write auto-configuration", "error");
+        }
+    } catch (e) {
+        showToast("Error executing auto-configuration", "error");
+    }
+}
+
+function copyAutoConfigSettings() {
+    const codeEl = document.getElementById("auto-config-code");
+    if (codeEl && codeEl.textContent) {
+        navigator.clipboard.writeText(codeEl.textContent).then(() => {
+            showToast("Copied VS Code settings JSON to clipboard!", "success");
+        }).catch(() => {
+            showToast("Failed to copy to clipboard", "error");
+        });
+    }
+}
+

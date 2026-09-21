@@ -9,10 +9,11 @@ import shutil
 import tempfile
 import datetime
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Depends, status, Response
+from fastapi import FastAPI, HTTPException, Depends, status, Response, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from .utils.network import get_server_network_info, auto_write_workspace_config
 
 from .models import (
     UserModel, UserCreateRequest, UserUpdateRequest, LoginRequest, LoginResponse,
@@ -91,6 +92,59 @@ def download_ide_extension():
         media_type="application/octet-stream",
         filename="sentinel-appsec-ide-1.0.0.vsix"
     )
+
+
+# --- Automatic Server IP Capture & IDE Auto-Configuration Routes ---
+@app.get("/api/system/network-info")
+def get_network_info_endpoint(request: Request):
+    """
+    Returns dynamically detected network metadata for the Sentinel server:
+    Public IP, LAN IP, accessible server URL, and 1-click VS Code URI.
+    """
+    client_host = request.headers.get("host")
+    return get_server_network_info(client_host=client_host)
+
+
+@app.get("/api/extension/settings.json")
+def download_vscode_settings(request: Request):
+    """
+    Generates a pre-configured .vscode/settings.json with the detected server IP and port.
+    """
+    client_host = request.headers.get("host")
+    info = get_server_network_info(client_host=client_host)
+    content = json.dumps(info["vscode_settings"], indent=2)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=settings.json"}
+    )
+
+
+@app.get("/api/extension/config.json")
+def get_extension_config(request: Request):
+    """
+    Returns workspace auto-discovery JSON (.sentinel/config.json) with detected server IP.
+    """
+    client_host = request.headers.get("host")
+    info = get_server_network_info(client_host=client_host)
+    return {
+        "serverUrl": info["client_accessible_url"],
+        "lanUrl": f"http://{info['lan_ip']}:{info['port']}",
+        "publicUrl": f"http://{info['public_ip']}:{info['port']}",
+        "host": info["best_host"],
+        "port": info["port"],
+        "autoConfigured": True
+    }
+
+
+@app.post("/api/system/auto-configure-workspace")
+def trigger_auto_configure_workspace():
+    """
+    Triggers immediate detection of host server IP and writes .sentinel/config.json & .vscode/settings.json.
+    """
+    config_data = auto_write_workspace_config()
+    return {"status": "ok", "config": config_data}
+
 
 
 # --- Authentication Routes ---
@@ -1263,6 +1317,9 @@ def get_audit_certificate(standard: str, user: UserModel = Depends(get_current_u
 # --- Seed Initial Demo Project ---
 @app.on_event("startup")
 def startup_seed_demo():
+    # Automatically capture server IP and write workspace config
+    auto_write_workspace_config()
+
     # If no projects exist, seed a starter demo project
     projects = db.list_projects()
     if len(projects) == 0:

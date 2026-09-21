@@ -1,7 +1,7 @@
 /* AegisSec - Modern Cybersecurity Dark Theme & Glassmorphism Design System */
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-:root {
+:root, [data-bs-theme="dark"] {
   --bg-main: #07090e;
   --bg-sidebar: #0b0f19;
   --bg-card: rgba(16, 22, 36, 0.75);
@@ -30,6 +30,22 @@
 
   --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+
+  /* Bootstrap 5 Theme Overrides */
+  --bs-body-bg: #07090e;
+  --bs-body-color: #f8fafc;
+  --bs-body-font-family: var(--font-main);
+  --bs-primary: #38bdf8;
+  --bs-primary-rgb: 56, 189, 248;
+  --bs-secondary: #64748b;
+  --bs-secondary-rgb: 100, 116, 139;
+  --bs-dark: #0b0f19;
+  --bs-dark-rgb: 11, 15, 25;
+  --bs-border-color: rgba(45, 58, 86, 0.5);
+  --bs-border-color-translucent: rgba(45, 58, 86, 0.35);
+  --bs-card-bg: rgba(16, 22, 36, 0.75);
+  --bs-card-border-color: rgba(45, 58, 86, 0.5);
+  --bs-card-cap-bg: rgba(11, 15, 25, 0.5);
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -293,13 +309,16 @@ header {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent-cyan), #0284c7);
-  color: #000;
-  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent-cyan), #0284c7) !important;
+  border-color: var(--accent-cyan) !important;
+  color: #050b14 !important;
+  font-weight: 700 !important;
   box-shadow: 0 2px 10px rgba(56, 189, 248, 0.3);
 }
 
 .btn-primary:hover {
+  background: linear-gradient(135deg, #7dd3fc, #0369a1) !important;
+  color: #000 !important;
   transform: translateY(-1px);
   box-shadow: 0 4px 16px rgba(56, 189, 248, 0.45);
 }
@@ -313,6 +332,7 @@ header {
 .btn-secondary:hover {
   background: var(--bg-card-hover);
   border-color: var(--accent-cyan);
+  color: #fff;
 }
 
 .btn-danger {
@@ -334,13 +354,13 @@ header {
 /* Content Container */
 .page-container {
   padding: 32px;
-  display: none;
+  display: none !important;
   flex-direction: column;
   gap: 28px;
 }
 
 .page-container.active {
-  display: flex;
+  display: flex !important;
 }
 
 /* Page Header */
@@ -363,7 +383,7 @@ header {
 }
 
 /* Cards & Glassmorphism */
-.glass-card {
+.glass-card, .card {
   background: var(--bg-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -374,8 +394,8 @@ header {
   transition: var(--transition);
 }
 
-.glass-card:hover {
-  border-color: rgba(56, 189, 248, 0.25);
+.glass-card:hover, .card:hover {
+  border-color: rgba(56, 189, 248, 0.35);
 }
 
 /* KPI Grid */
@@ -621,8 +641,8 @@ pre.code-view {
   line-height: 1.5;
 }
 
-/* Modals */
-.modal-overlay {
+/* Modals - Dual Compatibility for Custom and Bootstrap 5 */
+.modal-overlay, .modal.modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -633,20 +653,25 @@ pre.code-view {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 1055;
   padding: 20px;
 }
 
-.modal-overlay.active {
-  display: flex;
+.modal-overlay.active, .modal.modal-overlay.active {
+  display: flex !important;
+}
+
+.modal-dialog {
+  width: 100%;
+  margin: auto;
+  pointer-events: auto;
 }
 
 .modal-content {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border);
+  background: var(--bg-sidebar) !important;
+  border: 1px solid var(--border) !important;
   border-radius: var(--radius-lg);
   width: 100%;
-  max-width: 650px;
   box-shadow: var(--shadow-card);
   max-height: 90vh;
   overflow-y: auto;

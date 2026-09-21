@@ -278,6 +278,40 @@ function activate(context) {
             await loadAllRules();
         }),
 
+        vscode.commands.registerCommand('sentinel.autoDetectServer', async () => {
+            let discovered = null;
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (workspaceFolders && workspaceFolders.length > 0) {
+                const rootPath = workspaceFolders[0].uri.fsPath;
+                const candidates = [
+                    path.join(rootPath, '.sentinel', 'config.json'),
+                    path.join(rootPath, '.sentinel', 'connection.json'),
+                    path.join(rootPath, '.vscode', 'settings.json')
+                ];
+                for (const c of candidates) {
+                    if (fs.existsSync(c)) {
+                        try {
+                            const raw = fs.readFileSync(c, 'utf-8');
+                            const data = JSON.parse(raw);
+                            const url = data.serverUrl || data['sentinel.serverUrl'];
+                            if (url) {
+                                discovered = url;
+                                break;
+                            }
+                        } catch (_) {}
+                    }
+                }
+            }
+            if (discovered) {
+                const config = vscode.workspace.getConfiguration('sentinel');
+                await config.update('serverUrl', discovered, vscode.ConfigurationTarget.Global);
+                vscode.window.showInformationMessage(`🛡️ Sentinel AppSec: Auto-configured to server at ${discovered}`);
+                await loadAllRules();
+            } else {
+                vscode.window.showInformationMessage('🛡️ Sentinel AppSec: No server config detected in .sentinel/config.json. Please ensure server is running or configure manually.');
+            }
+        }),
+
         vscode.commands.registerCommand('sentinel.applyQuickFix', (documentUri, range, ruleId) => {
             applySuppressionComment(documentUri, range, ruleId);
         }),
@@ -435,6 +469,31 @@ function activate(context) {
     context.subscriptions.push({
         dispose: () => clearInterval(syncInterval)
     });
+
+    // 13. Register URI Handler for 1-click browser auto-configuration
+    // e.g. vscode://sentinel-security.sentinel-appsec-ide/connect?serverUrl=http://<IP>:8000
+    context.subscriptions.push(
+        vscode.window.registerUriHandler({
+            async handleUri(uri) {
+                try {
+                    const query = new URLSearchParams(uri.query);
+                    const newServerUrl = query.get('serverUrl');
+                    const newToken = query.get('token');
+                    if (newServerUrl) {
+                        const config = vscode.workspace.getConfiguration('sentinel');
+                        await config.update('serverUrl', newServerUrl, vscode.ConfigurationTarget.Global);
+                        if (newToken) {
+                            await config.update('apiToken', newToken, vscode.ConfigurationTarget.Global);
+                        }
+                        vscode.window.showInformationMessage(`🛡️ Sentinel AppSec: Automatically configured server URL to ${newServerUrl}`);
+                        await loadAllRules();
+                    }
+                } catch (err) {
+                    vscode.window.showErrorMessage(`Failed to auto-configure Sentinel: ${err.message}`);
+                }
+            }
+        })
+    );
 
     // Initial scan of active editor
     if (vscode.window.activeTextEditor) {
@@ -621,8 +680,32 @@ async function loadAllRules() {
     projectCustomRules = [];
 
     const config = vscode.workspace.getConfiguration('sentinel');
-    const serverUrl = config.get('serverUrl');
+    let serverUrl = config.get('serverUrl');
     const apiToken = config.get('apiToken');
+
+    // Automatic server IP discovery:
+    // If serverUrl is default (http://127.0.0.1:8000) or unset, check if workspace has auto-detected server config (.sentinel/config.json)
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if ((!serverUrl || serverUrl === 'http://127.0.0.1:8000') && workspaceFolders && workspaceFolders.length > 0) {
+        const rootPath = workspaceFolders[0].uri.fsPath;
+        const autoConfigPaths = [
+            path.join(rootPath, '.sentinel', 'config.json'),
+            path.join(rootPath, '.sentinel', 'connection.json')
+        ];
+        for (const p of autoConfigPaths) {
+            if (fs.existsSync(p)) {
+                try {
+                    const raw = fs.readFileSync(p, 'utf-8');
+                    const parsed = JSON.parse(raw);
+                    if (parsed.serverUrl && parsed.serverUrl !== 'http://127.0.0.1:8000') {
+                        serverUrl = parsed.serverUrl;
+                        console.log(`[Sentinel IDE] Automatically discovered server IP from workspace configuration: ${serverUrl}`);
+                        break;
+                    }
+                } catch (_) {}
+            }
+        }
+    }
 
     // 1. Fetch remote rules from cloud server if configured
     if (serverUrl) {
