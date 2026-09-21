@@ -225,11 +225,12 @@ class SecretScanner:
         suffix = secret_val[-4:]
         return f"{prefix}****...****{suffix}"
     @classmethod
-    def scan_text(cls, content: str, file_path: str = "source.py") -> List[Dict[str, Any]]:
+    def scan_text(cls, content: str, file_path: str = "source.py", patterns: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         findings = []
         lines = content.splitlines()
+        target_patterns = patterns if patterns is not None else cls.SECRET_PATTERNS
 
-        for pattern in cls.SECRET_PATTERNS:
+        for pattern in target_patterns:
             regex = re.compile(pattern["regex"])
             for line_idx, line in enumerate(lines, start=1):
                 # Check for suppression annotations
@@ -302,6 +303,26 @@ class SecretScanner:
         if not target_dir or not os.path.isdir(target_dir):
             return findings
 
+        # Automatically discover and load project-level custom secret rules (.sentinel/rules.yaml)
+        active_patterns = list(self.SECRET_PATTERNS)
+        try:
+            from ..rules.rule_manager import rule_manager
+            proj_rules = rule_manager.load_project_rules(target_dir)
+            for r in proj_rules:
+                if r.get("type", "").lower() in ("secret", "secrets", "token", "credentials"):
+                    if not any(p.get("id") == r.get("id") for p in active_patterns):
+                        active_patterns.append({
+                            "id": r.get("id"),
+                            "type": r.get("name", "Custom Secret"),
+                            "regex": r.get("regex", ""),
+                            "cwe": r.get("cwe", "CWE-798"),
+                            "severity": r.get("severity", "CRITICAL"),
+                            "min_entropy": float(r.get("min_entropy", 2.0)),
+                            "standards": r.get("standards", ["ISO-27001 (A.8.12)"])
+                        })
+        except Exception:
+            pass
+
         SKIP_DIRS = {
             ".git", "node_modules", "vendor", "dist", "build", ".venv", "venv",
             "__pycache__", ".idea", ".vscode", "coverage", ".pytest_cache"
@@ -337,7 +358,7 @@ class SecretScanner:
                 try:
                     with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
-                    file_findings = self.scan_text(content, file_path=rel_path)
+                    file_findings = self.scan_text(content, file_path=rel_path, patterns=active_patterns)
                     findings.extend(file_findings)
                     files_scanned += 1
                 except Exception:

@@ -287,7 +287,25 @@ class RuleManager:
             }
         ]
 
-        total_rules = len(BUILTIN_SAST_RULES) + len(IAC_RULES) + len(api_rules) + len(platform_custom) + len(project_custom)
+        secret_rules = []
+        try:
+            from ..scanners.secret_scanner import SecretScanner
+            for p in SecretScanner.SECRET_PATTERNS:
+                secret_rules.append({
+                    "id": p["id"],
+                    "name": p["type"],
+                    "type": "secret",
+                    "severity": p["severity"],
+                    "cwe": p.get("cwe", "CWE-798"),
+                    "standards": p.get("standards", ["ISO-27001 (A.8.12)"]),
+                    "regex": p.get("regex", ""),
+                    "description": f"Detection pattern for {p['type']}.",
+                    "remediation": "Store secrets in environment variables or key vault."
+                })
+        except Exception:
+            pass
+
+        total_rules = len(BUILTIN_SAST_RULES) + len(IAC_RULES) + len(api_rules) + len(secret_rules) + len(platform_custom) + len(project_custom)
 
         return {
             "summary": {
@@ -295,6 +313,7 @@ class RuleManager:
                 "sast_builtin": len(BUILTIN_SAST_RULES),
                 "iac_builtin": len(IAC_RULES),
                 "api_builtin": len(api_rules),
+                "secret_builtin": len(secret_rules),
                 "platform_custom": len(platform_custom),
                 "project_custom": len(project_custom)
             },
@@ -302,6 +321,7 @@ class RuleManager:
                 "sast_builtin": BUILTIN_SAST_RULES,
                 "iac_builtin": IAC_RULES,
                 "api_builtin": api_rules,
+                "secret_builtin": secret_rules,
                 "platform_custom": platform_custom,
                 "project_custom": project_custom
             }

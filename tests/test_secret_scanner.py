@@ -178,5 +178,106 @@ OPENAI_KEY = "sk-proj-a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0"  # pragma: allow
         self.assertIn("entropy", finding)
 
 
+    def test_partial_secret_scan_preserves_sast_and_sca(self):
+        """Verify that running a dedicated secrets scan does not auto-resolve SAST or SCA findings."""
+        test_proj = db.create_project(
+            name="Preserve SAST SCA Proj",
+            description="Testing preservation of findings across partial scans",
+            git_url="demo",
+            git_branch="main",
+            git_pat="",
+            created_by="admin"
+        )
+        sast_finding = {
+            "type": "sast",
+            "title": "SQL Injection",
+            "description": "SQL Injection flaw",
+            "remediation": "Parameterized queries",
+            "severity": "CRITICAL",
+            "cwe_id": "CWE-89",
+            "file_path": "app.py",
+            "line_start": 12,
+            "line_end": 12,
+            "code_snippet": "cursor.execute(f'SELECT * FROM users WHERE id = {uid}')",
+            "cvss_score": 9.8,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+            "epss_score": 0.9,
+            "epss_percentile": 0.99,
+            "composite_risk_score": 98.0,
+            "quadrant": "URGENT",
+            "urgency": "IMMEDIATE",
+            "sla_days": 1,
+            "standards": ["OWASP:A03:2021"],
+            "status": "open"
+        }
+        sca_finding = {
+            "type": "sca",
+            "title": "Vulnerable Lodash",
+            "description": "Prototype pollution",
+            "remediation": "Upgrade to 4.17.21",
+            "severity": "HIGH",
+            "cwe_id": "CWE-1321",
+            "cve_id": "CVE-2021-23337",
+            "package_name": "lodash",
+            "installed_version": "4.17.15",
+            "fixed_version": "4.17.21",
+            "file_path": "package.json",
+            "line_start": 5,
+            "line_end": 5,
+            "code_snippet": '"lodash": "4.17.15"',
+            "cvss_score": 7.4,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+            "epss_score": 0.7,
+            "epss_percentile": 0.88,
+            "composite_risk_score": 74.0,
+            "quadrant": "ACT_NOW",
+            "urgency": "HIGH",
+            "sla_days": 7,
+            "standards": ["ISO-27001:A.8.28"],
+            "status": "open"
+        }
+
+        full_scan_id = db.create_scan(test_proj["id"], test_proj["name"], "full")
+        db.update_scan_results(full_scan_id, test_proj["id"], [sast_finding, sca_finding])
+
+        findings_before = db.list_findings(project_id=test_proj["id"])
+        self.assertEqual(len(findings_before), 2)
+        for f in findings_before:
+            self.assertEqual(f["status"], "open")
+
+        # Now run a secrets scan
+        secret_finding = {
+            "type": "secret",
+            "title": "AWS Key",
+            "description": "AWS Key leaked",
+            "remediation": "Rotate key",
+            "severity": "CRITICAL",
+            "cwe_id": "CWE-798",
+            "file_path": "config.py",
+            "line_start": 1,
+            "line_end": 1,
+            "code_snippet": "AKIAIOSFODNN7EXAMPLE",
+            "cvss_score": 8.9,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+            "epss_score": 0.5,
+            "epss_percentile": 0.8,
+            "composite_risk_score": 80.0,
+            "quadrant": "URGENT",
+            "urgency": "IMMEDIATE",
+            "sla_days": 1,
+            "standards": ["ISO-27001:A.8.12"],
+            "entropy": 3.85,
+            "masked_value": "AKIA****...****MPLE",
+            "status": "open"
+        }
+        secret_scan_id = db.create_scan(test_proj["id"], test_proj["name"], "secrets")
+        db.update_scan_results(secret_scan_id, test_proj["id"], [secret_finding])
+
+        findings_after = db.list_findings(project_id=test_proj["id"])
+        self.assertEqual(len(findings_after), 3)
+        for f in findings_after:
+            self.assertEqual(f["status"], "open", f"Finding {f['title']} of type {f['type']} was unexpectedly {f['status']}")
+
+
 if __name__ == "__main__":
     unittest.main()

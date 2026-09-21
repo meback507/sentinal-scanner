@@ -674,8 +674,32 @@ class Database:
                         entropy_val, masked_val
                     ))
 
-            # Auto-resolve vulnerabilities that were not detected in this scan
+            # Determine scan_type to scope auto-resolve strictly to covered finding types
+            scan_row = conn.execute("SELECT scan_type FROM scans WHERE id = ?", (scan_id,)).fetchone()
+            scan_type = "full"
+            if scan_row:
+                try:
+                    scan_type = (scan_row["scan_type"] or "full").lower()
+                except (IndexError, KeyError):
+                    scan_type = "full"
+
+            SCAN_TYPE_MAP = {
+                "full": {"sast", "sca", "secret", "iac", "api"},
+                "secrets": {"secret"},
+                "sca": {"sca"},
+                "sast": {"sast", "secret", "iac", "api"},
+                "iac": {"iac"},
+                "api": {"api"}
+            }
+            covered_types = SCAN_TYPE_MAP.get(scan_type, {"sast", "sca", "secret", "iac", "api"})
+
+            # Auto-resolve vulnerabilities that were not detected in this scan,
+            # scoping strictly to finding types that were part of this scan.
             for fp, ex in existing_by_fp.items():
+                ex_type = (ex.get("type") or "sast").lower()
+                if ex_type not in covered_types:
+                    # Do not touch findings from engines that did not run in this scan
+                    continue
                 if fp not in incoming_fingerprints:
                     if ex.get("status") in ("open", "in_triage", "confirmed"):
                         conn.execute("UPDATE findings SET status = 'resolved', last_seen = ? WHERE id = ?", (now, ex["id"]))

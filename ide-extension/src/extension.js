@@ -1101,18 +1101,35 @@ function scanDocument(document) {
     const diagnostics = [];
 
     // Language resolution
-    let docLang = 'python';
-    if (fileName.endsWith('.js') || fileName.endsWith('.ts')) docLang = 'javascript';
-    if (fileName.endsWith('.json')) docLang = 'json';
-    if (fileName.endsWith('.yaml') || fileName.endsWith('.yml')) docLang = 'yaml';
-    if (fileName.includes('dockerfile')) docLang = 'dockerfile';
+    let docLang = 'text';
+    if (fileName.endsWith('.py')) docLang = 'python';
+    else if (fileName.endsWith('.js') || fileName.endsWith('.jsx')) docLang = 'javascript';
+    else if (fileName.endsWith('.ts') || fileName.endsWith('.tsx')) docLang = 'typescript';
+    else if (fileName.endsWith('.java')) docLang = 'java';
+    else if (fileName.endsWith('.go')) docLang = 'go';
+    else if (fileName.endsWith('.c') || fileName.endsWith('.h')) docLang = 'c';
+    else if (fileName.endsWith('.cpp') || fileName.endsWith('.hpp') || fileName.endsWith('.cc') || fileName.endsWith('.cxx')) docLang = 'cpp';
+    else if (fileName.endsWith('.php')) docLang = 'php';
+    else if (fileName.endsWith('.rb')) docLang = 'ruby';
+    else if (fileName.endsWith('.sh') || fileName.endsWith('.bash')) docLang = 'shell';
+    else if (fileName.endsWith('.tf')) docLang = 'terraform';
+    else if (fileName.endsWith('.json')) docLang = 'json';
+    else if (fileName.endsWith('.yaml') || fileName.endsWith('.yml')) docLang = 'yaml';
+    else if (fileName.includes('dockerfile')) docLang = 'dockerfile';
 
     const lines = text.split(/\r?\n/);
 
     for (const rule of activeRules) {
         if (rule.languages && rule.languages.length > 0) {
-            const applies = rule.languages.some(l => docLang.includes(l.toLowerCase()) || fileName.includes(l.toLowerCase()));
-            if (!applies && !rule.languages.includes('*') && !rule.languages.includes('all')) {
+            const applies = rule.languages.some(l => {
+                const low = l.toLowerCase();
+                return low === '*' || low === 'all' || low === docLang ||
+                    (low === 'c' && (docLang === 'c' || docLang === 'cpp')) ||
+                    (low === 'cpp' && docLang === 'cpp') ||
+                    (low === 'javascript' && (docLang === 'javascript' || docLang === 'typescript')) ||
+                    fileName.includes(low);
+            });
+            if (!applies) {
                 continue;
             }
         }
@@ -1304,6 +1321,7 @@ class SentinelRulesTreeProvider {
                 'secret'
             ));
 
+            return Promise.resolve(categories);
         } else if (element instanceof RuleCategoryItem) {
             const items = [];
             if (element.categoryType === 'project_custom') {
