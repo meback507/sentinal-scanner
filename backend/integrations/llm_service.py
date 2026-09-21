@@ -158,8 +158,8 @@ Output STRICTLY valid JSON with no markdown wrapping and keys:
             rule_dict = {
                 "id": rule_id,
                 "name": parsed.get("name", human_prompt.capitalize()),
-                "type": parsed.get("type", "sast"),
-                "rule_category": parsed.get("rule_category", "Custom Policy"),
+                "type": parsed.get("type", "sast_pattern"),
+                "rule_category": parsed.get("rule_category", "sast"),
                 "nl_prompt": human_prompt,
                 "languages": parsed.get("languages", ["python"]),
                 "severity": parsed.get("severity", "HIGH"),
@@ -168,9 +168,11 @@ Output STRICTLY valid JSON with no markdown wrapping and keys:
                 "regex": parsed.get("regex", ""),
                 "description": parsed.get("description", human_prompt),
                 "remediation": parsed.get("remediation", "Review and refactor according to secure coding guidelines."),
+                "sample_trigger_code": parsed.get("sample_trigger_code", ""),
                 "is_active": True,
                 "created_by": f"LLM ({model})"
             }
+            rule_dict.pop("yaml_representation", None)
             rule_dict["yaml_representation"] = yaml.dump(rule_dict, sort_keys=False)
             return {"success": True, "rule": rule_dict, "provider": provider, "model": model}
 
@@ -309,6 +311,7 @@ Existing Remediation Summary: {finding.get('remediation', '')}"""
         rule_dict = NLRuleGenerator._synthesize_core_rule(human_prompt, target_ecosystem)
         rule_dict["id"] = f"AI-RULE-{uuid.uuid4().hex[:6].upper()}"
         rule_dict["created_by"] = f"LLM ({model} AI-Engine)"
+        rule_dict.pop("yaml_representation", None)
         rule_dict["yaml_representation"] = yaml.dump(rule_dict, sort_keys=False)
         return {"success": True, "rule": rule_dict, "provider": "openai", "model": model, "is_mock": True}
 

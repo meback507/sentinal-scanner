@@ -1756,10 +1756,11 @@ async function generateRuleFromPrompt() {
             const creator = rule.created_by || "AegisSec Synthesizer";
             showToast(`Rule synthesized successfully via ${creator}!`, "success");
         } else {
-            showToast("Failed to synthesize rule", "error");
+            const errData = await resp.json().catch(() => ({}));
+            showToast(errData.detail || "Failed to synthesize rule", "error");
         }
     } catch (e) {
-        showToast("Rule synthesis error", "error");
+        showToast("Rule synthesis error: " + (e.message || e), "error");
     } finally {
         if (btn) btn.disabled = false;
     }

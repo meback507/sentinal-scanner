@@ -14,6 +14,15 @@ class RuleManager:
         return db.get_rule_by_id(rule_id)
 
     def save_rule(self, rule_data: Dict[str, Any], sync_to_yaml: bool = False, workspace_dir: str = None) -> Dict[str, Any]:
+        if rule_data.get("yaml_representation"):
+            try:
+                parsed_yaml = yaml.safe_load(rule_data["yaml_representation"])
+                if isinstance(parsed_yaml, dict):
+                    for k, v in parsed_yaml.items():
+                        if k != "yaml_representation" and v is not None:
+                            rule_data[k] = v
+            except Exception:
+                pass
         saved = db.save_rule(rule_data)
         if sync_to_yaml:
             self.sync_rule_to_project_file(saved, workspace_dir)
@@ -142,7 +151,7 @@ class RuleManager:
             "severity": rule.get("severity", "HIGH"),
             "languages": rule.get("languages", ["python"]),
             "cwe": rule.get("cwe", "CWE-699"),
-            "cvss": float(rule.get("cvss", 7.5)),
+            "cvss": float(rule.get("cvss") or 7.5),
             "standards": rule.get("standards", ["ISO-27001:A.8.28"]),
             "regex": rule.get("regex", ""),
             "description": rule.get("description", ""),

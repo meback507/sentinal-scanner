@@ -80,7 +80,9 @@ class SemanticRuleParser:
         "into", "through", "during", "before", "after", "above", "below", "under",
         "detect", "flag", "rule", "code", "file", "find", "check", "ensure", "prohibit",
         "disallow", "ban", "prevent", "avoid", "look", "search", "warn", "fail", "pass",
-        "when", "where", "why", "how", "what", "which", "who", "whom", "this", "that"
+        "when", "where", "why", "how", "what", "which", "who", "whom", "this", "that",
+        "done", "does", "do", "doing", "did", "used", "uses", "using", "occurs", "occur",
+        "happens", "happen", "divide", "divided", "dividing", "division", "div", "modulo", "mod"
     }
 
     @classmethod
@@ -117,27 +119,73 @@ class SemanticRuleParser:
         languages = cls.parse_languages(prompt_lower)
 
         # 1. Arithmetic & Mathematical Hazard Analysis
-        # Concept: Division or Modulo by Zero (CWE-369)
-        has_div_op = bool(tokens & cls.DIV_MOD_OPS) or any(op in prompt_lower for op in ["/ 0", "/0", "% 0", "%0", "div 0"])
-        has_zero_operand = bool(tokens & cls.ZERO_OPERANDS) or "0" in prompt_lower
-        if has_div_op and has_zero_operand:
-            regex = r"""(?:[/]{1,2}|%|\b(?:div|mod)\b)\s*(?:\(\s*0+(?:\.0*)?(?:[xX]0+)?\s*\)|0+(?:\.0*)?(?:[xX]0+)?\b)"""
-            sample_code = (
-                "def calculate_ratio(total, count):\n"
-                "    # Violation: Division by zero hazard\n"
-                "    result = total / 0\n"
-                "    return result\n"
-            )
-            return SemanticConceptMatch(
-                name="Prohibit Division or Modulo by Zero (CWE-369)",
-                cwe="CWE-369",
-                severity="HIGH",
-                regex=regex,
-                remediation="Ensure denominator/divisor is validated for non-zero before executing division or modulo operations.",
-                standards=["CWE-369", "ISO-27001:A.8.28", "MISRA C:2012 Rule 12.4", "CERT:NUM52-J"],
-                sample_trigger_code=sample_code,
-                languages=languages
-            )
+        # Concept: Division or Modulo Operations (CWE-369 / CWE-682)
+        has_div_op = bool(tokens & cls.DIV_MOD_OPS) or any(op in prompt_lower for op in ["/ 0", "/0", "% 0", "%0", "div 0", "/ 2", "/2", "% 2", "%2"])
+        div_match = re.search(r'(?:(?:divid(?:e|ed|ing)|division|div|modulo|mod)\s+(?:by\s+)?|[/]{1,2}\s*|%\s*)([a-zA-Z0-9_\.]+)', prompt_lower)
+        target_operand = div_match.group(1).lower() if div_match else None
+
+        has_zero_operand = (
+            bool(tokens & cls.ZERO_OPERANDS)
+            or bool(re.search(r'\b0+(?:\.0*)?\b', prompt_lower))
+            or (target_operand in cls.ZERO_OPERANDS if target_operand else False)
+        )
+
+        if has_div_op:
+            if has_zero_operand:
+                regex = r"""(?:[/]{1,2}|%|\b(?:div|mod)\b)\s*(?:\(\s*0+(?:\.0*)?(?:[xX]0+)?\s*\)|0+(?:\.0*)?(?:[xX]0+)?\b)"""
+                sample_code = (
+                    "def calculate_ratio(total, count):\n"
+                    "    # Violation: Division by zero hazard\n"
+                    "    result = total / 0\n"
+                    "    return result\n"
+                )
+                return SemanticConceptMatch(
+                    name="Prohibit Division or Modulo by Zero (CWE-369)",
+                    cwe="CWE-369",
+                    severity="HIGH",
+                    regex=regex,
+                    remediation="Ensure denominator/divisor is validated for non-zero before executing division or modulo operations.",
+                    standards=["CWE-369", "ISO-27001:A.8.28", "MISRA C:2012 Rule 12.4", "CERT:NUM52-J"],
+                    sample_trigger_code=sample_code,
+                    languages=languages
+                )
+            elif target_operand and target_operand not in cls.STOPWORDS:
+                esc_op = re.escape(target_operand)
+                regex = rf"""(?:[/]{{1,2}}|%|\b(?:div|mod)\b)\s*(?:\(\s*{esc_op}(?:\.0*)?\s*\)|{esc_op}(?:\.0*)?\b)"""
+                sample_code = (
+                    f"def calculate_ratio(val):\n"
+                    f"    # Violation: Division or modulo by {target_operand} detected\n"
+                    f"    result = val / {target_operand}\n"
+                    f"    return result\n"
+                )
+                return SemanticConceptMatch(
+                    name=f"Detect Division or Modulo by {target_operand}",
+                    cwe="CWE-682",
+                    severity="MEDIUM",
+                    regex=regex,
+                    remediation=f"Validate that division or modulo operations by {target_operand} adhere to precision, performance, and boundary constraints.",
+                    standards=["CWE-682", "ISO-27001:A.8.28"],
+                    sample_trigger_code=sample_code,
+                    languages=languages
+                )
+            else:
+                regex = r"""(?:[/]{1,2}|%|\b(?:div|mod)\b)\s*(?:\(\s*[a-zA-Z0-9_\.]+\s*\)|[a-zA-Z0-9_\.]+\b)"""
+                sample_code = (
+                    "def calculate_ratio(total, count):\n"
+                    "    # Violation: Division or modulo operation detected\n"
+                    "    result = total / count\n"
+                    "    return result\n"
+                )
+                return SemanticConceptMatch(
+                    name="Detect Division or Modulo Operations",
+                    cwe="CWE-682",
+                    severity="MEDIUM",
+                    regex=regex,
+                    remediation="Validate that division or modulo operations handle boundary conditions and precision requirements.",
+                    standards=["CWE-682", "ISO-27001:A.8.28"],
+                    sample_trigger_code=sample_code,
+                    languages=languages
+                )
 
         # Concept: Floating-Point Strict Equality (CWE-1077)
         has_float = bool(tokens & cls.FLOAT_TYPES)

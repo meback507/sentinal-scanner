@@ -115,6 +115,35 @@ class TestRuleGenerator(unittest.TestCase):
         debug_rule = NLRuleGenerator.generate_from_text("debug mode enabled")
         self.assertEqual(debug_rule["cwe"], "CWE-489")
 
+    def test_division_by_non_zero_operand_and_sandbox(self):
+        """
+        Verifies the user scenario: 'flag when a division by 2 is done'
+        correctly synthesizes division by 2 and triggers on '5/2' in the test bench.
+        """
+        prompt = "flag when a division by 2 is done"
+        rule = NLRuleGenerator.generate_from_text(prompt)
+
+        self.assertIn("Division or Modulo by 2", rule["name"])
+        self.assertNotIn("Detect Occurrences of 'division'", rule["name"])
+        self.assertIn("sample_trigger_code", rule)
+
+        # Test against '5/2'
+        res = NLRuleGenerator.test_rule_against_code(rule["yaml_representation"], "5/2")
+        self.assertTrue(res["success"])
+        self.assertTrue(res["violation_detected"])
+        self.assertEqual(res["matched_count"], 1)
+        self.assertEqual(res["matches"][0]["line"], 1)
+        self.assertEqual(res["matches"][0]["matched_text"], "/2")
+
+        # Test against safe code '5/3'
+        safe_res = NLRuleGenerator.test_rule_against_code(rule["yaml_representation"], "5/3")
+        self.assertTrue(safe_res["success"])
+        self.assertFalse(safe_res["violation_detected"])
+        self.assertEqual(safe_res["matched_count"], 0)
+
+        # Ensure YAML representation has no nested duplicate yaml_representation key
+        self.assertNotIn('yaml_representation: "', rule["yaml_representation"])
+
 
 if __name__ == "__main__":
     unittest.main()
