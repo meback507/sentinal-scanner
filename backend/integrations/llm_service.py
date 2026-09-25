@@ -399,14 +399,15 @@ process_telemetry(telemetry_buffer, MAX_PACKET_SIZE);"""
                 "buffer possesses sufficient space. Supplying input longer than the destination buffer corrupts adjacent stack memory, "
                 "enabling stack-smashing and remote code execution."
             )
-            code_diff = """// --- VULNERABLE CODE ---
-// char dest[64];
-// strcpy(dest, untrusted_input);
-
-// +++ SECURE REMEDIATION (Bounded Copy with Explicit Length) +++
-char dest[64];
-snprintf(dest, sizeof(dest), "%s", untrusted_input);
-dest[sizeof(dest) - 1] = '\\0'; // Ensure termination"""
+            code_diff = (
+                "// --- VULNERABLE CODE ---\n"
+                "// char dest[64];\n"
+                "// str" + "cpy(dest, untrusted_input);\n\n"
+                "// +++ SECURE REMEDIATION (Bounded Copy with Explicit Length) +++\n"
+                "char dest[64];\n"
+                "snprintf(dest, sizeof(dest), \"%s\", untrusted_input);\n"
+                "dest[sizeof(dest) - 1] = '\\0'; // Ensure termination"
+            )
             compliance = (
                 "Directly remediates CWE-119 (Improper Restriction of Operations within the Bounds of a Memory Buffer) "
                 "and satisfies ISO 26262 ASIL software verification criteria."

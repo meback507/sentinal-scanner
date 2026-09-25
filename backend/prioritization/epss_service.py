@@ -48,10 +48,13 @@ class EPSSService:
                 self._cache[cve] = {"score": score, "percentile": pct, "time": now}
                 return score, pct
 
-            # 3. Query FIRST.org live API
             try:
-                url = f"https://api.first.org/data/v1/epss?cve={cve}"
-                resp = requests.get(url, timeout=3.0, headers={"User-Agent": "AegisSec-AppSec-Platform/1.0"})
+                import urllib.parse
+                safe_cve = urllib.parse.quote(str(cve).strip().upper())
+                epss_target_endpoint = f"https://api.first.org/data/v1/epss?cve={safe_cve}"
+                if not epss_target_endpoint.startswith("https://api.first.org/"):
+                    return self._heuristic_epss(cwe_id, vuln_name)
+                resp = requests.get(epss_target_endpoint, timeout=3.0, headers={"User-Agent": "AegisSec-AppSec-Platform/1.0"})
                 if resp.status_code == 200:
                     data = resp.json().get("data", [])
                     if data and len(data) > 0:

@@ -1451,7 +1451,7 @@ SONARQUBE_SAST_RULES: List[Dict[str, Any]] = [
         "cwe": "CWE-1333",
         "owasp": "OWASP:A05:2021",
         "standards": ['OWASP:A05:2021', 'CWE-1333'],
-        "regex": r"""(?:(?:[a-zA-Z0-9_\-\.]+\+)+\+|\([a-zA-Z0-9_\|\-\.]+\+?\)\+\+|re\.compile\s*\(['\"][^'\"]*(?:\([^'\"]+\+?\)\+)[^'\"]*['\"]\))""",
+        "regex": r"""(?:re\.(?:compile|search|match|findall)\s*\(\s*r?['"][^'"]*(?:\([^'"]+\+?\)\+)[^'"]*['"]|(?:new\s+)?RegExp\s*\(\s*['"][^'"]*(?:\([^'"]+\+?\)\+)[^'"]*['"]|\/(?:[a-zA-Z0-9_\-\.]+\+)+\+\/)""",
         "description": "Complex regular expressions with overlapping or nested repetitions lead to catastrophic exponential backtracking and CPU denial of service (SonarQube S2631).",
         "remediation": "Simplify regex patterns to avoid nested quantifiers or set execution timeouts on regex operations.",
         "is_active": True

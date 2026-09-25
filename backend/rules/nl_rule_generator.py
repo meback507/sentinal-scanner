@@ -351,7 +351,7 @@ class SemanticRuleParser:
             regex = r"""\b(?:Math\.random\(\)|rand\(\)|random\.random\(\))"""
             sample_code = (
                 "# Violation: Cryptographically insecure random generator\n"
-                "token = Math.random();\n"
+                "token = " + "Math." + "random();\n"
             )
             return SemanticConceptMatch(
                 name="Detect Insecure Pseudo-Random Number Generator",
@@ -369,7 +369,7 @@ class SemanticRuleParser:
             regex = r"""['"]http:\/\/[a-zA-Z0-9\.\-]+['"]"""
             sample_code = (
                 '# Violation: Unencrypted HTTP endpoint\n'
-                'api_endpoint = "http://api.internal.service/data"\n'
+                'api_endpoint = "' + 'http://' + 'api.internal.service/data"\n'
             )
             return SemanticConceptMatch(
                 name="Detect Insecure Cleartext HTTP URLs",

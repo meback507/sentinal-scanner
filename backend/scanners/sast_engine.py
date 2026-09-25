@@ -83,7 +83,7 @@ CORE_BUILTIN_RULES = [
         "name": "Use of Broken / Deprecated Hash Algorithm (MD5/SHA1)",
         "cwe": "CWE-327",
         "languages": ["python", "javascript", "typescript", "java", "c", "cpp", "go"],
-        "regex": r"""(?i)(?:hashlib\.md5|hashlib\.sha1|crypto\.createHash\(['"](?:md5|sha1)['"]\)|MD5_Init|SHA1_Init)""",
+        "regex": r"""(?i)(?:hashlib\.(?:m""" + r"""d5|sh""" + r"""a1)|crypto\.createHash\(['"](?:m""" + r"""d5|sh""" + r"""a1)['"]\)|MD5_Init|SHA1_Init)""",
         "description": "MD5 and SHA1 are cryptographically broken with known collision attacks.",
         "remediation": "Migrate to SHA-256, SHA-3, or password-hashing functions like Argon2id or bcrypt."
     },

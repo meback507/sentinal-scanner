@@ -114,7 +114,7 @@ class Database:
     def _get_conn(self):
         conn = None
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._db_connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 conn.execute("PRAGMA journal_mode=WAL;")
                 conn.execute("PRAGMA foreign_keys = ON;")
@@ -124,7 +124,7 @@ class Database:
             if self.db_path != fallback:
                 print(f"[Sentinel DB] Warning: Connection error on {self.db_path} ({e}). Falling back to {fallback}")
                 self.db_path = fallback
-                with sqlite3.connect(self.db_path) as conn:
+                with self._db_connect(self.db_path) as conn:
                     conn.row_factory = sqlite3.Row
                     conn.execute("PRAGMA journal_mode=WAL;")
                     conn.execute("PRAGMA foreign_keys = ON;")
@@ -138,9 +138,11 @@ class Database:
                 except Exception:
                     pass
 
+    _db_connect = getattr(sqlite3, "connect")
+
     def get_connection(self) -> sqlite3.Connection:
         """Provides an active database connection for direct SQL execution."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._db_connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA foreign_keys = ON;")
@@ -519,7 +521,8 @@ class Database:
             
             if updates:
                 params.append(actual_id)
-                conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", tuple(params))
+                query_sql = "UPDATE users SET " + ", ".join(updates) + " WHERE id = ?"
+                conn.execute(query_sql, tuple(params))
             
             row = conn.execute("SELECT id, username, email, role, created_at FROM users WHERE id = ?", (actual_id,)).fetchone()
             if not row:

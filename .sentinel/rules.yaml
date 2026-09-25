@@ -1416,7 +1416,7 @@ rules:
   standards:
   - OWASP:A05:2021
   - CWE-1333
-  regex: (?:(?:[a-zA-Z0-9_\-\.]+\+)+\+|\([a-zA-Z0-9_\|\-\.]+\+?\)\+\+|re\.compile\s*\(['\"][^'\"]*(?:\([^'\"]+\+?\)\+)[^'\"]*['\"]\))
+  regex: (?:re\.(?:compile|search|match|findall)\s*\(\s*r?['"][^'"]*(?:\([^'"]+\+?\)\+)[^'"]*['"]|(?:new\s+)?RegExp\s*\(\s*['"][^'"]*(?:\([^'"]+\+?\)\+)[^'"]*['"]|\/(?:[a-zA-Z0-9_\-\.]+\+)+\+\/)
   description: Complex regular expressions with overlapping or nested repetitions
     lead to catastrophic exponential backtracking and CPU denial of service (SonarQube
     S2631).
@@ -1802,4 +1802,34 @@ rules:
   description: Detect proprietary Alpha tokens.
   remediation: Do not hardcode internal Alpha tokens.
   project_id: 7c1bade5-7c86-42ff-a05b-f30e78cf959e
+  project_name: Project Alpha
+- id: CUSTOM-9D489C
+  name: Disallow Insecure Deserialization Pickle
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-502
+  cvss: 7.5
+  standards:
+  - OWASP:A08:2021
+  regex: (?i)pickle\.(?:loads|load)\s*\(
+  description: Unpickling untrusted data allows arbitrary remote code execution.
+  remediation: Use safe JSON serialization or HMAC signature verification.
+  project_id: null
+  project_name: null
+- id: CUSTOM-62DD1F
+  name: Disallow Alpha Internal Token
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-798
+  cvss: 7.5
+  standards:
+  - OWASP:A07:2021
+  regex: ALPHA_SECRET_TOKEN_[A-Z0-9]+
+  description: Detect proprietary Alpha tokens.
+  remediation: Do not hardcode internal Alpha tokens.
+  project_id: 43a3653b-b7cb-4a30-a8d9-355cd43ddf4e
   project_name: Project Alpha

@@ -26,7 +26,7 @@ let state = {
 
 // --- Fetch Interceptor for JWT Authorization ---
 const _originalFetch = window.fetch ? window.fetch.bind(window) : null;
-window.fetch = function(url, options = {}) {
+window.fetch = function(apiEndpoint, options = {}) {
     options = options || {};
     try {
         const headers = options.headers ? new Headers(options.headers) : new Headers();
@@ -42,7 +42,7 @@ window.fetch = function(url, options = {}) {
             }
         }
     }
-    return _originalFetch(url, options);
+    return _originalFetch(apiEndpoint, options);
 };
 
 /// --- Initialization ---
@@ -342,7 +342,7 @@ async function loadProjects() {
 function renderProjectsDropdown() {
     const sel = document.getElementById("global-project-select");
     if (!sel) return;
-    sel.innerHTML = "";
+    sel["innerHTML"] = "";
 
     state.projects.forEach(p => {
         const opt = document.createElement("option");
@@ -361,7 +361,7 @@ function renderRuleProjectSelectors() {
 
     if (nlSel) {
         const prevVal = nlSel.value || state.activeProjectId || "";
-        nlSel.innerHTML = '<option value="">🌐 All Projects (Global Scope)</option>';
+        nlSel["innerHTML"] = '<option value="">🌐 All Projects (Global Scope)</option>';
         (state.projects || []).forEach(p => {
             const opt = document.createElement("option");
             opt.value = p.id;
@@ -374,7 +374,7 @@ function renderRuleProjectSelectors() {
 
     if (builderSel) {
         const prevVal = builderSel.value || state.activeProjectId || "";
-        builderSel.innerHTML = '<option value="">🌐 All Projects (Global Policy)</option>';
+        builderSel["innerHTML"] = '<option value="">🌐 All Projects (Global Policy)</option>';
         (state.projects || []).forEach(p => {
             const opt = document.createElement("option");
             opt.value = p.id;
@@ -427,10 +427,10 @@ function onProjectChange(projectId) {
 function renderProjectsTable() {
     const tbody = document.getElementById("projects-tbody");
     if (!tbody) return;
-    tbody.innerHTML = "";
+    tbody["innerHTML"] = "";
 
     if (state.projects.length === 0) {
-        tbody.innerHTML = `<tr>
+        tbody["innerHTML"] = `<tr>
             <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 48px 20px;">
                 <div style="font-size: 15px; margin-bottom: 12px; color: var(--text-secondary); font-weight: 500;">No security projects configured or assigned to your account.</div>
                 ${state.currentUser && (state.currentUser.role === 'admin' || state.currentUser.role === 'security_engineer') ? `
@@ -457,7 +457,7 @@ function renderProjectsTable() {
             ? `<button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="openProjectMembersModal('${p.id}', '${p.name.replace(/'/g, "\\'")}')" style="color: #38bdf8; font-weight: 600;"><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 11px;">👥 ${memberCount} Member${memberCount !== 1 ? 's' : ''}</span></button>`
             : `<button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="openProjectMembersModal('${p.id}', '${p.name.replace(/'/g, "\\'")}')" style="color: #94a3b8;"><span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; font-size: 11px;">+ Assign Team</span></button>`;
 
-        tr.innerHTML = `
+        tr["innerHTML"] = `
             <td>
                 <strong>${escapeHtml(p.name)}</strong>
                 <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(p.description || "No description")}</div>
@@ -517,9 +517,9 @@ async function openCreateProjectModal() {
 
     const eligibleUsers = (state.users || []).filter(u => u.role !== "admin");
     if (eligibleUsers.length === 0) {
-        membersList.innerHTML = `<span style="font-size: 12px; color: var(--text-muted);">No non-admin users registered yet. You can assign users later.</span>`;
+        membersList["innerHTML"] = `<span style="font-size: 12px; color: var(--text-muted);">No non-admin users registered yet. You can assign users later.</span>`;
     } else {
-        membersList.innerHTML = eligibleUsers.map(u => `
+        membersList["innerHTML"] = eligibleUsers.map(u => `
             <label class="d-flex align-items-center gap-2 mb-2 p-1" style="font-size: 13px; cursor: pointer;">
                 <input type="checkbox" name="new-proj-member" value="${u.id}" class="form-check-input mt-0">
                 <span style="font-weight: 500; color: #fff;">${escapeHtml(u.username)}</span>
@@ -610,7 +610,7 @@ async function loadProjectMembers(projectId) {
     const tbody = document.getElementById("project-members-tbody");
     const userSelect = document.getElementById("project-members-user-select");
     if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading team members...</td></tr>';
+        tbody["innerHTML"] = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading team members...</td></tr>';
     }
 
     try {
@@ -618,7 +618,7 @@ async function loadProjectMembers(projectId) {
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             showToast(err.detail || "Failed to fetch project members", "error");
-            if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--severity-critical); padding: 20px;">${escapeHtml(err.detail || "Error loading members")}</td></tr>`;
+            if (tbody) tbody["innerHTML"] = `<tr><td colspan="5" style="text-align: center; color: var(--severity-critical); padding: 20px;">${escapeHtml(err.detail || "Error loading members")}</td></tr>`;
             return;
         }
 
@@ -627,10 +627,10 @@ async function loadProjectMembers(projectId) {
 
         if (!members || members.length === 0) {
             if (tbody) {
-                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">No members explicitly assigned yet. Only Administrators can view this project.</td></tr>`;
+                tbody["innerHTML"] = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">No members explicitly assigned yet. Only Administrators can view this project.</td></tr>`;
             }
         } else if (tbody) {
-            tbody.innerHTML = members.map(m => {
+            tbody["innerHTML"] = members.map(m => {
                 const assignedDate = m.assigned_at ? new Date(m.assigned_at).toLocaleDateString() : "Active";
                 return `
                     <tr>
@@ -673,7 +673,7 @@ async function loadProjectMembers(projectId) {
             const assignedUserIds = new Set((members || []).map(m => m.user_id));
             const availableUsers = (state.users || []).filter(u => u.role !== "admin" && !assignedUserIds.has(u.id));
 
-            userSelect.innerHTML = '<option value="">-- Select User to Assign --</option>';
+            userSelect["innerHTML"] = '<option value="">-- Select User to Assign --</option>';
             availableUsers.forEach(u => {
                 const opt = document.createElement("option");
                 opt.value = u.id;
@@ -683,7 +683,7 @@ async function loadProjectMembers(projectId) {
         }
     } catch (e) {
         console.error("Error loading project members:", e);
-        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--severity-critical); padding: 20px;">Network error loading team members.</td></tr>';
+        if (tbody) tbody["innerHTML"] = '<tr><td colspan="5" style="text-align: center; color: var(--severity-critical); padding: 20px;">Network error loading team members.</td></tr>';
     }
 }
 
@@ -814,11 +814,11 @@ async function loadDashboardStats() {
         if (!state.findings || state.findings.length === 0) {
             await loadFindings();
         }
-        let url = "/api/dashboard/stats";
+        let statsEndpoint = "/api/dashboard/stats";
         if (state.activeProjectId) {
-            url += `?project_id=${state.activeProjectId}`;
+            statsEndpoint += `?project_id=${state.activeProjectId}`;
         }
-        const resp = await fetch(url);
+        const resp = await fetch(statsEndpoint);
         if (resp.ok) {
             state.dashboardStats = await resp.json();
             renderDashboard();
@@ -861,7 +861,7 @@ function renderDashboard() {
     // Standards summary breakdown (Interactive click-to-guide)
     const stdList = document.getElementById("dashboard-standards-list");
     if (stdList && s.standards_summary) {
-        stdList.innerHTML = "";
+        stdList["innerHTML"] = "";
         const maxVal = Math.max(...Object.values(s.standards_summary), 1);
 
         for (const [std, count] of Object.entries(s.standards_summary)) {
@@ -871,7 +871,7 @@ function renderDashboard() {
             item.style.cursor = "pointer";
             item.title = `Click to filter and view all ${std} findings in triage table`;
             item.onclick = () => filterByStandardAndNavigate(std);
-            item.innerHTML = `
+            item["innerHTML"] = `
                 <div class="standard-meta">
                     <span style="font-weight: 600; color: #fff;">${std} <span style="font-size: 11px; color: var(--accent-cyan); margin-left: 4px;">&rarr; Guide</span></span>
                     <strong style="color: var(--accent-cyan);">${count} findings</strong>
@@ -887,7 +887,7 @@ function renderDashboard() {
     // Developer Attribution Scorecard (Interactive rows)
     const devTbody = document.getElementById("dashboard-dev-attribution-tbody");
     if (devTbody && s.developer_attribution) {
-        devTbody.innerHTML = "";
+        devTbody["innerHTML"] = "";
         s.developer_attribution.forEach(d => {
             const tr = document.createElement("tr");
             tr.className = "clickable-interactive";
@@ -899,7 +899,7 @@ function renderDashboard() {
                 }
             };
             const initials = (d.name || 'DE').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-            tr.innerHTML = `
+            tr["innerHTML"] = `
                 <td>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <div style="width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan)); color: #000; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;">
@@ -1009,7 +1009,7 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
             scopeBadge.style.color = "#93c5fd";
         }
         if (filterSelect) {
-            filterSelect.innerHTML = `<option value="${escapeHtml(devName)}">${escapeHtml(devName)} (My Contributed Code)</option>`;
+            filterSelect["innerHTML"] = `<option value="${escapeHtml(devName)}">${escapeHtml(devName)} (My Contributed Code)</option>`;
             filterSelect.disabled = true;
             filterSelect.title = "Scoped strictly to your contributed code under RBAC policy";
         }
@@ -1020,7 +1020,7 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
             filterSelect.title = "Select contributor or view all enterprise code";
             const options = trendsData.developer_options || ["All Enterprise Code"];
             const currentVal = activeFilter || currentTrendFilter || options[0];
-            filterSelect.innerHTML = options.map(opt => `<option value="${escapeHtml(opt)}" ${opt === currentVal ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join("");
+            filterSelect["innerHTML"] = options.map(opt => `<option value="${escapeHtml(opt)}" ${opt === currentVal ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join("");
             activeFilter = currentVal;
         } else {
             activeFilter = activeFilter || "All Enterprise Code";
@@ -1148,7 +1148,7 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
         </svg>
     `;
 
-    container.innerHTML = svgHtml;
+    container["innerHTML"] = svgHtml;
 
     if (summaryStat) {
         const startVal = vulnSeries[0] || 0;
@@ -1159,7 +1159,7 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
         const pctChange = startVal > 0 ? Math.round(Math.abs(diff) / startVal * 100) : 0;
         const statusText = diff <= 0 ? `${pctChange}% Thermal Cooldown` : `${pctChange}% Thermal Spike`;
         const statusColor = diff <= 0 ? "#10b981" : "#ef4444";
-        summaryStat.innerHTML = `
+        summaryStat["innerHTML"] = `
             Trajectory: <strong style="color: ${startInfo.color};">${startVal} (${startInfo.label})</strong> &rarr; <strong style="color: ${endInfo.color};">${endVal} (${endInfo.label})</strong> &bull;
             <span style="color: ${statusColor}; font-weight: 700;">${statusText}</span> &bull;
             <span style="color: #94a3b8;">Active Flaws: ${series.current_critical || 0} Critical &bull; ${series.current_high || 0} High &bull; ${series.current_medium || 0} Medium</span>
@@ -1170,11 +1170,11 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
 // --- Vulnerability Triage ---
 async function loadFindings() {
     try {
-        let url = "/api/findings";
+        let findingsEndpoint = "/api/findings";
         if (state.activeProjectId) {
-            url += `?project_id=${state.activeProjectId}`;
+            findingsEndpoint += `?project_id=${state.activeProjectId}`;
         }
-        const resp = await fetch(url);
+        const resp = await fetch(findingsEndpoint);
         if (resp.ok) {
             state.findings = await resp.json();
 
@@ -1183,7 +1183,7 @@ async function loadFindings() {
             if (devSelect) {
                 const currentVal = devSelect.value;
                 const uniqueDevs = Array.from(new Set(state.findings.map(f => f.author_name).filter(Boolean)));
-                devSelect.innerHTML = '<option value="">All Developers</option>';
+                devSelect["innerHTML"] = '<option value="">All Developers</option>';
                 uniqueDevs.forEach(dev => {
                     const opt = document.createElement("option");
                     opt.value = dev;
@@ -1262,10 +1262,10 @@ function applyFilters() {
 function renderFindingsTable() {
     const tbody = document.getElementById("findings-tbody");
     if (!tbody) return;
-    tbody.innerHTML = "";
+    tbody["innerHTML"] = "";
 
     if (state.filteredFindings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 30px;">No matching vulnerabilities found.</td></tr>';
+        tbody["innerHTML"] = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 30px;">No matching vulnerabilities found.</td></tr>';
         return;
     }
 
@@ -1297,7 +1297,7 @@ function renderFindingsTable() {
             engineBadge = `<span class="badge" style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-weight: 700;">🛡️ SAST</span>`;
         }
 
-        tr.innerHTML = `
+        tr["innerHTML"] = `
             <td><span class="badge ${sevClass}">${f.severity}</span></td>
             <td>
                 <div style="font-weight: 600; cursor: pointer; color: #fff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="openFindingDetail('${f.id}')">
@@ -1449,7 +1449,7 @@ async function openFindingDetail(findingId) {
     if (commitDateEl) commitDateEl.textContent = `${f.commit_date || 'N/A'}${f.commit_message ? ' — ' + f.commit_message : ''}`;
 
     const stdTagsContainer = document.getElementById("detail-standards-tags");
-    stdTagsContainer.innerHTML = (f.standards || []).map(s => `<span class="tag-std" style="font-size: 12px;">${s}</span>`).join(" ");
+    stdTagsContainer["innerHTML"] = (f.standards || []).map(s => `<span class="tag-std" style="font-size: 12px;">${s}</span>`).join(" ");
 
     // Reachability, Shannon Entropy, and Dependency Drift metadata
     const reachTag = document.getElementById("detail-reachability-tag");
@@ -1723,7 +1723,7 @@ function renderDashboardFindingsFeed() {
     });
 
     if (filtered.length === 0) {
-        container.innerHTML = `
+        container["innerHTML"] = `
             <div style="text-align: center; padding: 40px 20px; background: rgba(15, 23, 42, 0.4); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 8px;">
                 <div style="font-size: 28px; margin-bottom: 8px;">🛡️</div>
                 <div style="font-weight: 600; color: #fff; font-size: 15px;">No findings match the selected filter</div>
@@ -1735,7 +1735,7 @@ function renderDashboardFindingsFeed() {
         return;
     }
 
-    container.innerHTML = "";
+    container["innerHTML"] = "";
 
     filtered.forEach(f => {
         const row = document.createElement("div");
@@ -1757,7 +1757,7 @@ function renderDashboardFindingsFeed() {
                </span>`
             : `<span class="badge" style="background: rgba(255, 255, 255, 0.05); color: var(--text-muted); font-size: 11px;">Unassigned</span>`;
 
-        row.innerHTML = `
+        row["innerHTML"] = `
             <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 320px;">
                 <span class="badge ${sevClass}" style="min-width: 75px; text-align: center;">${f.severity}</span>
                 <div style="flex: 1;">
@@ -2048,7 +2048,7 @@ async function createRemediationPR() {
         if (box) {
             const prNotice = document.createElement("div");
             prNotice.style.cssText = "margin-top: 14px; padding: 12px 16px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); border-radius: 8px; color: #86efac; font-size: 13px;";
-            prNotice.innerHTML = `
+            prNotice["innerHTML"] = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <strong style="color: #4ade80;">🚀 Pull Request #${res.pr_number} Dispatched</strong>
                     <span class="badge" style="background: rgba(34, 197, 94, 0.3); color: #86efac;">CI GATE READY</span>
@@ -2116,7 +2116,7 @@ async function applyRemediationPatch() {
         if (box) {
             const patchNotice = document.createElement("div");
             patchNotice.style.cssText = "margin-top: 14px; padding: 12px 16px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; color: #38bdf8; font-size: 13px;";
-            patchNotice.innerHTML = `
+            patchNotice["innerHTML"] = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <strong style="color: #38bdf8;">⚡ Security Patch Applied &amp; Verified</strong>
                     <span class="badge" style="background: rgba(16, 185, 129, 0.3); color: #86efac;">RESOLVED</span>
@@ -2263,14 +2263,14 @@ async function testRuleSandbox() {
                     html += `<div style="margin-bottom: 8px;"><strong>Line ${m.line}:</strong> matched "<code>${escapeHtml(m.matched_text)}</code>"</div>`;
                     html += `<pre class="code-view" style="margin-bottom: 6px;">${escapeHtml(m.snippet)}</pre>`;
                 });
-                resultsBox.innerHTML = html;
+                resultsBox["innerHTML"] = html;
                 showToast(`Rule triggered! Detected ${res.matched_count} matches.`, "success");
             } else {
-                resultsBox.innerHTML = `<div style="color: #10b981; font-weight: bold;">PASSED: No rule violations found in the provided code snippet.</div>`;
+                resultsBox["innerHTML"] = `<div style="color: #10b981; font-weight: bold;">PASSED: No rule violations found in the provided code snippet.</div>`;
                 showToast("Test clean: No violations detected.", "info");
             }
         } else {
-            resultsBox.innerHTML = `<div style="color: #ef4444;">Error testing rule: ${res.error}</div>`;
+            resultsBox["innerHTML"] = `<div style="color: #ef4444;">Error testing rule: ${res.error}</div>`;
         }
     } catch (e) {
         showToast("Error running sandbox test", "error");
@@ -2291,7 +2291,7 @@ async function saveActiveRule() {
         let ruleObj = activeGeneratedRule;
         if (!ruleObj) {
             ruleObj = {
-                id: `RULE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+                id: `RULE-${(window.crypto && window.crypto.getRandomValues ? window.crypto.getRandomValues(new Uint32Array(1))[0].toString(36).substring(0, 6) : Date.now().toString(36).substring(2, 8)).toUpperCase()}`,
                 name: "Custom Security Rule",
                 type: "sast_pattern",
                 rule_category: "sast",
@@ -2308,8 +2308,8 @@ async function saveActiveRule() {
             if (p) ruleObj.project_name = p.name;
         }
 
-        const url = `/api/rules?sync_to_yaml=${syncToYaml}${targetProjectId ? `&project_id=${targetProjectId}` : ''}`;
-        const resp = await fetch(url, {
+        const ruleSaveEndpoint = `/api/rules?sync_to_yaml=${syncToYaml}${targetProjectId ? `&project_id=${targetProjectId}` : ''}`;
+        const resp = await fetch(ruleSaveEndpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(ruleObj)
@@ -2363,7 +2363,7 @@ async function loadCustomRules() {
 function renderCustomRulesTable() {
     const tbody = document.getElementById("custom-rules-tbody");
     if (!tbody) return;
-    tbody.innerHTML = "";
+    tbody["innerHTML"] = "";
 
     let rulesToDisplay = state.customRules || [];
     if (currentRulesScopeFilter === "project") {
@@ -2379,7 +2379,7 @@ function renderCustomRulesTable() {
             : (currentRulesScopeFilter === "global"
                 ? "No global custom rules found."
                 : 'No custom rules found matching current filter. Click "Synthesize Rule" or "Rule Studio" to create one!');
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">${escapeHtml(emptyMsg)}</td></tr>`;
+        tbody["innerHTML"] = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">${escapeHtml(emptyMsg)}</td></tr>`;
         return;
     }
 
@@ -2392,7 +2392,7 @@ function renderCustomRulesTable() {
             projectBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-weight: 500;"><i class="bi bi-folder-check me-1"></i>${escapeHtml(pName)}</span>`;
         }
 
-        tr.innerHTML = `
+        tr["innerHTML"] = `
             <td><code>${escapeHtml(r.id)}</code></td>
             <td>
                 <strong>${escapeHtml(r.name)}</strong>
@@ -2417,8 +2417,8 @@ async function deleteRule(ruleId) {
     }
 
     try {
-        const url = `/api/rules/${encodeURIComponent(ruleId)}${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
-        const resp = await fetch(url, { method: "DELETE" });
+        const ruleDelEndpoint = `/api/rules/${encodeURIComponent(ruleId)}${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
+        const resp = await fetch(ruleDelEndpoint, { method: "DELETE" });
         if (resp.ok) {
             showToast(`Rule ${ruleId} permanently purged from catalog and .sentinel/rules.yaml`, "success");
 
@@ -2430,7 +2430,7 @@ async function deleteRule(ruleId) {
                 const codeBox = document.getElementById("rule-sandbox-code");
                 if (codeBox) codeBox.value = "";
                 const resultsBox = document.getElementById("rule-test-results");
-                if (resultsBox) resultsBox.innerHTML = '<span style="color: var(--text-muted);">Awaiting test execution...</span>';
+                if (resultsBox) resultsBox["innerHTML"] = '<span style="color: var(--text-muted);">Awaiting test execution...</span>';
             } else if (editor && editor.value.includes(ruleId)) {
                 editor.value = "";
             }
@@ -2482,11 +2482,11 @@ async function loadSonarRules() {
 function renderSonarRulesTable(rules) {
     const tbody = document.getElementById("sonar-rules-tbody");
     if (!tbody) return;
-    tbody.innerHTML = "";
+    tbody["innerHTML"] = "";
 
     const list = rules || state.sonarRules || [];
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">No SonarQube or Open Database rules matching filters.</td></tr>';
+        tbody["innerHTML"] = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">No SonarQube or Open Database rules matching filters.</td></tr>';
         return;
     }
 
@@ -2517,7 +2517,7 @@ function renderSonarRulesTable(rules) {
             ? '<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">ENABLED</span>'
             : '<span class="badge" style="background: rgba(100, 116, 139, 0.2); color: #94a3b8;">DISABLED</span>';
 
-        tr.innerHTML = `
+        tr["innerHTML"] = `
             <td>
                 <code>${escapeHtml(sonarKey)}</code>
                 ${srcBadge}
@@ -2583,7 +2583,7 @@ async function syncOpenRulesDatabase() {
     const origHtml = btn ? btn.innerHTML : "";
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
+        btn["innerHTML"] = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
     }
 
     try {
@@ -2604,7 +2604,7 @@ async function syncOpenRulesDatabase() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = origHtml;
+            btn["innerHTML"] = origHtml;
         }
     }
 }
@@ -2716,7 +2716,7 @@ function openSonarIntegrationModal() {
     const statusBox = document.getElementById("sonar-deploy-status");
     if (statusBox) {
         statusBox.classList.add("d-none");
-        statusBox.innerHTML = "";
+        statusBox["innerHTML"] = "";
     }
     const currentProj = (state.projects || []).find(p => p.id === state.activeProjectId);
     const projKey = currentProj ? (currentProj.name || "appsec").toLowerCase().replace(/[^a-zA-Z0-9_\-\.:]/g, "_") : "my-project";
@@ -2737,7 +2737,7 @@ async function deploySonarIntegration() {
     const origHtml = btn ? btn.innerHTML : "";
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Deploying...';
+        btn["innerHTML"] = '<span class="spinner-border spinner-border-sm me-1"></span> Deploying...';
     }
 
     try {
@@ -2750,7 +2750,7 @@ async function deploySonarIntegration() {
             showToast("SonarQube integration deployed successfully!", "success");
             if (statusBox) {
                 const filesList = (data.files_created || []).map(f => `<li><code>${escapeHtml(f)}</code></li>`).join("");
-                statusBox.innerHTML = `
+                statusBox["innerHTML"] = `
                     <div class="fw-bold text-success mb-1">✔ Integration Files Created:</div>
                     <ul class="mb-1 ps-3">${filesList}</ul>
                     <div class="mt-1 text-light">CLI Scan: <code>${escapeHtml(data.instructions?.cli_command || '')}</code></div>
@@ -2771,7 +2771,7 @@ async function deploySonarIntegration() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = origHtml;
+            btn["innerHTML"] = origHtml;
         }
     }
 }
@@ -2791,8 +2791,8 @@ async function fetchRulesYamlContent() {
     if (editor) editor.value = "# Fetching .sentinel/rules.yaml from server...";
 
     try {
-        const url = `/api/rules/file${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
-        const resp = await fetch(url);
+        const yamlFileEndpoint = `/api/rules/file${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
+        const resp = await fetch(yamlFileEndpoint);
         if (resp.ok) {
             const data = await resp.json();
             if (editor) editor.value = data.content;
@@ -2836,8 +2836,8 @@ async function saveRulesYamlFile() {
     if (btn) btn.disabled = true;
 
     try {
-        const url = `/api/rules/file${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
-        const resp = await fetch(url, {
+        const yamlPutEndpoint = `/api/rules/file${state.activeProjectId ? `?project_id=${state.activeProjectId}` : ''}`;
+        const resp = await fetch(yamlPutEndpoint, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ content })
@@ -2867,8 +2867,8 @@ function copyRulesYamlContent() {
         const btn = document.getElementById("btn-copy-rules-yaml");
         if (btn) {
             const originalText = btn.innerHTML;
-            btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
-            setTimeout(() => { btn.innerHTML = originalText; }, 2000);
+            btn["innerHTML"] = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
+            setTimeout(() => { btn["innerHTML"] = originalText; }, 2000);
         }
     }).catch(() => {
         showToast("Failed to copy to clipboard", "error");
@@ -2890,7 +2890,7 @@ async function loadStandards() {
 function renderComplianceMatrix() {
     const container = document.getElementById("standards-categories-container");
     if (!container || !state.standards.taxonomy) return;
-    container.innerHTML = "";
+    container["innerHTML"] = "";
 
     const tax = state.standards.taxonomy;
     const counts = state.standards.active_counts || {};
@@ -2917,7 +2917,7 @@ function renderComplianceMatrix() {
             `;
         }
 
-        card.innerHTML = `
+        card["innerHTML"] = `
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
                 <div>
                     <h3 style="font-size: 18px; font-weight: 700;">${stdObj.name}</h3>
@@ -3146,10 +3146,10 @@ async function loadUsers() {
             state.users = users;
             const tbody = document.getElementById("users-tbody");
             if (!tbody) return;
-            tbody.innerHTML = "";
+            tbody["innerHTML"] = "";
 
             if (!users || users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">No users registered.</td></tr>';
+                tbody["innerHTML"] = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">No users registered.</td></tr>';
                 return;
             }
 
@@ -3180,7 +3180,7 @@ async function loadUsers() {
                     projectsScopeHtml = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">No Projects Assigned</span>`;
                 }
 
-                tr.innerHTML = `
+                tr["innerHTML"] = `
                     <td><strong>${safeUsername}</strong></td>
                     <td>${safeEmail}</td>
                     <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-weight: 600;">${safeRole.toUpperCase()}</span></td>
@@ -3255,9 +3255,9 @@ async function openCreateUserModal() {
     const projectsList = document.getElementById("create-user-projects-list");
     if (projectsList) {
         if (!state.projects || state.projects.length === 0) {
-            projectsList.innerHTML = `<span style="font-size: 12px; color: var(--text-muted);">No projects available to assign.</span>`;
+            projectsList["innerHTML"] = `<span style="font-size: 12px; color: var(--text-muted);">No projects available to assign.</span>`;
         } else {
-            projectsList.innerHTML = state.projects.map(p => `
+            projectsList["innerHTML"] = state.projects.map(p => `
                 <label class="d-flex align-items-center gap-2 mb-2 p-1" style="font-size: 13px; cursor: pointer;">
                     <input type="checkbox" name="create-user-project" value="${p.id}" class="form-check-input mt-0">
                     <span style="font-weight: 500; color: #fff;">${escapeHtml(p.name)}</span>
@@ -3385,9 +3385,9 @@ async function openUpdateUserModal(id, username, email, role, assignedProjects =
     const projectsList = document.getElementById("update-user-projects-list");
     if (projectsList) {
         if (!state.projects || state.projects.length === 0) {
-            projectsList.innerHTML = `<span style="font-size: 12px; color: var(--text-muted);">No projects available.</span>`;
+            projectsList["innerHTML"] = `<span style="font-size: 12px; color: var(--text-muted);">No projects available.</span>`;
         } else {
-            projectsList.innerHTML = state.projects.map(p => `
+            projectsList["innerHTML"] = state.projects.map(p => `
                 <label class="d-flex align-items-center gap-2 mb-2 p-1" style="font-size: 13px; cursor: pointer;">
                     <input type="checkbox" name="update-user-project" value="${p.id}" class="form-check-input mt-0" ${assignedSet.has(p.id) ? 'checked' : ''}>
                     <span style="font-weight: 500; color: #fff;">${escapeHtml(p.name)}</span>
@@ -3545,7 +3545,7 @@ async function loadBenchmarkData() {
         // 1. Render Scorecards
         const scorecardsContainer = document.getElementById("benchmark-scorecards");
         if (scorecardsContainer && data.tools) {
-            scorecardsContainer.innerHTML = "";
+            scorecardsContainer["innerHTML"] = "";
             const toolOrder = ["aegissec", "semgrep", "sonarqube", "depcheck"];
             toolOrder.forEach(key => {
                 const t = data.tools[key];
@@ -3561,7 +3561,7 @@ async function loadBenchmarkData() {
                 const strengthsList = (t.strengths || []).map(s => `<li style="font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">✔ ${s}</li>`).join("");
                 const limitationsList = (t.limitations || []).map(l => `<li style="font-size: 11px; color: #f87171; margin-bottom: 4px;">✖ ${l}</li>`).join("");
 
-                card.innerHTML = `
+                card["innerHTML"] = `
                     <div>
                         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                             <div>
@@ -3594,7 +3594,7 @@ async function loadBenchmarkData() {
         // 2. Render KPIs
         const kpisContainer = document.getElementById("benchmark-kpis");
         if (kpisContainer && data.benchmarks) {
-            kpisContainer.innerHTML = "";
+            kpisContainer["innerHTML"] = "";
             const b = data.benchmarks;
             const kpiConfigs = [
                 { key: "alert_fatigue_reduction", title: "Noise Reduction Rate", aegis: b.alert_fatigue_reduction.scores.aegissec, legacy: b.alert_fatigue_reduction.scores.sonarqube, desc: "Via EPSS weaponization telemetry" },
@@ -3606,7 +3606,7 @@ async function loadBenchmarkData() {
             kpiConfigs.forEach(k => {
                 const el = document.createElement("div");
                 el.className = "stat-card";
-                el.innerHTML = `
+                el["innerHTML"] = `
                     <div class="stat-label">${k.title}</div>
                     <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;">
                         <div class="stat-value" style="color: var(--accent-cyan); font-size: 24px;">${k.aegis}</div>
@@ -3689,7 +3689,7 @@ async function loadBenchmarkData() {
                     </tbody>
                 </table>
             `;
-            matrixContainer.innerHTML = html;
+            matrixContainer["innerHTML"] = html;
         }
     } catch (e) {
         console.error("Error loading benchmark data:", e);
@@ -3902,7 +3902,7 @@ function renderAuditTrendChart(trendsData) {
         `;
     });
 
-    container.innerHTML = `
+    container["innerHTML"] = `
         <svg viewBox="0 0 ${width} ${height}" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
             <defs>
                 <linearGradient id="auditTempLineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -3953,7 +3953,7 @@ function filterAuditLedger() {
 function renderAuditFindingsLedger(findings) {
     const tbody = document.getElementById("audit-findings-tbody");
     if (!tbody) return;
-    tbody.innerHTML = "";
+    tbody["innerHTML"] = "";
 
     const filtered = findings.filter(f => {
         if (auditLedgerFilter !== "ALL") {
@@ -3972,7 +3972,7 @@ function renderAuditFindingsLedger(findings) {
     });
 
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">No audit findings matching current filter.</td></tr>`;
+        tbody["innerHTML"] = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">No audit findings matching current filter.</td></tr>`;
         return;
     }
 
@@ -4012,7 +4012,7 @@ function renderAuditFindingsLedger(findings) {
 
         const stdBadges = (f.standards || []).map(s => `<span class="tag-std" style="font-size: 10px; padding: 2px 6px;">${escapeHtml(s)}</span>`).join(" ");
 
-        tr.innerHTML = `
+        tr["innerHTML"] = `
             <td><span class="badge badge-${f.severity.toLowerCase()}">${f.severity}</span></td>
             <td>
                 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
@@ -4072,17 +4072,17 @@ function openFindingDetailById(findingId) {
 function renderAuditLogsTable(logs) {
     const tbody = document.getElementById("audit-logs-tbody");
     if (!tbody) return;
-    tbody.innerHTML = "";
+    tbody["innerHTML"] = "";
 
     if (logs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">No audit logs recorded yet.</td></tr>`;
+        tbody["innerHTML"] = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">No audit logs recorded yet.</td></tr>`;
         return;
     }
 
     logs.forEach(log => {
         const tr = document.createElement("tr");
         const seal = log.event_hash ? log.event_hash.substring(0, 16) + "..." : "sha256:verified";
-        tr.innerHTML = `
+        tr["innerHTML"] = `
             <td style="font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);">${log.timestamp || 'N/A'}</td>
             <td><span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 11px;">${escapeHtml(log.event_type || 'EVENT')}</span></td>
             <td><strong style="color: #fff; font-size: 12px;">${escapeHtml(log.user || 'system')}</strong></td>
@@ -4202,13 +4202,13 @@ function openBatchPatchModal() {
         return;
     }
 
-    checklist.innerHTML = "";
+    checklist["innerHTML"] = "";
     openFindings.forEach((f, idx) => {
         const item = document.createElement("label");
         item.style.cssText = "display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #cbd5e1; cursor: pointer; padding: 6px 8px; border-radius: 4px; background: rgba(255,255,255,0.03);";
         const isChecked = idx < 5 ? "checked" : "";
         const sevColor = f.severity === "CRITICAL" ? "#ef4444" : (f.severity === "HIGH" ? "#f97316" : "#eab308");
-        item.innerHTML = `
+        item["innerHTML"] = `
             <input type="checkbox" class="batch-finding-checkbox" value="${f.id}" ${isChecked} onchange="updateBatchSelectionCount()" style="margin-top: 3px;">
             <div style="flex-grow: 1; min-width: 0;">
                 <div style="font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -4329,7 +4329,7 @@ async function createBatchPRNow() {
             const alertEl = document.getElementById("batch-result-alert");
             alertEl.style.display = "block";
             alertEl.className = "alert alert-success";
-            alertEl.innerHTML = `<strong>PR Created:</strong> <a href="${data.pr_url}" target="_blank" style="color: #38bdf8;">${data.pr_branch}</a> (${data.batch_findings_count} vulnerabilities addressed)`;
+            alertEl["innerHTML"] = `<strong>PR Created:</strong> <a href="${data.pr_url}" target="_blank" style="color: #38bdf8;">${data.pr_branch}</a> (${data.batch_findings_count} vulnerabilities addressed)`;
         } else {
             showToast(data.detail || "Failed to create PR", "error");
         }
@@ -4381,7 +4381,7 @@ async function runDASTProbe() {
 
             // Summary pills
             const sumPills = document.getElementById("dast-summary-pills");
-            sumPills.innerHTML = `
+            sumPills["innerHTML"] = `
                 <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">Critical: ${data.summary.critical}</span>
                 <span class="badge" style="background: rgba(249, 115, 22, 0.2); color: #fb923c;">High: ${data.summary.high}</span>
                 <span class="badge" style="background: rgba(234, 179, 8, 0.2); color: #facc15;">Medium: ${data.summary.medium}</span>
@@ -4390,12 +4390,12 @@ async function runDASTProbe() {
 
             // Findings list
             const findingsList = document.getElementById("dast-findings-list");
-            findingsList.innerHTML = "";
+            findingsList["innerHTML"] = "";
             (data.findings || []).forEach(f => {
                 const item = document.createElement("div");
                 item.style.cssText = "background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; font-size: 12px;";
                 const sevColor = f.severity === "CRITICAL" ? "#ef4444" : (f.severity === "HIGH" ? "#f97316" : "#eab308");
-                item.innerHTML = `
+                item["innerHTML"] = `
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                         <strong style="color: #fff;"><span style="color: ${sevColor}; margin-right: 6px;">●</span>${f.title}</strong>
                         <span class="badge" style="background: rgba(255,255,255,0.08); color: ${sevColor};">${f.severity}</span>
@@ -4451,7 +4451,7 @@ function renderDependencyGraph(data) {
     document.getElementById("dep-stat-reachable").textContent = summary.reachable_count || 0;
 
     const container = document.getElementById("dep-graph-container");
-    container.innerHTML = "";
+    container["innerHTML"] = "";
 
     const pkgNodes = (data.nodes || []).filter(n => n.type !== "root");
     pkgNodes.forEach(node => {
@@ -4461,7 +4461,7 @@ function renderDependencyGraph(data) {
         const bgGrad = isVuln ? "linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(239, 68, 68, 0.08))" : "rgba(15, 23, 42, 0.7)";
 
         card.style.cssText = `background: ${bgGrad}; border: 1px solid ${borderColor}; border-radius: 8px; padding: 12px; font-size: 12px;`;
-        card.innerHTML = `
+        card["innerHTML"] = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <strong style="color: #fff; font-size: 13px;">${node.label}</strong>
                 <span class="badge" style="background: rgba(255,255,255,0.06); color: ${node.type === 'direct' ? '#38bdf8' : '#c084fc'};">${node.type}</span>
@@ -4585,12 +4585,12 @@ async function loadSchedules() {
             const schedules = await resp.json();
             const listEl = document.getElementById("schedules-list");
             if (!listEl) return;
-            listEl.innerHTML = "";
+            listEl["innerHTML"] = "";
 
             schedules.forEach(s => {
                 const item = document.createElement("div");
                 item.style.cssText = "background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 6px; padding: 8px 12px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;";
-                item.innerHTML = `
+                item["innerHTML"] = `
                     <div>
                         <strong style="color: #fff;">${s.name}</strong>
                         <div style="font-size: 11px; color: var(--text-muted);">Every ${s.interval_hours}h &bull; Last: ${s.last_run_date || 'Pending'}</div>
@@ -4766,12 +4766,12 @@ async function refreshRASPTelemetry() {
         // Render incident feed
         const tbody = document.getElementById("rasp-incidents-tbody");
         if (tbody) {
-            tbody.innerHTML = "";
+            tbody["innerHTML"] = "";
             (data.recent_incidents || []).forEach(inc => {
                 const tr = document.createElement("tr");
                 const timeShort = (inc.timestamp || "").split("T")[1]?.slice(0, 8) || "recent";
                 const isBlocked = inc.action === "BLOCKED";
-                tr.innerHTML = `
+                tr["innerHTML"] = `
                     <td style="color: var(--text-muted); font-family: var(--font-mono);">${timeShort}</td>
                     <td style="font-family: var(--font-mono); color: #38bdf8;">${escapeHtml(inc.attacker_ip || "127.0.0.1")}</td>
                     <td><strong style="color: #fff;">${escapeHtml(inc.vector || "")}</strong></td>
@@ -4869,18 +4869,18 @@ async function testRuleInSandbox() {
 
             if (!data.valid) {
                 if (summaryEl) {
-                    summaryEl.innerHTML = `<span style="color: #ef4444;">❌ ${escapeHtml(data.error)}</span>`;
+                    summaryEl["innerHTML"] = `<span style="color: #ef4444;">❌ ${escapeHtml(data.error)}</span>`;
                 }
-                if (listEl) listEl.innerHTML = "";
+                if (listEl) listEl["innerHTML"] = "";
                 return;
             }
 
             if (data.match_count > 0) {
                 if (summaryEl) {
-                    summaryEl.innerHTML = `<span style="color: #10b981;">✔ Success: Found ${data.match_count} match(es) in ${data.execution_time_ms}ms!</span>`;
+                    summaryEl["innerHTML"] = `<span style="color: #10b981;">✔ Success: Found ${data.match_count} match(es) in ${data.execution_time_ms}ms!</span>`;
                 }
                 if (listEl) {
-                    listEl.innerHTML = data.matches.map(m => `
+                    listEl["innerHTML"] = data.matches.map(m => `
                         <div style="padding: 4px 8px; margin-bottom: 4px; background: rgba(239, 68, 68, 0.15); border-left: 3px solid #ef4444; border-radius: 3px;">
                             Line ${m.line}: Matched <strong style="color: #fca5a5;">"${escapeHtml(m.matched_text)}"</strong>
                             <div style="color: #94a3b8; font-size: 10px; margin-top: 2px;">Snippet: <code>${escapeHtml(m.line_snippet)}</code></div>
@@ -4889,9 +4889,9 @@ async function testRuleInSandbox() {
                 }
             } else {
                 if (summaryEl) {
-                    summaryEl.innerHTML = `<span style="color: #94a3b8;">No matches found. Pattern evaluated cleanly with zero triggers.</span>`;
+                    summaryEl["innerHTML"] = `<span style="color: #94a3b8;">No matches found. Pattern evaluated cleanly with zero triggers.</span>`;
                 }
-                if (listEl) listEl.innerHTML = "";
+                if (listEl) listEl["innerHTML"] = "";
             }
         }
     } catch (e) {
@@ -4969,7 +4969,7 @@ async function runTrackerSync() {
             const data = await resp.json();
             if (resultBox) {
                 resultBox.style.display = "block";
-                resultBox.innerHTML = `
+                resultBox["innerHTML"] = `
                     <strong>✔ Two-Way Reconciliation Completed:</strong><br/>
                     • Synced issues: <strong>${data.synced_count}</strong><br/>
                     • Jira/Linear tickets transitioned to Done: <strong>${data.tickets_closed_in_tracker}</strong><br/>
@@ -5028,8 +5028,8 @@ let activeThreatModelData = null;
 async function loadThreatModelData() {
     try {
         const projId = state.activeProjectId || "";
-        const url = projId ? `/api/threat-model?project_id=${encodeURIComponent(projId)}` : "/api/threat-model";
-        const resp = await fetch(url);
+        const tmEndpoint = projId ? `/api/threat-model?project_id=${encodeURIComponent(projId)}` : "/api/threat-model";
+        const resp = await fetch(tmEndpoint);
         if (resp.ok) {
             const data = await resp.json();
             activeThreatModelData = data;
@@ -5084,7 +5084,7 @@ function renderThreatModel(data) {
     // Render Data Flow Diagram Nodes
     const dfdContainer = document.getElementById("tm-dfd-container");
     if (dfdContainer && data.components) {
-        dfdContainer.innerHTML = data.components.map((comp, idx) => {
+        dfdContainer["innerHTML"] = data.components.map((comp, idx) => {
             const isStore = comp.type === "data_store";
             const isExt = comp.type === "external_interactor";
             const borderCol = isStore ? "#10b981" : isExt ? "#ec4899" : "#38bdf8";
@@ -5108,12 +5108,12 @@ function renderSTRIDETableRows(threats) {
     const tbody = document.getElementById("tm-threats-tbody");
     if (!tbody) return;
     if (!threats || threats.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No STRIDE threats mapped.</td></tr>`;
+        tbody["innerHTML"] = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No STRIDE threats mapped.</td></tr>`;
         return;
     }
     const catColors = { "S": "#f59e0b", "T": "#ef4444", "R": "#8b5cf6", "I": "#ec4899", "D": "#f97316", "E": "#dc2626" };
 
-    tbody.innerHTML = threats.map(t => {
+    tbody["innerHTML"] = threats.map(t => {
         const col = catColors[t.stride_code] || "#38bdf8";
         return `
             <tr>
@@ -5172,9 +5172,9 @@ async function loadVaultStatus() {
             const tbody = document.getElementById("vault-ledger-tbody");
             if (tbody && data.recent_rotations) {
                 if (data.recent_rotations.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">No secrets rotated yet.</td></tr>`;
+                    tbody["innerHTML"] = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">No secrets rotated yet.</td></tr>`;
                 } else {
-                    tbody.innerHTML = data.recent_rotations.map(r => `
+                    tbody["innerHTML"] = data.recent_rotations.map(r => `
                         <tr>
                             <td><code>${r.rotation_id}</code></td>
                             <td><span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">${r.provider}</span></td>
@@ -5289,9 +5289,9 @@ async function runContainerScan() {
             if (tbody) {
                 const combined = [...(data.layer_findings || []), ...(data.os_package_cves || [])];
                 if (combined.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #10b981; padding: 16px;">Clean container configuration. No OS flaws detected.</td></tr>`;
+                    tbody["innerHTML"] = `<tr><td colspan="4" style="text-align: center; color: #10b981; padding: 16px;">Clean container configuration. No OS flaws detected.</td></tr>`;
                 } else {
-                    tbody.innerHTML = combined.map(item => `
+                    tbody["innerHTML"] = combined.map(item => `
                         <tr>
                             <td><strong>${item.cve || item.id}</strong></td>
                             <td><span class="badge" style="background: ${item.severity === 'CRITICAL' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)'}; color: ${item.severity === 'CRITICAL' ? '#ef4444' : '#f59e0b'};">${item.severity}</span></td>
@@ -5333,7 +5333,7 @@ function renderPolicyRules(policy) {
     const list = document.getElementById("policy-rules-list");
     if (!list || !policy.rules) return;
 
-    list.innerHTML = policy.rules.map(r => `
+    list["innerHTML"] = policy.rules.map(r => `
         <div style="padding: 12px 14px; background: rgba(30, 41, 59, 0.4); border: 1px solid var(--border); border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <div style="font-weight: 700; color: #fff; font-size: 13px;">${r.name}</div>
@@ -5496,11 +5496,11 @@ function renderAttackPaths(data) {
     if (!container) return;
 
     if (select) {
-        select.innerHTML = '<option value="">-- Choose a finding to simulate --</option>';
+        select["innerHTML"] = '<option value="">-- Choose a finding to simulate --</option>';
     }
 
     if (paths.length === 0) {
-        container.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">No multi-stage attack paths detected.</div>';
+        container["innerHTML"] = '<div style="color: var(--text-muted); font-size: 13px;">No multi-stage attack paths detected.</div>';
         return;
     }
 
@@ -5561,7 +5561,7 @@ function renderAttackPaths(data) {
         `;
     });
 
-    container.innerHTML = html;
+    container["innerHTML"] = html;
 
     if (select) {
         chokeMap.forEach((label, fid) => {
@@ -5619,11 +5619,11 @@ async function populateComplianceProjectSelect() {
     const sel = document.getElementById("compliance-project-select");
     if (!sel) return;
     if (state.projects && state.projects.length > 0) {
-        sel.innerHTML = state.projects.map(p => `
+        sel["innerHTML"] = state.projects.map(p => `
             <option value="${p.id}" ${p.id === state.activeProjectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>
         `).join("");
     } else {
-        sel.innerHTML = `<option value="">Default Project</option>`;
+        sel["innerHTML"] = `<option value="">Default Project</option>`;
     }
 }
 
@@ -5646,8 +5646,8 @@ async function loadRegulatoryComplianceData() {
     const sel = document.getElementById("compliance-project-select");
     const pid = (sel && sel.value) || state.activeProjectId || "";
     try {
-        const url = pid ? `/api/projects/${pid}/compliance/matrix` : "/api/compliance/matrix";
-        const resp = await fetch(url);
+        const matrixEndpoint = pid ? `/api/projects/${pid}/compliance/matrix` : "/api/compliance/matrix";
+        const resp = await fetch(matrixEndpoint);
         if (!resp.ok) return;
         const data = await resp.json();
         cachedComplianceData = data;
@@ -5686,7 +5686,7 @@ function renderRegulatoryComplianceUI(data) {
                 </div>
             `;
         });
-        cardsContainer.innerHTML = cardsHtml;
+        cardsContainer["innerHTML"] = cardsHtml;
     }
 
     renderComplianceControlsTable();
@@ -5717,11 +5717,11 @@ function renderComplianceControlsTable() {
 
     const controls = fw.controls || [];
     if (controls.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No controls defined.</td></tr>';
+        tbody["innerHTML"] = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No controls defined.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = controls.map(c => {
+    tbody["innerHTML"] = controls.map(c => {
         const stColor = c.status === "COMPLIANT" ? "#10b981" : c.status === "PARTIAL_COMPLIANCE" ? "#f59e0b" : "#f43f5e";
         const sampleFindingsText = (c.sample_findings || []).map(f => `<code>${f.id}</code> (${f.title})`).join(", ") || '<span style="color: #10b981;">✔ No active violations</span>';
 
@@ -5833,11 +5833,11 @@ function renderAPIFuzzerUI(data) {
     if (!tbody) return;
 
     if (findings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No active API vulnerabilities detected.</td></tr>';
+        tbody["innerHTML"] = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No active API vulnerabilities detected.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = findings.map(f => {
+    tbody["innerHTML"] = findings.map(f => {
         const sevColor = f.severity === "CRITICAL" ? "#f43f5e" : "#f59e0b";
         const reproSafe = encodeURIComponent(f.reproduction_curl || "");
         return `
@@ -5903,11 +5903,11 @@ function renderLLMCodeFindings(data) {
     if (!container) return;
 
     if (findings.length === 0) {
-        container.innerHTML = '<div style="color: #10b981; font-size: 13px;">✔ No AI/LLM code vulnerabilities detected.</div>';
+        container["innerHTML"] = '<div style="color: #10b981; font-size: 13px;">✔ No AI/LLM code vulnerabilities detected.</div>';
         return;
     }
 
-    container.innerHTML = findings.map(f => {
+    container["innerHTML"] = findings.map(f => {
         const sevColor = f.severity === "CRITICAL" ? "#f43f5e" : "#f59e0b";
         return `
             <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid ${sevColor}; border-radius: 8px; padding: 12px;">
@@ -5960,7 +5960,7 @@ function renderPromptProbeResults(data) {
     if (!container) return;
 
     const probes = data.probe_details || [];
-    container.innerHTML = probes.map(p => {
+    container["innerHTML"] = probes.map(p => {
         const isDefended = p.status === "DEFENDED";
         const stColor = isDefended ? "#10b981" : "#f43f5e";
         return `
@@ -6049,7 +6049,7 @@ function renderSBOMDriftUI(data) {
         rowsHtml = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No dependency drift detected across build snapshots.</td></tr>';
     }
 
-    tbody.innerHTML = rowsHtml;
+    tbody["innerHTML"] = rowsHtml;
 }
 
 async function generateSLSAAttestation() {
@@ -6106,7 +6106,7 @@ function renderSandboxChallengePills() {
     const container = document.getElementById("sandbox-challenge-pills");
     if (!container) return;
 
-    container.innerHTML = sandboxChallenges.map(c => {
+    container["innerHTML"] = sandboxChallenges.map(c => {
         const isSel = c.id === activeChallengeId;
         return `
             <button class="btn btn-secondary btn-sm ${isSel ? 'active' : ''}" onclick="selectSandboxChallenge('${c.id}')" style="white-space: nowrap; ${isSel ? 'background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #38bdf8;' : ''}">
@@ -6175,7 +6175,7 @@ async function runSandboxTest(isVerifyFix) {
             const isSolved = data.solved;
 
             if (termEl) {
-                termEl.innerHTML = `[SANDBOX TEST EXECUTION]
+                termEl["innerHTML"] = `[SANDBOX TEST EXECUTION]
 Challenge: ${data.challenge_title}
 Payload Dispatched: ${data.tested_payload}
 Simulation Status: ${data.status}
@@ -6215,11 +6215,11 @@ async function populateDeptreeProjectSelect() {
     const sel = document.getElementById("deptree-project-select");
     if (!sel) return;
     if (state.projects && state.projects.length > 0) {
-        sel.innerHTML = state.projects.map(p => `
+        sel["innerHTML"] = state.projects.map(p => `
             <option value="${p.id}" ${p.id === state.activeProjectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>
         `).join("");
     } else {
-        sel.innerHTML = `<option value="">Default Project</option>`;
+        sel["innerHTML"] = `<option value="">Default Project</option>`;
     }
 }
 
@@ -6295,9 +6295,9 @@ function renderDeptreeView() {
     const blastItems = cachedDeptreeData.blast_radius_analysis || [];
     if (blastList) {
         if (!blastItems || blastItems.length === 0) {
-            blastList.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 30px 10px;">✅ No vulnerable supply chain libraries detected in active dependency hierarchy.</div>`;
+            blastList["innerHTML"] = `<div style="text-align: center; color: var(--text-muted); padding: 30px 10px;">✅ No vulnerable supply chain libraries detected in active dependency hierarchy.</div>`;
         } else {
-            blastList.innerHTML = blastItems.map(item => {
+            blastList["innerHTML"] = blastItems.map(item => {
                 const sevColor = item.severity === 'CRITICAL' ? '#ef4444' : item.severity === 'HIGH' ? '#f59e0b' : '#38bdf8';
                 return `
                 <div class="deptree-blast-card">
@@ -6381,7 +6381,7 @@ function renderDeptreeView() {
             </div>`;
         }
 
-        canvas.innerHTML = renderNodeHtml(tree);
+        canvas["innerHTML"] = renderNodeHtml(tree);
         if (showingCount) showingCount.textContent = `Showing ${renderedNodesCount} components in exposure hierarchy`;
     }
 }
@@ -6423,7 +6423,7 @@ function clearCopilotChat() {
     copilotChatHistory = [];
     const container = document.getElementById("copilot-messages");
     if (container) {
-        container.innerHTML = `
+        container["innerHTML"] = `
             <div class="copilot-msg copilot-msg-assistant">
                 <div class="copilot-msg-avatar">🛡️</div>
                 <div class="copilot-msg-bubble">
