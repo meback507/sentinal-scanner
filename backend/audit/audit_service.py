@@ -55,6 +55,7 @@ class AuditService:
         }
 
         # Store in db table
+        conn = None
         try:
             conn = db.get_connection()
             with conn:
@@ -76,12 +77,19 @@ class AuditService:
                 """, (log_id, event_type, finding_id, project_id, user, detail_text, now_str, seal))
         except Exception:
             pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         return entry
 
     @classmethod
     def list_audit_logs(cls, limit: int = 50) -> List[Dict[str, Any]]:
         logs = []
+        conn = None
         try:
             conn = db.get_connection()
             cursor = conn.cursor()
@@ -101,6 +109,12 @@ class AuditService:
                 })
         except Exception:
             pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         # If empty, provide baseline sample audit trail
         if not logs:

@@ -9,6 +9,7 @@ import os
 import uuid
 import datetime
 import hashlib
+from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
 
 DB_FILE = os.getenv("SENTINEL_DB_PATH") or os.getenv("DATABASE_PATH") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "aegis_sec.db")
@@ -109,28 +110,41 @@ class Database:
             else:
                 raise
 
-    def _get_conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _get_conn(self):
+        conn = None
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA foreign_keys = ON;")
-            return conn
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("PRAGMA foreign_keys = ON;")
+                yield conn
         except sqlite3.OperationalError as e:
             fallback = "/tmp/sentinel.db"
             if self.db_path != fallback:
                 print(f"[Sentinel DB] Warning: Connection error on {self.db_path} ({e}). Falling back to {fallback}")
                 self.db_path = fallback
-                conn = sqlite3.connect(self.db_path)
-                conn.row_factory = sqlite3.Row
-                conn.execute("PRAGMA journal_mode=WAL;")
-                conn.execute("PRAGMA foreign_keys = ON;")
-                return conn
-            raise
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.row_factory = sqlite3.Row
+                    conn.execute("PRAGMA journal_mode=WAL;")
+                    conn.execute("PRAGMA foreign_keys = ON;")
+                    yield conn
+            else:
+                raise
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def get_connection(self) -> sqlite3.Connection:
         """Provides an active database connection for direct SQL execution."""
-        return self._get_conn()
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return conn
 
     def _init_schema(self):
         with self._get_conn() as conn:
@@ -246,7 +260,9 @@ class Database:
                 description TEXT,
                 remediation TEXT,
                 yaml_representation TEXT,
-                is_active INTEGER DEFAULT 1
+                is_active INTEGER DEFAULT 1,
+                project_id TEXT,
+                project_name TEXT
             );
 
             CREATE TABLE IF NOT EXISTS integrations (
@@ -298,6 +314,27 @@ class Database:
                 if "masked_value" not in cols:
                     conn.execute("ALTER TABLE findings ADD COLUMN masked_value TEXT")
                 self._migrate_and_deduplicate_findings(conn)
+
+                # Migration for project-scoped custom rules
+                rule_cols = [c[1] for c in conn.execute("PRAGMA table_info(custom_rules)").fetchall()]
+                if "project_id" not in rule_cols:
+                    conn.execute("ALTER TABLE custom_rules ADD COLUMN project_id TEXT")
+                if "project_name" not in rule_cols:
+                    conn.execute("ALTER TABLE custom_rules ADD COLUMN project_name TEXT")
+
+                # Migration for project members / user assignments
+                conn.executescript("""
+                CREATE TABLE IF NOT EXISTS project_members (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    role TEXT DEFAULT 'member',
+                    assigned_at TEXT NOT NULL,
+                    UNIQUE(project_id, user_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_pm_project ON project_members(project_id);
+                CREATE INDEX IF NOT EXISTS idx_pm_user ON project_members(user_id);
+                """)
             except Exception:
                 pass
 
@@ -379,22 +416,69 @@ class Database:
             conn.execute("DELETE FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo'")
 
     # --- User Operations ---
+    def _get_user_assigned_projects_conn(self, conn: sqlite3.Connection, user_id_or_username: str) -> List[str]:
+        """Returns assigned project IDs using an active connection."""
+        user = conn.execute("SELECT id, username FROM users WHERE id = ? OR username = ?", (user_id_or_username, user_id_or_username)).fetchone()
+        actual_id = user["id"] if user else user_id_or_username
+        actual_username = user["username"] if user else user_id_or_username
+        rows = conn.execute(
+            "SELECT DISTINCT project_id FROM project_members WHERE user_id = ? OR user_id = ?",
+            (actual_id, actual_username)
+        ).fetchall()
+        return [r["project_id"] for r in rows if r["project_id"]]
+
+    def _get_project_members_conn(self, conn: sqlite3.Connection, project_id: str) -> List[Dict[str, Any]]:
+        """Returns assigned project members using an active connection."""
+        rows = conn.execute("""
+            SELECT pm.user_id, pm.role as project_role, pm.assigned_at,
+                   u.username, u.email, u.role as system_role
+            FROM project_members pm
+            LEFT JOIN users u ON (u.id = pm.user_id OR u.username = pm.user_id)
+            WHERE pm.project_id = ?
+            ORDER BY pm.assigned_at ASC
+        """, (project_id,)).fetchall()
+        members = []
+        for r in rows:
+            m = dict(r)
+            members.append({
+                "user_id": m["user_id"],
+                "username": m.get("username") or m["user_id"],
+                "email": m.get("email") or f"{m['user_id']}@sentinel.internal",
+                "system_role": m.get("system_role") or "developer",
+                "project_role": m.get("project_role") or "member",
+                "assigned_at": m.get("assigned_at")
+            })
+        return members
+
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         with self._get_conn() as conn:
             row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            u = dict(row)
+            u["assigned_projects"] = self._get_user_assigned_projects_conn(conn, u["id"])
+            return u
 
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         with self._get_conn() as conn:
             row = conn.execute("SELECT * FROM users WHERE id = ? OR username = ?", (user_id, user_id)).fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            u = dict(row)
+            u["assigned_projects"] = self._get_user_assigned_projects_conn(conn, u["id"])
+            return u
 
     def list_users(self) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:
             rows = conn.execute("SELECT id, username, email, role, created_at FROM users ORDER BY created_at ASC").fetchall()
-            return [dict(r) for r in rows]
+            users = []
+            for r in rows:
+                u = dict(r)
+                u["assigned_projects"] = self._get_user_assigned_projects_conn(conn, u["id"])
+                users.append(u)
+            return users
 
-    def create_user(self, username: str, email: str, password: str, role: str) -> Dict[str, Any]:
+    def create_user(self, username: str, email: str, password: str, role: str, assigned_projects: Optional[List[str]] = None) -> Dict[str, Any]:
         user_id = str(uuid.uuid4())
         now = datetime.datetime.now().isoformat()
         pwd_hash = hash_password(password)
@@ -403,11 +487,20 @@ class Database:
                 "INSERT INTO users VALUES (?, ?, ?, ?, ?, ?)",
                 (user_id, username, email, pwd_hash, role, now)
             )
-        return {"id": user_id, "username": username, "email": email, "role": role, "created_at": now}
+        if assigned_projects:
+            self.set_user_projects(user_id, assigned_projects)
+        return {
+            "id": user_id,
+            "username": username,
+            "email": email,
+            "role": role,
+            "created_at": now,
+            "assigned_projects": assigned_projects or []
+        }
 
-    def update_user(self, user_id: str, role: Optional[str] = None, password: Optional[str] = None, email: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def update_user(self, user_id: str, role: Optional[str] = None, password: Optional[str] = None, email: Optional[str] = None, assigned_projects: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
         with self._get_conn() as conn:
-            user = self.get_user_by_id(user_id)
+            user = conn.execute("SELECT id FROM users WHERE id = ? OR username = ?", (user_id, user_id)).fetchone()
             if not user:
                 return None
             actual_id = user["id"]
@@ -429,12 +522,97 @@ class Database:
                 conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", tuple(params))
             
             row = conn.execute("SELECT id, username, email, role, created_at FROM users WHERE id = ?", (actual_id,)).fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            res = dict(row)
+
+        if assigned_projects is not None:
+            self.set_user_projects(actual_id, assigned_projects)
+        res["assigned_projects"] = self.get_user_assigned_projects(actual_id)
+        return res
 
     def delete_user(self, user_id: str) -> bool:
         with self._get_conn() as conn:
+            user = conn.execute("SELECT id FROM users WHERE id = ? OR username = ?", (user_id, user_id)).fetchone()
+            actual_id = user["id"] if user else user_id
+            conn.execute("DELETE FROM project_members WHERE user_id = ? OR user_id = ?", (actual_id, user_id))
             cur = conn.execute("DELETE FROM users WHERE id = ? OR username = ?", (user_id, user_id))
             return cur.rowcount > 0
+
+    # --- Project Membership Operations ---
+    def assign_user_to_project(self, project_id: str, user_id: str, role: Optional[str] = "member") -> bool:
+        """Assigns a user to a specific project scope."""
+        with self._get_conn() as conn:
+            user = conn.execute("SELECT id FROM users WHERE id = ? OR username = ?", (user_id, user_id)).fetchone()
+            actual_id = user["id"] if user else user_id
+            now = datetime.datetime.now().isoformat()
+            conn.execute(
+                "INSERT OR REPLACE INTO project_members (id, project_id, user_id, role, assigned_at) VALUES (?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), project_id, actual_id, role or "member", now)
+            )
+            return True
+
+    def remove_user_from_project(self, project_id: str, user_id: str) -> bool:
+        """Removes a user from a specific project scope."""
+        with self._get_conn() as conn:
+            user = conn.execute("SELECT id FROM users WHERE id = ? OR username = ?", (user_id, user_id)).fetchone()
+            actual_id = user["id"] if user else user_id
+            cur = conn.execute(
+                "DELETE FROM project_members WHERE project_id = ? AND (user_id = ? OR user_id = ?)",
+                (project_id, actual_id, user_id)
+            )
+            return cur.rowcount > 0
+
+    def set_user_projects(self, user_id: str, project_ids: List[str]) -> bool:
+        """Sets the exact list of projects a user is assigned to."""
+        with self._get_conn() as conn:
+            user = conn.execute("SELECT id FROM users WHERE id = ? OR username = ?", (user_id, user_id)).fetchone()
+            actual_id = user["id"] if user else user_id
+            conn.execute("DELETE FROM project_members WHERE user_id = ? OR user_id = ?", (actual_id, user_id))
+            now = datetime.datetime.now().isoformat()
+            for pid in project_ids:
+                if pid:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO project_members (id, project_id, user_id, role, assigned_at) VALUES (?, ?, ?, ?, ?)",
+                        (str(uuid.uuid4()), pid.strip(), actual_id, "member", now)
+                    )
+            return True
+
+    def set_project_members(self, project_id: str, user_ids: List[str]) -> bool:
+        """Sets the exact list of users assigned to a project."""
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM project_members WHERE project_id = ?", (project_id,))
+            now = datetime.datetime.now().isoformat()
+            for uid in user_ids:
+                if uid:
+                    user = conn.execute("SELECT id FROM users WHERE id = ? OR username = ?", (uid, uid)).fetchone()
+                    actual_id = user["id"] if user else uid
+                    conn.execute(
+                        "INSERT OR REPLACE INTO project_members (id, project_id, user_id, role, assigned_at) VALUES (?, ?, ?, ?, ?)",
+                        (str(uuid.uuid4()), project_id, actual_id, "member", now)
+                    )
+            return True
+
+    def get_user_assigned_projects(self, user_id_or_username: str) -> List[str]:
+        """Returns the list of project IDs explicitly assigned to a user."""
+        with self._get_conn() as conn:
+            return self._get_user_assigned_projects_conn(conn, user_id_or_username)
+
+    def get_project_members(self, project_id: str) -> List[Dict[str, Any]]:
+        """Returns the list of users assigned to a project with their roles and assignment timestamps."""
+        with self._get_conn() as conn:
+            return self._get_project_members_conn(conn, project_id)
+
+    def get_projects_with_user_findings(self, username: str, email: Optional[str] = None) -> List[str]:
+        """Finds projects where a developer has authored code flaws (used for test/demo backwards compatibility)."""
+        with self._get_conn() as conn:
+            params = [f"%{username.lower()}%"]
+            query = "SELECT DISTINCT project_id FROM findings WHERE LOWER(author_name) LIKE ?"
+            if email:
+                query += " OR LOWER(author_email) = ?"
+                params.append(email.lower())
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [r["project_id"] for r in rows if r["project_id"]]
 
     # --- Project Operations ---
     def list_projects(self) -> List[Dict[str, Any]]:
@@ -448,6 +626,9 @@ class Database:
                 p["total_findings"] = cnt
                 p["git_pat_configured"] = bool(p.get("git_pat"))
                 del p["git_pat"]  # Never expose raw PAT in list
+                members = self._get_project_members_conn(conn, p["id"])
+                p["members"] = members
+                p["member_count"] = len(members)
                 projects.append(p)
             return projects
 
@@ -460,9 +641,12 @@ class Database:
             p["git_pat_configured"] = bool(p.get("git_pat"))
             cnt = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ? AND status != 'resolved'", (project_id,)).fetchone()["c"]
             p["total_findings"] = cnt
+            members = self._get_project_members_conn(conn, project_id)
+            p["members"] = members
+            p["member_count"] = len(members)
             return p
 
-    def create_project(self, name: str, description: str, git_url: str, git_branch: str, git_pat: str, created_by: str) -> Dict[str, Any]:
+    def create_project(self, name: str, description: str, git_url: str, git_branch: str, git_pat: str, created_by: str, assigned_users: Optional[List[str]] = None) -> Dict[str, Any]:
         project_id = str(uuid.uuid4())
         now = datetime.datetime.now().isoformat()
         with self._get_conn() as conn:
@@ -470,6 +654,17 @@ class Database:
                 "INSERT INTO projects (id, name, description, git_url, git_branch, git_pat, created_by, created_at, risk_score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (project_id, name, description, git_url, git_branch, git_pat, created_by, now, 0.0)
             )
+        
+        # Assign creator if non-admin or explicit
+        if created_by and created_by != "admin":
+            self.assign_user_to_project(project_id, created_by, role="lead")
+        
+        if assigned_users:
+            for uid in assigned_users:
+                if uid:
+                    self.assign_user_to_project(project_id, uid, role="member")
+
+        members = self.get_project_members(project_id)
         return {
             "id": project_id,
             "name": name,
@@ -480,11 +675,14 @@ class Database:
             "created_by": created_by,
             "created_at": now,
             "risk_score": 0.0,
-            "total_findings": 0
+            "total_findings": 0,
+            "members": members,
+            "member_count": len(members)
         }
 
     def delete_project(self, project_id: str) -> bool:
         with self._get_conn() as conn:
+            conn.execute("DELETE FROM project_members WHERE project_id = ?", (project_id,))
             conn.execute("DELETE FROM findings WHERE project_id = ?", (project_id,))
             conn.execute("DELETE FROM scans WHERE project_id = ?", (project_id,))
             res = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
@@ -792,6 +990,56 @@ class Database:
                 rows = conn.execute("SELECT * FROM scans ORDER BY started_at DESC").fetchall()
             return [dict(r) for r in rows]
 
+    def create_finding(self, f: Dict[str, Any]) -> Dict[str, Any]:
+        with self._get_conn() as conn:
+            now = datetime.datetime.now().isoformat()
+            fid = f.get("id") or str(uuid.uuid4())
+            pid = f.get("project_id", "")
+            scan_id = f.get("scan_id")
+            if not scan_id or scan_id == "scan-manual":
+                s_row = conn.execute("SELECT id FROM scans WHERE project_id = ? ORDER BY started_at DESC LIMIT 1", (pid,)).fetchone()
+                if s_row:
+                    scan_id = s_row["id"]
+                else:
+                    scan_id = str(uuid.uuid4())
+                    conn.execute(
+                        "INSERT OR IGNORE INTO scans (id, project_id, project_name, scan_type, status, started_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        (scan_id, pid, "Project", "full", "completed", now)
+                    )
+            else:
+                s_row = conn.execute("SELECT id FROM scans WHERE id = ?", (scan_id,)).fetchone()
+                if not s_row:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO scans (id, project_id, project_name, scan_type, status, started_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        (scan_id, pid, "Project", "full", "completed", now)
+                    )
+            fp = f.get("fingerprint") or compute_finding_fingerprint(pid, f)
+            conn.execute("""
+            INSERT OR REPLACE INTO findings (
+                id, scan_id, project_id, type, title, description, remediation,
+                severity, cwe_id, cve_id, language, package_name, installed_version,
+                fixed_version, license, file_path, line_start, line_end, code_snippet,
+                cvss_score, cvss_vector, epss_score, epss_percentile, composite_risk_score,
+                quadrant, urgency, sla_days, standards, status, author_name, author_email,
+                commit_hash, commit_date, commit_message, first_seen, last_seen, fingerprint
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                fid, scan_id, pid, f.get("type", "sast"), f.get("title", "Finding"),
+                f.get("description", ""), f.get("remediation", ""), f.get("severity", "MEDIUM"),
+                f.get("cwe_id"), f.get("cve_id"), f.get("language", "python"), f.get("package_name"),
+                f.get("installed_version"), f.get("fixed_version"), f.get("license"),
+                f.get("file_path", "app.py"), f.get("line_start", 1), f.get("line_end", 1),
+                f.get("code_snippet", ""), float(f.get("cvss_score") or 7.0), f.get("cvss_vector", ""),
+                float(f.get("epss_score") or 0.1), float(f.get("epss_percentile") or 0.5),
+                float(f.get("composite_risk_score") or 70.0), f.get("quadrant", "ROUTINE"),
+                f.get("urgency", "MEDIUM"), int(f.get("sla_days") or 90), json.dumps(f.get("standards", [])),
+                f.get("status", "open"), f.get("author_name") or "Developer", f.get("author_email") or "developer@internal.net",
+                f.get("commit_hash", "HEAD"), f.get("commit_date", now), f.get("commit_message", "commit"),
+                f.get("first_seen", now), f.get("last_seen", now), fp
+            ))
+            f["id"] = fid
+            return f
+
     def list_findings(self, project_id: Optional[str] = None, scan_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:
             query = "SELECT * FROM findings"
@@ -815,6 +1063,10 @@ class Database:
                         item["standards"] = []
                 else:
                     item["standards"] = []
+                if item.get("author_email") is None:
+                    item["author_email"] = ""
+                if item.get("author_name") is None:
+                    item["author_name"] = "Unknown"
                 enrich_finding_age(item)
                 findings.append(item)
             return findings
@@ -830,6 +1082,12 @@ class Database:
                     item["standards"] = json.loads(item["standards"])
                 except Exception:
                     item["standards"] = []
+            else:
+                item["standards"] = []
+            if item.get("author_email") is None:
+                item["author_email"] = ""
+            if item.get("author_name") is None:
+                item["author_name"] = "Unknown"
             enrich_finding_age(item)
             return item
 
@@ -874,9 +1132,22 @@ class Database:
             return cur.rowcount > 0
 
     # --- Custom Rules ---
-    def list_rules(self) -> List[Dict[str, Any]]:
+    def list_rules(self, project_id: Optional[str] = None, include_global: bool = True) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:
-            rows = conn.execute("SELECT * FROM custom_rules").fetchall()
+            if project_id:
+                if include_global:
+                    rows = conn.execute(
+                        "SELECT * FROM custom_rules WHERE project_id = ? OR project_id IS NULL OR project_id = '' OR project_id = 'global' ORDER BY id ASC",
+                        (project_id,)
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM custom_rules WHERE project_id = ? ORDER BY id ASC",
+                        (project_id,)
+                    ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM custom_rules ORDER BY id ASC").fetchall()
+
             res = []
             for r in rows:
                 item = dict(r)
@@ -886,8 +1157,8 @@ class Database:
                 res.append(item)
             return res
 
-    def get_all_rules(self) -> List[Dict[str, Any]]:
-        return self.list_rules()
+    def get_all_rules(self, project_id: Optional[str] = None, include_global: bool = True) -> List[Dict[str, Any]]:
+        return self.list_rules(project_id=project_id, include_global=include_global)
 
     def get_rule_by_id(self, rule_id: str) -> Optional[Dict[str, Any]]:
         with self._get_conn() as conn:
@@ -902,11 +1173,21 @@ class Database:
 
     def save_rule(self, rule: Dict[str, Any]) -> Dict[str, Any]:
         with self._get_conn() as conn:
+            # Check if project_name needs resolution
+            project_id = rule.get("project_id")
+            project_name = rule.get("project_name")
+            if project_id and not project_name:
+                p_row = conn.execute("SELECT name FROM projects WHERE id = ?", (project_id,)).fetchone()
+                if p_row:
+                    project_name = p_row["name"]
+                    rule["project_name"] = project_name
+
             conn.execute("""
             INSERT OR REPLACE INTO custom_rules (
                 id, name, type, rule_category, nl_prompt, languages, severity,
-                cwe, standards, regex, description, remediation, yaml_representation, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cwe, standards, regex, description, remediation, yaml_representation, is_active,
+                project_id, project_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 rule["id"], rule["name"], rule.get("type", "sast_pattern"),
                 rule.get("rule_category", "sast"), rule.get("nl_prompt", ""),
@@ -914,7 +1195,9 @@ class Database:
                 rule.get("cwe", "CWE-699"), json.dumps(rule.get("standards", [])),
                 rule.get("regex", ""), rule.get("description", ""),
                 rule.get("remediation", ""), rule.get("yaml_representation", ""),
-                1 if rule.get("is_active", True) else 0
+                1 if rule.get("is_active", True) else 0,
+                project_id,
+                project_name
             ))
         return rule
 
@@ -922,6 +1205,12 @@ class Database:
         with self._get_conn() as conn:
             res = conn.execute("DELETE FROM custom_rules WHERE id = ?", (rule_id,))
             return res.rowcount > 0
+
+    def create_custom_rule(self, rule: Dict[str, Any]) -> Dict[str, Any]:
+        return self.save_rule(rule)
+
+    def delete_custom_rule(self, rule_id: str) -> bool:
+        return self.delete_rule(rule_id)
 
     # --- Integrations Config ---
     def get_integration(self, key: str) -> Optional[Dict[str, Any]]:

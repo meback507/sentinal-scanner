@@ -7,13 +7,15 @@ from ..db import db
 
 
 class RuleManager:
-    def list_rules(self) -> List[Dict[str, Any]]:
-        return db.get_all_rules()
+    def list_rules(self, project_id: Optional[str] = None, include_global: bool = True) -> List[Dict[str, Any]]:
+        return db.list_rules(project_id=project_id, include_global=include_global)
 
     def get_rule(self, rule_id: str) -> Optional[Dict[str, Any]]:
         return db.get_rule_by_id(rule_id)
 
-    def save_rule(self, rule_data: Dict[str, Any], sync_to_yaml: bool = False, workspace_dir: str = None) -> Dict[str, Any]:
+    def save_rule(self, rule_data: Dict[str, Any], sync_to_yaml: bool = False, workspace_dir: str = None, project_id: Optional[str] = None) -> Dict[str, Any]:
+        if project_id and not rule_data.get("project_id"):
+            rule_data["project_id"] = project_id
         if rule_data.get("yaml_representation"):
             try:
                 parsed_yaml = yaml.safe_load(rule_data["yaml_representation"])
@@ -155,7 +157,9 @@ class RuleManager:
             "standards": rule.get("standards", ["ISO-27001:A.8.28"]),
             "regex": rule.get("regex", ""),
             "description": rule.get("description", ""),
-            "remediation": rule.get("remediation", "")
+            "remediation": rule.get("remediation", ""),
+            "project_id": rule.get("project_id"),
+            "project_name": rule.get("project_name")
         }
 
         # Remove existing if updating
@@ -166,19 +170,33 @@ class RuleManager:
             yaml.dump(data, f, sort_keys=False)
         return True
 
-    def get_active_sast_rules(self) -> List[Dict[str, Any]]:
-        all_rules = self.list_rules()
+    def get_active_sast_rules(self, project_id: Optional[str] = None, include_global: bool = True) -> List[Dict[str, Any]]:
+        all_rules = self.list_rules(project_id=project_id, include_global=include_global)
         active = []
         for r in all_rules:
-            if r.get("is_active", True) and r.get("rule_category") == "sast":
+            cat = str(r.get("rule_category", "")).lower()
+            rtype = str(r.get("type", "")).lower()
+            if r.get("is_active", True) and (cat in ["sast", "sast_pattern", "secret"] or rtype in ["sast", "sast_pattern", "secret"]):
                 active.append(r)
         return active
 
-    def get_active_sca_rules(self) -> List[Dict[str, Any]]:
-        all_rules = self.list_rules()
+    def get_active_sca_rules(self, project_id: Optional[str] = None, include_global: bool = True) -> List[Dict[str, Any]]:
+        all_rules = self.list_rules(project_id=project_id, include_global=include_global)
         active = []
         for r in all_rules:
-            if r.get("is_active", True) and r.get("rule_category") == "sca":
+            cat = str(r.get("rule_category", "")).lower()
+            rtype = str(r.get("type", "")).lower()
+            if r.get("is_active", True) and (cat == "sca" or rtype == "sca"):
+                active.append(r)
+        return active
+
+    def get_active_iac_rules(self, project_id: Optional[str] = None, include_global: bool = True) -> List[Dict[str, Any]]:
+        all_rules = self.list_rules(project_id=project_id, include_global=include_global)
+        active = []
+        for r in all_rules:
+            cat = str(r.get("rule_category", "")).lower()
+            rtype = str(r.get("type", "")).lower()
+            if r.get("is_active", True) and (cat == "iac" or rtype == "iac"):
                 active.append(r)
         return active
 
@@ -219,20 +237,20 @@ class RuleManager:
 
         return rules
 
-    def get_complete_rule_catalog(self, workspace_dir: str = None) -> Dict[str, Any]:
+    def get_complete_rule_catalog(self, workspace_dir: str = None, project_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Returns a unified catalog of all security rules:
         - Built-in SAST rules
         - Built-in IaC & Container rules
         - Built-in API Security rules
-        - Platform Custom Rules (from DB)
+        - Platform Custom Rules (from DB, optionally scoped to project_id)
         - Project Custom Rules (from .sentinel/rules.yaml)
         """
         from ..scanners.sast_engine import BUILTIN_SAST_RULES
         from ..scanners.iac_engine import IAC_RULES
 
         project_custom = self.load_project_rules(workspace_dir)
-        platform_custom = self.list_rules()
+        platform_custom = self.list_rules(project_id=project_id)
 
         api_rules = [
             {

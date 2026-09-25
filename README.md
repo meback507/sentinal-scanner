@@ -24,8 +24,9 @@
    - Curated **Open Community Rules** covering OWASP Top 10 (OPEN-COMM-001 IDOR, OPEN-COMM-002 Unsalted Hashes, OPEN-COMM-003 Stack Trace Disclosure, OPEN-COMM-004 Unpinned Dependencies).
    - Native SonarQube external issue report exporter (`--sonar-export sonar-issues.json` or `GET /api/projects/{id}/export/sonarqube`) with 1-click `sonar-project.properties` and GitHub Action configuration generator (`sentinel-cli init-sonar`).
 
-4. **Natural-Language Custom Rule Studio**:
+4. **Natural-Language Custom Rule Studio & Project-Oriented Scoping**:
    - Translates human English instructions into concrete SAST AST/pattern rules or SCA dependency policies.
+   - **Project-Specific or Global Scope**: Custom rules can be configured globally or targeted specifically to an individual project (`project_id`). This ensures that specialized rules (e.g. automotive MISRA C:2012 / ISO 26262 memory allocation restrictions) only run against their intended codebases without creating false positives in unrelated web or microservice projects.
    - Example prompts:
      - *"Disallow dynamic memory allocation malloc or free in C/C++ for MISRA compliance"*
      - *"Detect hardcoded API keys or JWT tokens in Python and JavaScript"*
@@ -35,6 +36,7 @@
 
 5. **Live `rules.yaml` Editor & Bi-Directional Synchronization**:
    - View, edit, sync, and purge custom rules in real-time through an in-browser YAML editor (`GET /api/rules/file` and `PUT /api/rules/file`).
+   - Supports project-scoped filtering (`?project_id=...`) to view active rules for a designated project.
    - Seamless two-way persistence: rule updates created in the UI sync instantly to `.sentinel/rules.yaml` on disk, and manual edits to the YAML file sync automatically into the database.
 
 6. **Git Repository Management with Personal Access Tokens (PAT)**:
@@ -55,18 +57,20 @@
    - **CycloneDX v1.5 JSON**: Software Bill of Materials (SBOM) for component inventory and supply chain audits.
    - **CSV Tabular Export**: Direct export for spreadsheet analysis and tracker sync.
 
-9. **Role-Based Access Control (RBAC) & Dedicated Login Portal**:
+9. **Role-Based Access Control (RBAC), Project Assignments & Dedicated Login Portal**:
    - Dedicated glassmorphic login interface at `/login` with 1-click persona switchboard.
+   - **Strict Project Assignment Isolation**: Users and developers can be assigned to one or more specific projects (`project_members`). Any non-admin user (`role != "admin"`, including developers, security engineers, and auditors) is **strictly restricted to their assigned projects**.
+   - **Project Team Management**: Administrators can assign, view, and unassign team members via the **`👥 Team`** modal in the Projects view or configure project scopes when creating/editing user accounts.
    - Roles:
-     - `admin`: Full system control, integrations, custom rules, user management, and projects.
-     - `security_engineer`: Project management, scans, custom rule generation, reports, and ticket dispatch.
-     - `developer`: Scoped to authored code only. Inspect code flaws, review fixes, triage status.
-     - `auditor`: Read-only compliance matrices, standards reports, and audit logs.
+     - `admin`: Enterprise-wide global access across all projects, system settings, RBAC, integrations, and custom rules.
+     - `security_engineer`: Scoped strictly to assigned projects. Trigger scans, project custom rule generation, reports, and ticket dispatch.
+     - `developer`: Scoped strictly to assigned projects AND authored code. Inspect code flaws, review fixes, triage status.
+     - `auditor`: Scoped strictly to assigned projects. Read-only compliance matrices, standards reports, and audit logs.
 
-10. **Developer-Scoped Vulnerability Isolation & Git Blame Attribution**:
-    - **Automatic Git Blame**: Tracks `author_name`, `author_email`, `commit_hash`, and commit date per line.
-    - **Author-Scoped Visibility**: When a developer logs in, the platform restricts the triage table, finding detail modals, dashboard analytics, and report exports **strictly to vulnerabilities in code authored by that developer**.
-    - **Cross-Developer Tamper Guards**: Direct access or status manipulation of another developer's code flaws is blocked with `403 Forbidden`.
+10. **Dual-Layer Isolation: Project Assignments & Git Blame Attribution**:
+    - **Layer 1: Project-Level Membership Isolation**: Non-admin users are strictly isolated to their assigned projects. Project listings (`/api/projects`), findings (`/api/findings`), scans (`/api/projects/{id}/scan`), rules, and reports only return data for authorized projects.
+    - **Layer 2: Per-Line Git Blame Attribution**: Within an assigned project, developer views are further scoped to code authored by that specific developer (`author_name`, `author_email`).
+    - **Cross-Project & Cross-Developer Tamper Guards**: Direct API requests to inspect, triage, patch, or export unassigned projects or foreign code flaws are rejected with `403 Forbidden`.
 
 11. **Large Language Model (LLM) Integration & AI-Powered Security Engine**:
     - **Multi-Provider Support**: Supports OpenAI (GPT-4o, GPT-4 Turbo), Anthropic Claude (Claude 3.5 Sonnet), Google Gemini (Gemini 1.5 Pro), Ollama (Local/Self-Hosted `llama3.2`), and custom OpenAI-compatible gateways.
@@ -195,6 +199,25 @@
     - In-browser interactive code editor, adversarial exploit test harness, real-time terminal output, and security points scoring.
     - Dedicated view in sidebar: `AppSec Playground`.
 
+37. **Interactive Dependency Tree & Transitive Blast Radius Visualizer (Supply Chain & SCA)**:
+    - Hierarchical nested dependency tree navigation (`root -> direct -> transitive`) with instant search, type filters (`All`, `Vulnerable`, `Direct`, `Transitive`), and CVE severity badges.
+    - Quantitative **Blast Radius Analytics**: computes downstream blast radius scores quantifying how many direct modules and application services are compromised if a given transitive library is weaponized.
+    - Visual **Root-to-Leaf Exposure Tracing**: traces exact parent chains (e.g. `express -> body-parser -> qs@6.5.2`) and provides 1-click CycloneDX SBOM downloads.
+    - Dedicated view in sidebar: `Dependency Tree & Blast Radius` (`#view-deptree`).
+
+38. **Conversational Security Copilot Chatbot (AI & Analytics)**:
+    - Context-aware conversational security assistant accessible platform-wide via floating widget (`#copilot-floating-btn` / `#copilot-chat-window`).
+    - Ingests real-time project security telemetry, findings inventory, composite risk scores, SCA reachability, and regulatory compliance gaps.
+    - Dual-engine architecture: connects to external LLM providers (OpenAI, Claude, Gemini, Ollama) with seamless fallback to an expert Domain-Specific Heuristic Engine for 100% offline, air-gapped security.
+    - Features syntax-highlighted remediation code blocks, quick-prompt chips, and actionable workflow shortcuts (navigate to triage, trigger auto-patches, export compliance dossiers).
+    - Fully strictly scoped to user RBAC and project access permissions.
+
+39. **Executive Compliance Crosswalk Matrix & Printable Auditor Dossier Exporter**:
+    - Real-time mapping of code-level findings and architectural controls across **SOC 2 Type II**, **ISO/IEC 27001:2022**, **PCI-DSS v4.0**, **HIPAA Security Rule**, and **NIST CSF v2.0**.
+    - Generates a polished, C-level executive audit dossier (`GET /api/projects/{id}/compliance/export/html`) formatted specifically for board presentations and external audit submissions.
+    - Features cryptographic 64-character SHA-256 digital attestation seals, compliance scorecards, vulnerability breakdown matrices, and regulatory control crosswalk tables.
+    - Integrated directly into the `Standards & ISO Matrix` view (`#view-compliance`).
+
 ---
 
 ## Quick Start
@@ -261,18 +284,18 @@ docker run -d \
 
 ## Default RBAC & Developer Demo Credentials
 
-The platform includes pre-seeded accounts demonstrating role-based access control and developer-scoped vulnerability isolation:
+The platform includes pre-seeded accounts demonstrating dual-layer isolation (Project Assignments + Developer Git Blame):
 
-| Role | Username | Password | Authored Code Scope | Permissions |
-| :--- | :--- | :--- | :--- | :--- |
-| **Super Admin** | `admin` | `admin` *(or `Admin@123!`)* | Global (All developers) | Full administrative & system access, LLM config |
-| **Security Lead** | `sec_lead` | `SecLead@123!` | Global (All developers) | Scans, custom rules, ticket dispatch, AI analysis |
-| **Developer** | `marcus` | `Marcus@123!` | Marcus Vance (`app.py`) | **Scoped**: Python flaws authored by Marcus, AI fixes |
-| **Developer** | `elena` | `Elena@123!` | Dr. Elena Rostova (`ecu_controller.cpp`) | **Scoped**: MISRA C flaws authored by Elena, AI fixes |
-| **Developer** | `sarah` | `Sarah@123!` | Sarah Lin (`dashboard.js`) | **Scoped**: JavaScript flaws authored by Sarah, AI fixes |
-| **Auditor** | `auditor` | `Auditor@123!` | Global (All developers) | Read-only compliance inspection & exports |
+| Role | Username | Password | Project Access Scope | Authored Code Scope | Permissions |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Super Admin** | `admin` | `admin` *(or `Admin@123!`)* | **Global** (All projects) | Global (All developers) | Full enterprise administration, RBAC, project assignments, LLM config |
+| **Security Lead** | `sec_lead` | `SecLead@123!` | Assigned Projects | Global within assigned projects | Trigger scans, project custom rules, ticket dispatch, AI analysis |
+| **Developer** | `marcus` | `Marcus@123!` | Assigned Projects | Marcus Vance (`app.py`) | **Double Scoped**: Assigned projects only & Python flaws authored by Marcus |
+| **Developer** | `elena` | `Elena@123!` | Assigned Projects | Dr. Elena Rostova (`ecu_controller.cpp`) | **Double Scoped**: Assigned projects only & MISRA C flaws authored by Elena |
+| **Developer** | `sarah` | `Sarah@123!` | Assigned Projects | Sarah Lin (`dashboard.js`) | **Double Scoped**: Assigned projects only & JS flaws authored by Sarah |
+| **Auditor** | `auditor` | `Auditor@123!` | Assigned Projects | Read-only | Read-only compliance inspection, certificates & audit exports |
 
-*Note: Switch active developer accounts anytime using the 1-click switchboard on the Login screen (`/login`) or the dropdown in the UI sidebar.*
+*Note: Non-admin users are strictly isolated to their assigned projects. Admins can assign users to projects via the **`👥 Team`** modal in the Projects view or the project checklist in User Management (`/login`).*
 
 ---
 
@@ -308,31 +331,47 @@ Run the full verification test suite (100+ tests covering SAST, SCA, RBAC, Sonar
 - `GET /api/health`: Healthcheck probe for load balancers and container orchestrators.
 
 ### Projects & Scans
-- `GET /api/projects`: List all configured projects and security posture.
-- `POST /api/projects`: Create project with Git repository and PAT credentials.
-- `DELETE /api/projects/{id}`: Permanently delete project with cascading data cleanup.
-- `POST /api/projects/{id}/scan`: Trigger on-demand SAST & SCA scan.
+- `GET /api/projects`: List configured projects (automatically filtered strictly to assigned projects for non-admin users).
+- `POST /api/projects`: Create project with Git repository, PAT credentials, and optional initial assigned members (`assigned_users`).
+- `GET /api/projects/{id}`: Get project details (enforces project assignment; returns `403 Forbidden` if unassigned).
+- `DELETE /api/projects/{id}`: Permanently delete project with cascading data cleanup (`admin` only).
+- `POST /api/projects/{id}/scan`: Trigger on-demand SAST & SCA scan (enforces project assignment).
+- `GET /api/projects/{id}/members`: List all team members assigned to project with their roles and assignment timestamps.
+- `POST /api/projects/{id}/members`: Assign users to project with specified role (`admin` only).
+- `DELETE /api/projects/{id}/members/{user_id}`: Remove user from project membership (`admin` only).
 
 ### Findings & Triage
-- `GET /api/findings`: List findings with developer-scoped filtering.
-- `PATCH /api/findings/{id}/status`: Update triage status.
+- `GET /api/findings`: List findings (strictly scoped to assigned projects for non-admins, and further scoped to authored code for developers).
+- `GET /api/findings/{id}`: Get finding details (returns `403 Forbidden` if finding belongs to an unassigned project).
+- `PATCH /api/findings/{id}/status`: Update triage status (enforces project and author access).
 - `POST /api/findings/{id}/ticket`: Create Jira or Zammad ticket assigned directly to the author of the code.
 - `POST /api/projects/{id}/auto-ticket`: Batch create and assign tickets directly to code authors for all vulnerabilities.
-- `POST /api/findings/{id}/ai-remediation`: Generate AI root-cause analysis, secure code diff, and verification steps.
+- `POST /api/findings/{id}/ai-remediation`: Generate AI root-cause analysis, secure code diff, and verification steps (enforces project and author access).
 - `POST /api/findings/{id}/patch`: Auto-patch vulnerable source files with secure replacement code.
 - `POST /api/findings/batch-patch`: Batch auto-patch multiple findings and files simultaneously with row-level security.
 - `POST /api/findings/batch-pr`: Open a single coordinated Pull Request addressing multiple selected vulnerabilities.
 
 ### Custom Rules & SonarQube Catalog
+- `GET /api/rules`: List custom rules (supports `?project_id={id}` to return project-specific rules plus global enterprise rules).
+- `POST /api/rules`: Create custom rule with optional `project_id` scope.
 - `GET /api/rules/file`: Retrieve `.sentinel/rules.yaml` content.
 - `PUT /api/rules/file`: Update `.sentinel/rules.yaml` content with bidirectional DB synchronization.
 - `GET /api/rules/open-community`: Query SonarQube RSpec rules and curated community rules.
-- `POST /api/rules/generate`: Convert natural language into SAST/SCA rule YAML using LLM or semantic engine.
+- `POST /api/rules/generate`: Convert natural language into SAST/SCA rule YAML using LLM or semantic engine (supports optional `project_id`).
 - `POST /api/rules/test`: Sandbox test bench for custom rules against code.
 
-### Dynamic Testing, Topology & Webhooks
+### User Management & RBAC (`admin` only)
+- `GET /api/users`: List registered users with assigned roles and `assigned_projects` scope list.
+- `POST /api/users`: Create user account with username, email, password, role, and assigned projects list.
+- `GET /api/users/{id}`: Fetch user profile and project assignment memberships.
+- `PUT /api/users/{id}`: Update user profile, password, role, and synchronize `assigned_projects`.
+- `DELETE /api/users/{id}`: Permanently delete user and cascade-remove all project memberships.
+
+### Supply Chain Topology & Dynamic Testing
 - `POST /api/dast/audit`: Run dynamic security audit on live HTTP/HTTPS endpoints (HSTS, CSP, Clickjacking, Cookies, TLS).
 - `GET /api/projects/{id}/dependencies/graph`: Interactive DAG representing topological dependency hierarchy and reachability.
+- `GET /api/projects/{id}/dependencies/tree`: Hierarchical nested dependency tree with transitive blast radius metrics.
+- `GET /api/projects/{id}/dependencies/blast-radius`: Quantitative downstream blast radius analysis and exposure paths.
 - `GET /api/integrations/webhooks`: Retrieve Slack, Microsoft Teams, Discord, and Generic webhook configuration.
 - `POST /api/integrations/webhooks`: Save webhook notification settings.
 - `POST /api/integrations/webhooks/test`: Test live alert delivery to configured webhook channels.
@@ -341,15 +380,25 @@ Run the full verification test suite (100+ tests covering SAST, SCA, RBAC, Sonar
 - `POST /api/threat-intel/sync`: On-demand synchronization of CISA Known Exploited Vulnerabilities and EPSS feeds.
 - `GET /api/threat-intel/status`: Check current CISA KEV count and EPSS feed version.
 
-### Integrations & Governance
-- `GET /api/integrations/llm`: Retrieve LLM integration configuration with secret masking.
-- `POST /api/integrations/llm`: Save LLM provider, model, API keys, temperature, and feature toggles.
-- `POST /api/integrations/llm/test`: Test live connectivity to configured LLM provider.
+### Conversational Security Copilot
+- `POST /api/copilot/chat`: Context-aware conversational AI security copilot with real-time project telemetry, remediation diffs, and RBAC isolation.
+- `GET /api/copilot/prompts`: Curated role-based and task-oriented prompt starters for rapid security posture assessment.
+
+### Compliance Crosswalk & Governance
+- `GET /api/compliance/matrix`: Enterprise regulatory compliance crosswalk matrix across SOC 2, ISO 27001, PCI-DSS, HIPAA, and NIST CSF.
+- `GET /api/projects/{id}/compliance/matrix`: Project-specific regulatory compliance crosswalk matrix with control evaluations.
+- `GET /api/projects/{id}/compliance/export/html`: Executive Compliance Crosswalk Dossier (print-ready HTML with cryptographic SHA-256 seal).
 - `GET /api/standards`: Query compliance taxonomies and violation counts.
 - `POST /api/ci/gate-check`: CI/CD Quality Gate evaluation (threat-informed pass/fail).
 
+### Integrations & LLM Service
+- `GET /api/integrations/llm`: Retrieve LLM integration configuration with secret masking.
+- `POST /api/integrations/llm`: Save LLM provider, model, API keys, temperature, and feature toggles.
+- `POST /api/integrations/llm/test`: Test live connectivity to configured LLM provider.
+
 ### Exporters & Downloads
-- `GET /api/projects/{id}/export/{html|sarif|cyclonedx|csv|sonarqube|vex}`: Download multi-format security reports.
+- `GET /api/projects/{id}/export/{html|sarif|cyclonedx|csv|sonarqube|vex}`: Download multi-format security reports (enforces project assignment; `403 Forbidden` if unassigned).
+- `GET /api/projects/{id}/compliance/export/html`: Download executive compliance crosswalk audit dossier.
 - `GET /api/extension/download`: Download packaged VS Code / Antigravity IDE `.vsix` extension.
 - `GET /api/benchmark`: Retrieve full head-to-head comparative benchmark report and operational KPIs.
 
@@ -415,9 +464,11 @@ Run the full verification test suite (100+ tests covering SAST, SCA, RBAC, Sonar
 - **Semgrep**: Requires mastering proprietary YAML syntax (`pattern-inside`, `pattern-either`, `metavariable-regex`).
 - **Sentinel AppSec**: Security leads write plain human English (*"Disallow dynamic memory allocation malloc and calloc in safety-critical C code per MISRA C:2012 Rule 21.3"*). The LLM/AST engine synthesizes valid regex, extracts language targets, associates standards, and outputs ready-to-test YAML rules in **less than 10 seconds**.
 
-#### 4. Developer-Scoped Row-Level Security vs. Global Vulnerability Overexposure
-- **Legacy Approach**: In SonarQube or Semgrep, any developer granted access to a project repository sees every security finding in the entire codebase, obscuring personal responsibility and causing diffusion of triage duty.
-- **Sentinel AppSec Approach**: Leverages automated **Git blame** line tracking. When Developer Marcus Vance logs in, the dashboard, triage table, finding details, and reports are **strictly filtered to code Marcus authored**. Direct access or status tampering with other developers' findings is rejected with an HTTP `403 Forbidden`.
+#### 4. Dual-Layer Project Assignment & Developer-Scoped Isolation vs. Global Overexposure
+- **Legacy Approach**: In SonarQube or Semgrep, permissions are typically coarse: any user added to a workspace can view all projects or every finding in a repository, leading to alert chaos, lack of accountability, and security boundary leaks.
+- **The Sentinel Advantage**: Implements a defense-in-depth **Dual-Layer Isolation Model**:
+  1. **Project Assignment Isolation**: Non-admin users (developers, security engineers, auditors) are strictly locked to their assigned projects. Unassigned projects, scans, findings, quality gates, custom rules, and export reports are completely inaccessible and return an enforced HTTP `403 Forbidden`.
+  2. **Per-Line Git Blame Attribution**: Within an assigned project, developer views are further scoped to code authored by that specific engineer (`author_name`, `author_email`). A developer working on Project A only sees Project A, and within Project A only their own authored flaws.
 
 #### 5. AI-Powered Refactoring Diffs vs. Static Advisory Links
 - **Legacy Tools**: Point developers to generic CVE descriptions or external CWE definitions, leaving the engineer to research how to safely refactor the code.

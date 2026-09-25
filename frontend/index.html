@@ -92,6 +92,10 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
                 SBOM Drift &amp; SLSA
             </a>
+            <a class="nav-item" id="nav-deptree" onclick="navigate('deptree')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/></svg>
+                Supply Chain Tree
+            </a>
             <a class="nav-item" id="nav-sandbox" onclick="navigate('sandbox')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
                 AppSec Playground
@@ -411,6 +415,7 @@
                             <tr>
                                 <th>Project Name</th>
                                 <th>Repository / Branch</th>
+                                <th>Assigned Team</th>
                                 <th>PAT Auth</th>
                                 <th>Total Findings</th>
                                 <th>Risk Score</th>
@@ -571,6 +576,23 @@
                         <button class="btn btn-secondary btn-sm" onclick="setPromptExample('Ban package lodash below version 4.17.21 or any library with license AGPL-3.0')">📦 SCA Ban Version / License</button>
                     </div>
 
+                    <!-- Project Scope Configuration -->
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: rgba(14, 165, 233, 0.08); border: 1px solid rgba(56, 189, 248, 0.25);">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-diagram-3-fill text-info" style="font-size: 15px;"></i>
+                            <span style="font-size: 13px; font-weight: 600; color: #fff;">Target Project Scope:</span>
+                            <select id="nl-rule-project-select" class="form-select form-select-sm" style="max-width: 280px; background: #070b14; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-weight: 500;" onchange="onRuleScopeChange()">
+                                <option value="">🌐 All Projects (Global Scope)</option>
+                            </select>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="nl-rule-scope-badge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">
+                                PROJECT-ORIENTED RULE
+                            </span>
+                            <span class="small text-muted" id="nl-rule-scope-hint" style="font-size: 12px;">Rule executes only during scans of the selected project</span>
+                        </div>
+                    </div>
+
                     <div class="d-flex gap-3">
                         <textarea id="nl-rule-prompt" class="form-textarea form-control" rows="3" style="flex-grow: 1;" placeholder="e.g., Flag any Python file using pickle.loads or yaml.load without SafeLoader due to deserialization RCE"></textarea>
                         <button class="btn btn-primary d-flex align-items-center gap-2" id="btn-generate-rule" style="align-self: flex-start; height: 48px; white-space: nowrap;" onclick="generateRuleFromPrompt()">
@@ -629,8 +651,16 @@ strcpy(buf, input);"></textarea>
             <!-- Active Custom Rules List -->
             <div class="card glass-card border-0">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
-                    <h3 style="font-size: 16px; margin: 0;">Active Custom Rules Repository</h3>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0;">Active Custom Rules Repository</h3>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Manage project-specific custom rules and global policies enforced during scans.</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <div class="btn-group btn-group-sm" role="group" id="rules-scope-filter-group">
+                            <button type="button" class="btn btn-outline-info active" id="btn-filter-rules-all" onclick="filterRulesTableByScope('all')">All Rules</button>
+                            <button type="button" class="btn btn-outline-info" id="btn-filter-rules-project" onclick="filterRulesTableByScope('project')">Active Project</button>
+                            <button type="button" class="btn btn-outline-info" id="btn-filter-rules-global" onclick="filterRulesTableByScope('global')">Global Only</button>
+                        </div>
                         <button class="btn btn-secondary btn-sm" onclick="openViewRulesYamlModal()" style="display: inline-flex; align-items: center; gap: 6px;">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                             View rules.yaml
@@ -647,6 +677,7 @@ strcpy(buf, input);"></textarea>
                             <tr>
                                 <th>Rule ID</th>
                                 <th>Name & Intent</th>
+                                <th>Project Scope</th>
                                 <th>Category</th>
                                 <th>Severity</th>
                                 <th>CWE</th>
@@ -784,14 +815,21 @@ strcpy(buf, input);"></textarea>
                     <h1 class="page-title">Industry Standards &amp; Regulatory Compliance Matrix</h1>
                     <p class="page-desc">Continuous audit mapping to SOC 2 Type II, PCI-DSS v4.0, ISO 27001:2022, HIPAA Security Rule, and NIST CSF v2.0.</p>
                 </div>
-                <div style="display: flex; gap: 8px;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <select id="compliance-project-select" class="form-select form-select-sm" style="width: 200px; background: rgba(30, 41, 59, 0.9); color: #fff; border: 1px solid var(--border);" onchange="onComplianceProjectChange()">
+                        <!-- Populated dynamically -->
+                    </select>
+                    <button class="btn btn-primary btn-sm" onclick="downloadExecutiveComplianceDossier()" style="background: linear-gradient(135deg, #10b981, #059669); border: none; display: inline-flex; align-items: center; gap: 6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Executive Dossier (HTML)
+                    </button>
                     <button class="btn btn-secondary btn-sm" onclick="exportComplianceAuditPackage('all')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export Audit Package (JSON)
+                        Audit JSON
                     </button>
-                    <button class="btn btn-primary btn-sm" onclick="refreshComplianceMatrix()">
+                    <button class="btn btn-secondary btn-sm" onclick="refreshComplianceMatrix()">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                        Evaluate Compliance
+                        Evaluate
                     </button>
                 </div>
             </div>
@@ -1174,6 +1212,7 @@ strcpy(buf, input);"></textarea>
                                 <th>Username</th>
                                 <th>Email</th>
                                 <th>Role</th>
+                                <th>Assigned Projects Scope</th>
                                 <th>Assigned Privileges</th>
                                 <th>Created At</th>
                                 <th style="text-align: right;">Actions</th>
@@ -1811,6 +1850,100 @@ strcpy(buf, input);"></textarea>
             </div>
         </section>
 
+        <!-- VIEW: INTERACTIVE DEPENDENCY TREE & BLAST RADIUS VISUALIZER -->
+        <section id="view-deptree" class="page-container" style="display: none;">
+            <div class="page-title-box">
+                <div>
+                    <h1 class="page-title">Interactive Dependency Tree &amp; Transitive Blast Radius</h1>
+                    <p class="page-desc">Hierarchical supply chain visualization showing root dependencies, transitive exposure paths, and component vulnerability blast radius.</p>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <select id="deptree-project-select" class="form-select form-select-sm" style="width: 220px; background: rgba(30, 41, 59, 0.9); color: #fff; border: 1px solid var(--border);" onchange="onDeptreeProjectChange()">
+                        <!-- Populated dynamically -->
+                    </select>
+                    <button class="btn btn-secondary btn-sm" onclick="exportDeptreeSBOM()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export CycloneDX
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="loadDependencyTree()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                        Refresh Tree
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Row -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+                <div class="glass-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Total Dependencies</div>
+                    <div id="deptree-stat-total" style="font-size: 24px; font-weight: 800; color: #fff; margin-top: 4px;">0</div>
+                </div>
+                <div class="glass-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Direct Dependencies</div>
+                    <div id="deptree-stat-direct" style="font-size: 24px; font-weight: 800; color: #38bdf8; margin-top: 4px;">0</div>
+                </div>
+                <div class="glass-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Transitive Sub-deps</div>
+                    <div id="deptree-stat-transitive" style="font-size: 24px; font-weight: 800; color: #a855f7; margin-top: 4px;">0</div>
+                </div>
+                <div class="glass-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Vulnerable Libraries</div>
+                    <div id="deptree-stat-vuln" style="font-size: 24px; font-weight: 800; color: #ef4444; margin-top: 4px;">0</div>
+                </div>
+                <div class="glass-card" style="padding: 14px; text-align: center;">
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Max Blast Radius</div>
+                    <div id="deptree-stat-blast" style="font-size: 24px; font-weight: 800; color: #f59e0b; margin-top: 4px;">1</div>
+                </div>
+            </div>
+
+            <!-- Controls & Filters Bar -->
+            <div class="glass-card" style="padding: 14px 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div style="position: relative;">
+                        <input type="text" id="deptree-search-input" class="form-control form-control-sm" placeholder="Search package or CVE..." style="width: 240px; background: rgba(15, 23, 42, 0.7); color: #fff; padding-left: 28px;" oninput="filterDeptreeView()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="position: absolute; left: 8px; top: 8px; color: var(--text-muted);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </div>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-secondary active" id="deptree-filter-all" onclick="setDeptreeFilter('all')">All</button>
+                        <button type="button" class="btn btn-secondary" id="deptree-filter-vuln" onclick="setDeptreeFilter('vuln')">Vulnerable Only</button>
+                        <button type="button" class="btn btn-secondary" id="deptree-filter-direct" onclick="setDeptreeFilter('direct')">Direct</button>
+                        <button type="button" class="btn btn-secondary" id="deptree-filter-transitive" onclick="setDeptreeFilter('transitive')">Transitive</button>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--text-muted);">
+                    <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span> Clean</span>
+                    <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span> Medium</span>
+                    <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></span> High / Critical</span>
+                </div>
+            </div>
+
+            <!-- Two-Column Layout: Visual Tree on Left, Blast Radius Impact Table on Right -->
+            <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start;">
+                <!-- Interactive Tree Visualizer Canvas -->
+                <div class="glass-card" style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="font-size: 15px; font-weight: 700; color: #fff; margin: 0;">Topological Hierarchy &amp; Exposure Graph</h3>
+                        <span id="deptree-showing-count" style="font-size: 12px; color: var(--text-muted);">Rendering tree nodes...</span>
+                    </div>
+                    <div id="deptree-tree-canvas" style="min-height: 480px; max-height: 700px; overflow-y: auto; padding: 10px; background: rgba(15, 23, 42, 0.6); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                        <!-- Rendered tree nodes populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Transitive Blast Radius Impact Table -->
+                <div class="glass-card" style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="font-size: 15px; font-weight: 700; color: #fff; margin: 0;">💥 Transitive Blast Radius Ranking</h3>
+                        <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">High Impact</span>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">Measures downstream consumer exposure when a shared dependency contains a zero-day or CVE.</p>
+                    <div id="deptree-blast-list" style="display: flex; flex-direction: column; gap: 12px; max-height: 640px; overflow-y: auto;">
+                        <!-- Blast radius cards populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- VIEW: INTERACTIVE APPSEC SANDBOX & PLAYGROUND -->
         <section id="view-sandbox" class="page-container" style="display: none;">
             <div class="page-title-box">
@@ -1911,12 +2044,24 @@ strcpy(buf, input);"></textarea>
                         </div>
                         <div class="form-group mb-3">
                             <label class="form-label">Assigned Role *</label>
-                            <select id="new-user-role" class="form-select" required>
+                            <select id="new-user-role" class="form-select" onchange="onUserRoleChange('create')" required>
                                 <option value="developer" selected>Developer (Inspect findings, false positives & fixes)</option>
                                 <option value="security_engineer">Security Engineer (Trigger scans, custom rules & tickets)</option>
                                 <option value="auditor">Compliance Auditor (Read-only reports & governance matrices)</option>
                                 <option value="admin">Administrator (Full system management, RBAC & integrations)</option>
                             </select>
+                        </div>
+                        <div class="form-group mb-3" id="create-user-projects-group">
+                            <label class="form-label d-flex justify-content-between">
+                                <span>Assigned Projects Scope</span>
+                                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-size: 10px;">PROJECT ISOLATION</span>
+                            </label>
+                            <div id="create-user-projects-list" style="max-height: 130px; overflow-y: auto; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px;">
+                                <!-- Dynamically populated checkboxes -->
+                            </div>
+                            <small id="create-user-projects-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 5px;" class="d-block">
+                                Non-admin users will strictly ONLY view, inspect findings, run scans, and export reports for checked projects.
+                            </small>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -1950,12 +2095,24 @@ strcpy(buf, input);"></textarea>
                         </div>
                         <div class="form-group mb-3">
                             <label class="form-label">Assigned Role *</label>
-                            <select id="update-user-role" class="form-select" required>
+                            <select id="update-user-role" class="form-select" onchange="onUserRoleChange('update')" required>
                                 <option value="developer">Developer (Inspect findings, false positives & fixes)</option>
                                 <option value="security_engineer">Security Engineer (Trigger scans, custom rules & tickets)</option>
                                 <option value="auditor">Compliance Auditor (Read-only reports & governance matrices)</option>
                                 <option value="admin">Administrator (Full system management, RBAC & integrations)</option>
                             </select>
+                        </div>
+                        <div class="form-group mb-3" id="update-user-projects-group">
+                            <label class="form-label d-flex justify-content-between">
+                                <span>Assigned Projects Scope</span>
+                                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-size: 10px;">PROJECT ISOLATION</span>
+                            </label>
+                            <div id="update-user-projects-list" style="max-height: 130px; overflow-y: auto; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px;">
+                                <!-- Dynamically populated checkboxes -->
+                            </div>
+                            <small id="update-user-projects-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 5px;" class="d-block">
+                                Non-admin users will strictly ONLY view, inspect findings, run scans, and export reports for checked projects.
+                            </small>
                         </div>
                         <div class="form-group mb-3">
                             <label class="form-label">New Password (optional)</label>
@@ -2023,6 +2180,16 @@ strcpy(buf, input);"></textarea>
                             <input type="password" id="new-proj-git-pat" class="form-input form-control" placeholder="ghp_xxxxxxxxxxxx or gitlab PAT...">
                             <small style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" class="d-block">Tokens are encrypted and automatically masked from all logs and terminal output.</small>
                         </div>
+                        <div class="form-group mb-3" id="new-proj-members-group">
+                            <label class="form-label d-flex justify-content-between">
+                                <span>Assign Team Members (Optional)</span>
+                                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-size: 10px;">TEAM ISOLATION</span>
+                            </label>
+                            <div id="new-proj-members-list" style="max-height: 120px; overflow-y: auto; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; padding: 10px;">
+                                <!-- Dynamically populated checkboxes -->
+                            </div>
+                            <small style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" class="d-block">Assigned users will be granted exclusive visibility to this project and its findings.</small>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-project')">Cancel</button>
@@ -2048,6 +2215,70 @@ strcpy(buf, input);"></textarea>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-delete-project')">Cancel</button>
                     <button type="button" class="btn btn-danger" id="btn-confirm-delete" onclick="confirmDeleteProject()">Delete Project</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: PROJECT TEAM & MEMBERS -->
+    <div class="modal modal-overlay" id="modal-project-members" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg" style="max-width: 720px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title d-flex align-items-center gap-2 mb-1">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                            <span>Project Team Members: <strong id="project-members-modal-title" style="color: var(--accent-cyan);"></strong></span>
+                        </h5>
+                        <div style="font-size: 12px; color: var(--text-muted);">
+                            Manage developers and security engineers assigned to this project. Non-admin users are strictly isolated to their assigned projects.
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeModal('modal-project-members')"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <input type="hidden" id="project-members-project-id">
+                    
+                    <!-- Add Member Section -->
+                    <div id="project-members-add-section" class="p-3 mb-3 rounded" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2);">
+                        <label class="form-label" style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">Assign User to Project</label>
+                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                            <select id="project-members-user-select" class="form-select" style="flex: 2; min-width: 180px;">
+                                <option value="">-- Select User --</option>
+                            </select>
+                            <select id="project-members-role-select" class="form-select" style="flex: 1; min-width: 130px;">
+                                <option value="developer">Developer</option>
+                                <option value="security_engineer">Security Engineer</option>
+                                <option value="auditor">Auditor</option>
+                                <option value="lead">Lead</option>
+                            </select>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="addSelectedUserToProject()" style="white-space: nowrap; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                <span>Assign Member</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Members List Table -->
+                    <div class="table-responsive data-table-wrapper" style="max-height: 280px; overflow-y: auto;">
+                        <table class="table table-dark table-hover table-striped align-middle data-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Email</th>
+                                    <th>Project Role</th>
+                                    <th>Assigned At</th>
+                                    <th style="text-align: right;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="project-members-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-project-members')">Close</button>
                 </div>
             </div>
         </div>
@@ -3173,6 +3404,15 @@ strcpy(buf, input);"></textarea>
                             <div style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 12px;">Rule Metadata &amp; Inspection Pattern:</div>
                             <div style="display: flex; flex-direction: column; gap: 10px;">
                                 <div>
+                                    <label class="form-label" style="font-size: 11px; text-transform: uppercase;">Applicable Project Scope:</label>
+                                    <select id="builder-rule-project" class="form-input" style="color: #38bdf8; font-weight: 500;">
+                                        <option value="">🌐 All Projects (Global Policy)</option>
+                                    </select>
+                                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                                        Choose a specific project so this rule only executes for that project.
+                                    </div>
+                                </div>
+                                <div>
                                     <label class="form-label" style="font-size: 11px; text-transform: uppercase;">Rule Title:</label>
                                     <input type="text" id="builder-rule-name" class="form-input" placeholder="e.g. Detect Insecure YAML Unsafe Load" value="Disallow PyYAML yaml.load without SafeLoader">
                                 </div>
@@ -3337,6 +3577,68 @@ def parse_safe(data):
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-issue-trackers')">Close</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- CONVERSATIONAL SECURITY COPILOT CHATBOT    -->
+    <!-- ========================================== -->
+    <button id="copilot-floating-btn" class="copilot-floating-btn" onclick="toggleCopilot()" title="Open Sentinel Security Copilot AI">
+        <span class="copilot-btn-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.28 1.28L3 12l5.8 1.9a2 2 0 0 1 1.28 1.28L12 21l1.9-5.8a2 2 0 0 1 1.28-1.28L21 12l-5.8-1.9a2 2 0 0 1-1.28-1.28Z"/></svg>
+        </span>
+        <span class="copilot-btn-text">Security Copilot</span>
+        <span class="copilot-status-dot"></span>
+    </button>
+
+    <div id="copilot-chat-window" class="copilot-chat-window" style="display: none;">
+        <!-- Header -->
+        <div class="copilot-header">
+            <div class="copilot-header-brand">
+                <div class="copilot-avatar">🛡️</div>
+                <div>
+                    <div class="copilot-title">Sentinel Copilot <span class="copilot-badge">AI Assistant</span></div>
+                    <div class="copilot-subtitle"><span class="copilot-live-dot"></span> Online &bull; Project: <span id="copilot-active-project-label" style="color: #38bdf8; font-weight: 600;">Enterprise</span></div>
+                </div>
+            </div>
+            <div class="copilot-header-actions" style="display: flex; gap: 6px;">
+                <button type="button" class="btn btn-sm btn-icon" onclick="clearCopilotChat()" title="Clear Conversation" style="background: rgba(255,255,255,0.06); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 8px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+                <button type="button" class="btn btn-sm btn-icon" onclick="toggleCopilot()" title="Minimize" style="background: rgba(255,255,255,0.06); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 8px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Dynamic Suggested Prompt Chips -->
+        <div class="copilot-prompt-bar" id="copilot-prompt-chips">
+            <button class="copilot-chip" onclick="sendCopilotSuggestedPrompt('Summarize the critical vulnerabilities and risk score.')">📊 Risk Summary</button>
+            <button class="copilot-chip" onclick="sendCopilotSuggestedPrompt('Which dependencies have the largest blast radius and CVEs?')">📦 Supply Chain</button>
+            <button class="copilot-chip" onclick="sendCopilotSuggestedPrompt('What is our compliance readiness score for SOC 2 and ISO 27001?')">📋 Compliance</button>
+            <button class="copilot-chip" onclick="sendCopilotSuggestedPrompt('How do I remediate the highest severity vulnerability found?')">🛠️ Fix Criticals</button>
+        </div>
+
+        <!-- Messages Area -->
+        <div class="copilot-messages-container" id="copilot-messages">
+            <div class="copilot-msg copilot-msg-assistant">
+                <div class="copilot-msg-avatar">🛡️</div>
+                <div class="copilot-msg-bubble">
+                    <p>👋 Hello! I am your <strong>Sentinel Security Copilot</strong>. I have real-time access to your vulnerabilities, dependency trees, and compliance matrices.</p>
+                    <p>Ask me anything about your project risks, how to patch vulnerabilities, or regulatory audit gaps!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Bar -->
+        <div class="copilot-input-area">
+            <div class="copilot-input-box">
+                <textarea id="copilot-user-input" placeholder="Ask Copilot anything about vulnerabilities, remediation, or compliance..." rows="1" onkeydown="handleCopilotKeyDown(event)"></textarea>
+                <button id="copilot-send-btn" class="copilot-send-btn" onclick="sendCopilotMessage()" title="Send Message">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+            </div>
+            <div class="copilot-input-hint">Press <strong>Enter</strong> to send &bull; <strong>Shift + Enter</strong> for newline</div>
         </div>
     </div>
 

@@ -1668,7 +1668,22 @@ rules:
     GCM modes destroys confidentiality and permits replay attacks (SonarQube S5853).
   remediation: Always generate fresh cryptographically random IVs per encryption operation
     using os.urandom() or crypto.randomBytes().
-- id: CUSTOM-4EBB8D
+- id: CUSTOM-E96A63
+  name: Disallow Alpha Internal Token
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-798
+  cvss: 7.5
+  standards:
+  - OWASP:A07:2021
+  regex: ALPHA_SECRET_TOKEN_[A-Z0-9]+
+  description: Detect proprietary Alpha tokens.
+  remediation: Do not hardcode internal Alpha tokens.
+  project_id: e3429585-89f0-4798-a3cb-31236dfb003e
+  project_name: Project Alpha
+- id: CUSTOM-C7A46C
   name: Disallow Insecure Deserialization Pickle
   type: sast
   severity: CRITICAL
@@ -1681,7 +1696,24 @@ rules:
   regex: (?i)pickle\.(?:loads|load)\s*\(
   description: Unpickling untrusted data allows arbitrary remote code execution.
   remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-0A3F36
+  project_id: null
+  project_name: null
+- id: CUSTOM-88FB8B
+  name: Disallow Alpha Internal Token
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-798
+  cvss: 7.5
+  standards:
+  - OWASP:A07:2021
+  regex: ALPHA_SECRET_TOKEN_[A-Z0-9]+
+  description: Detect proprietary Alpha tokens.
+  remediation: Do not hardcode internal Alpha tokens.
+  project_id: e7120f9c-3d33-40b6-821d-d94040f5a4e4
+  project_name: Project Alpha
+- id: CUSTOM-06FE3F
   name: Disallow Insecure Deserialization Pickle
   type: sast
   severity: CRITICAL
@@ -1694,7 +1726,24 @@ rules:
   regex: (?i)pickle\.(?:loads|load)\s*\(
   description: Unpickling untrusted data allows arbitrary remote code execution.
   remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-96C137
+  project_id: null
+  project_name: null
+- id: CUSTOM-050EB9
+  name: Disallow Alpha Internal Token
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-798
+  cvss: 7.5
+  standards:
+  - OWASP:A07:2021
+  regex: ALPHA_SECRET_TOKEN_[A-Z0-9]+
+  description: Detect proprietary Alpha tokens.
+  remediation: Do not hardcode internal Alpha tokens.
+  project_id: 756ba260-2276-44fd-a217-68f9f3133fdb
+  project_name: Project Alpha
+- id: CUSTOM-9CDEE2
   name: Disallow Insecure Deserialization Pickle
   type: sast
   severity: CRITICAL
@@ -1707,7 +1756,24 @@ rules:
   regex: (?i)pickle\.(?:loads|load)\s*\(
   description: Unpickling untrusted data allows arbitrary remote code execution.
   remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-2F67EC
+  project_id: null
+  project_name: null
+- id: CUSTOM-5BC707
+  name: Disallow Alpha Internal Token
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-798
+  cvss: 7.5
+  standards:
+  - OWASP:A07:2021
+  regex: ALPHA_SECRET_TOKEN_[A-Z0-9]+
+  description: Detect proprietary Alpha tokens.
+  remediation: Do not hardcode internal Alpha tokens.
+  project_id: db67d4db-79cb-4303-b2f3-cc99c1ed9e4c
+  project_name: Project Alpha
+- id: CUSTOM-032B00
   name: Disallow Insecure Deserialization Pickle
   type: sast
   severity: CRITICAL
@@ -1720,81 +1786,20 @@ rules:
   regex: (?i)pickle\.(?:loads|load)\s*\(
   description: Unpickling untrusted data allows arbitrary remote code execution.
   remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-7FFD06
-  name: Disallow Insecure Deserialization Pickle
+  project_id: null
+  project_name: null
+- id: CUSTOM-06CB8D
+  name: Disallow Alpha Internal Token
   type: sast
   severity: CRITICAL
   languages:
   - python
-  cwe: CWE-502
+  cwe: CWE-798
   cvss: 7.5
   standards:
-  - OWASP:A08:2021
-  regex: (?i)pickle\.(?:loads|load)\s*\(
-  description: Unpickling untrusted data allows arbitrary remote code execution.
-  remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-66F667
-  name: Disallow Insecure Deserialization Pickle
-  type: sast
-  severity: CRITICAL
-  languages:
-  - python
-  cwe: CWE-502
-  cvss: 7.5
-  standards:
-  - OWASP:A08:2021
-  regex: (?i)pickle\.(?:loads|load)\s*\(
-  description: Unpickling untrusted data allows arbitrary remote code execution.
-  remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-FAC0AF
-  name: Disallow Insecure Deserialization Pickle
-  type: sast
-  severity: CRITICAL
-  languages:
-  - python
-  cwe: CWE-502
-  cvss: 7.5
-  standards:
-  - OWASP:A08:2021
-  regex: (?i)pickle\.(?:loads|load)\s*\(
-  description: Unpickling untrusted data allows arbitrary remote code execution.
-  remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-CCABDE
-  name: Disallow Insecure Deserialization Pickle
-  type: sast
-  severity: CRITICAL
-  languages:
-  - python
-  cwe: CWE-502
-  cvss: 7.5
-  standards:
-  - OWASP:A08:2021
-  regex: (?i)pickle\.(?:loads|load)\s*\(
-  description: Unpickling untrusted data allows arbitrary remote code execution.
-  remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-1220E6
-  name: Disallow Insecure Deserialization Pickle
-  type: sast
-  severity: CRITICAL
-  languages:
-  - python
-  cwe: CWE-502
-  cvss: 7.5
-  standards:
-  - OWASP:A08:2021
-  regex: (?i)pickle\.(?:loads|load)\s*\(
-  description: Unpickling untrusted data allows arbitrary remote code execution.
-  remediation: Use safe JSON serialization or HMAC signature verification.
-- id: CUSTOM-FCAC9D
-  name: Disallow Insecure Deserialization Pickle
-  type: sast
-  severity: CRITICAL
-  languages:
-  - python
-  cwe: CWE-502
-  cvss: 7.5
-  standards:
-  - OWASP:A08:2021
-  regex: (?i)pickle\.(?:loads|load)\s*\(
-  description: Unpickling untrusted data allows arbitrary remote code execution.
-  remediation: Use safe JSON serialization or HMAC signature verification.
+  - OWASP:A07:2021
+  regex: ALPHA_SECRET_TOKEN_[A-Z0-9]+
+  description: Detect proprietary Alpha tokens.
+  remediation: Do not hardcode internal Alpha tokens.
+  project_id: 7c1bade5-7c86-42ff-a05b-f30e78cf959e
+  project_name: Project Alpha

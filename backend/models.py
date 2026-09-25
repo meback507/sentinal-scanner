@@ -30,6 +30,7 @@ class UserModel(BaseModel):
     email: str
     role: RoleEnum
     created_at: str
+    assigned_projects: List[str] = Field(default_factory=list)
 
 
 class UserCreateRequest(BaseModel):
@@ -37,12 +38,14 @@ class UserCreateRequest(BaseModel):
     email: str
     password: str
     role: RoleEnum = RoleEnum.DEVELOPER
+    assigned_projects: Optional[List[str]] = Field(default_factory=list)
 
 
 class UserUpdateRequest(BaseModel):
     role: Optional[RoleEnum] = None
     password: Optional[str] = None
     email: Optional[str] = None
+    assigned_projects: Optional[List[str]] = None
 
 
 class LoginRequest(BaseModel):
@@ -63,6 +66,26 @@ class ProjectCreateRequest(BaseModel):
     git_url: Optional[str] = ""
     git_branch: Optional[str] = "main"
     git_pat: Optional[str] = ""
+    assigned_users: Optional[List[str]] = Field(default_factory=list)
+
+
+class ProjectMemberAssignRequest(BaseModel):
+    user_ids: Optional[List[str]] = None
+    user_id: Optional[str] = None
+    role: Optional[str] = "member"
+
+
+class FindingStatusUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    status_val: Optional[str] = None
+    reason: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class CopilotChatRequest(BaseModel):
+    message: str
+    project_id: Optional[str] = None
+    history: Optional[List[Dict[str, str]]] = Field(default_factory=list)
 
 
 class ProjectModel(BaseModel):
@@ -77,6 +100,8 @@ class ProjectModel(BaseModel):
     last_scanned: Optional[str] = None
     total_findings: int = 0
     risk_score: float = 0.0
+    members: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    member_count: Optional[int] = 0
 
 
 # --- Finding & Scan Models ---
@@ -181,11 +206,14 @@ class CustomRuleModel(BaseModel):
     remediation: str
     yaml_representation: str
     is_active: bool = True
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
 
 
 class RuleGenerateRequest(BaseModel):
     prompt: str
     ecosystem: Optional[str] = "auto"
+    project_id: Optional[str] = None
 
 
 class RuleTestRequest(BaseModel):
@@ -339,6 +367,7 @@ class CustomRuleBuilderRequest(BaseModel):
     description: str
     remediation: str
     test_snippet: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class RuleSandboxEvaluateRequest(BaseModel):

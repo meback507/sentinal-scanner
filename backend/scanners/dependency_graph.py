@@ -152,6 +152,75 @@ class DependencyGraphBuilder:
         vuln_nodes = [n for n in pkg_nodes if n["severity"] != "CLEAN"]
         reachable_count = sum(1 for n in vuln_nodes if n["reachable"])
 
+        # Compute blast radius and parent chains for each package
+        parent_map = {}
+        for edge in edges:
+            tgt = edge["target"]
+            src = edge["source"]
+            parent_map.setdefault(tgt, []).append(src)
+
+        blast_radius_items = []
+        for n in pkg_nodes:
+            # Trace paths back to root
+            paths = []
+            visited = set()
+            def trace_to_root(curr_id, path):
+                if curr_id == root_id:
+                    paths.append(list(reversed(path + [curr_id])))
+                    return
+                for p in parent_map.get(curr_id, []):
+                    if p not in visited:
+                        visited.add(p)
+                        trace_to_root(p, path + [curr_id])
+                        visited.remove(p)
+
+            trace_to_root(n["id"], [])
+            chain = []
+            if paths:
+                raw_chain = paths[0]
+                chain = [nodes[i]["name"] if i < len(nodes) else i for i in [next((idx for idx, nd in enumerate(nodes) if nd["id"] == cid), cid) for cid in raw_chain]]
+            else:
+                chain = [proj_name, n["name"]]
+
+            # Downstream dependents
+            dependents = [e["target"] for e in edges if e["source"] == n["id"]]
+            blast_score = 1 + len(dependents)
+            n["blast_radius"] = blast_score
+            n["chain"] = chain
+
+            if n["severity"] != "CLEAN":
+                blast_radius_items.append({
+                    "package": n["name"],
+                    "version": n["version"],
+                    "severity": n["severity"],
+                    "cve_id": n.get("cve_id"),
+                    "blast_radius_score": blast_score,
+                    "type": n["type"],
+                    "path_display": " ➔ ".join(chain),
+                    "exposed_dependents_count": len(dependents),
+                    "remediation": f"Upgrade {n['name']} to latest secure version or update root '{chain[1] if len(chain) > 1 else n['name']}'"
+                })
+
+        blast_radius_items.sort(key=lambda x: (x["blast_radius_score"], x["severity"] == "CRITICAL", x["severity"] == "HIGH"), reverse=True)
+
+        # Build nested tree structure
+        def build_node_tree(curr_id):
+            curr_node = next((nd for nd in nodes if nd["id"] == curr_id), None)
+            if not curr_node:
+                return None
+            child_edges = [e for e in edges if e["source"] == curr_id]
+            children = []
+            for e in child_edges:
+                child_tree = build_node_tree(e["target"])
+                if child_tree:
+                    children.append(child_tree)
+            return {
+                **curr_node,
+                "children": children
+            }
+
+        tree = build_node_tree(root_id)
+
         return {
             "project_id": project_id,
             "project_name": proj_name,
@@ -161,8 +230,22 @@ class DependencyGraphBuilder:
                 "transitive_count": transitive_count,
                 "vulnerable_count": len(vuln_nodes),
                 "reachable_count": reachable_count,
-                "dormant_count": len(vuln_nodes) - reachable_count
+                "dormant_count": len(vuln_nodes) - reachable_count,
+                "max_blast_radius": max([b["blast_radius_score"] for b in blast_radius_items], default=1)
             },
             "nodes": nodes,
-            "edges": edges
+            "edges": edges,
+            "tree": tree,
+            "blast_radius_analysis": blast_radius_items
+        }
+
+    @classmethod
+    def build_tree(cls, project_id: str) -> Dict[str, Any]:
+        graph_data = cls.build_graph(project_id)
+        return {
+            "project_id": project_id,
+            "project_name": graph_data.get("project_name"),
+            "summary": graph_data.get("summary"),
+            "tree": graph_data.get("tree"),
+            "blast_radius_analysis": graph_data.get("blast_radius_analysis")
         }

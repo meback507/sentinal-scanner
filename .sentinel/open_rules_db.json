@@ -243,6 +243,774 @@
       "created_at": "2026-09-25T05:35:23.382376+00:00"
     },
     {
+      "id": "CUSTOM-4E45F4",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T06:33:22.652075+00:00"
+    },
+    {
+      "id": "CUSTOM-86E326",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:28:07.661051+00:00"
+    },
+    {
+      "id": "CUSTOM-E96A63",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "e3429585-89f0-4798-a3cb-31236dfb003e",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:32:29.695346+00:00"
+    },
+    {
+      "id": "CUSTOM-FA0007",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:32:59.035817+00:00"
+    },
+    {
+      "id": "CUSTOM-530779",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "aa0ea814-fc3d-43d3-990c-6c784ba86223",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:33:06.481661+00:00"
+    },
+    {
+      "id": "CUSTOM-E76FFA",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:35:08.225413+00:00"
+    },
+    {
+      "id": "CUSTOM-E201A0",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "8ba6cfa3-6fa4-4d7f-9ab6-54f91bc5f525",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:35:15.656392+00:00"
+    },
+    {
+      "id": "CUSTOM-54F958",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:36:32.938505+00:00"
+    },
+    {
+      "id": "CUSTOM-03833C",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "d1c8207c-aef8-4256-a4ea-0c85fd01f657",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:36:40.730753+00:00"
+    },
+    {
+      "id": "CUSTOM-AEFBCB",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:48:16.644082+00:00"
+    },
+    {
+      "id": "CUSTOM-73CD03",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "8a47b310-db0f-45d5-bafa-3f6a158bd7aa",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:48:27.010799+00:00"
+    },
+    {
+      "id": "CUSTOM-54E7B9",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:51:01.440601+00:00"
+    },
+    {
+      "id": "CUSTOM-8B0F9D",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "901502cf-fcdc-4a36-8734-37a7efee2f21",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:51:09.313120+00:00"
+    },
+    {
+      "id": "CUSTOM-B80616",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:58:42.938040+00:00"
+    },
+    {
+      "id": "CUSTOM-8EE287",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "bc397f85-1454-47a2-ae10-0b994b791d6f",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T09:58:51.418206+00:00"
+    },
+    {
+      "id": "CUSTOM-A3EB9C",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:08:32.577470+00:00"
+    },
+    {
+      "id": "CUSTOM-EFC95C",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "7bbc3698-4c71-4451-a447-e1853a630dcb",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:08:41.328505+00:00"
+    },
+    {
+      "id": "CUSTOM-843546",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:10:25.929267+00:00"
+    },
+    {
+      "id": "CUSTOM-376062",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "93821f9f-1b21-4a5e-9bea-55975975691b",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:10:33.893260+00:00"
+    },
+    {
+      "id": "CUSTOM-AD7ABD",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:18:50.786670+00:00"
+    },
+    {
+      "id": "CUSTOM-4184A7",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "3a79df1f-5c7d-42f4-9c41-d4979dad2e73",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:18:58.933619+00:00"
+    },
+    {
+      "id": "CUSTOM-16E925",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:20:54.405395+00:00"
+    },
+    {
+      "id": "CUSTOM-E6D1D9",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "85851290-9c3c-4cf5-badd-54aa37770988",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:21:03.671452+00:00"
+    },
+    {
+      "id": "CUSTOM-C7B7C8",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:31:47.401781+00:00"
+    },
+    {
+      "id": "CUSTOM-3D2691",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "324ab510-6ce9-4356-8635-a239c82dc975",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:31:58.353179+00:00"
+    },
+    {
+      "id": "CUSTOM-7E81C1",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:36:11.722854+00:00"
+    },
+    {
+      "id": "CUSTOM-C7F746",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "21f61c98-3c2d-44df-b0f9-caf1e72f3fb3",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:36:26.427720+00:00"
+    },
+    {
+      "id": "CUSTOM-C7A46C",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:43:22.712044+00:00"
+    },
+    {
+      "id": "CUSTOM-88FB8B",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "e7120f9c-3d33-40b6-821d-d94040f5a4e4",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:43:31.728223+00:00"
+    },
+    {
+      "id": "CUSTOM-06FE3F",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:46:12.447240+00:00"
+    },
+    {
+      "id": "CUSTOM-050EB9",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "756ba260-2276-44fd-a217-68f9f3133fdb",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:46:22.447291+00:00"
+    },
+    {
+      "id": "CUSTOM-9CDEE2",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:57:19.654204+00:00"
+    },
+    {
+      "id": "CUSTOM-5BC707",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "db67d4db-79cb-4303-b2f3-cc99c1ed9e4c",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:57:30.486638+00:00"
+    },
+    {
+      "id": "CUSTOM-032B00",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:58:40.594949+00:00"
+    },
+    {
+      "id": "CUSTOM-06CB8D",
+      "name": "Disallow Alpha Internal Token",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "OWASP:A07:2021",
+      "standards": [
+        "OWASP:A07:2021"
+      ],
+      "regex": "ALPHA_SECRET_TOKEN_[A-Z0-9]+",
+      "description": "Detect proprietary Alpha tokens.",
+      "remediation": "Do not hardcode internal Alpha tokens.",
+      "project_id": "7c1bade5-7c86-42ff-a05b-f30e78cf959e",
+      "project_name": "Project Alpha",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T10:58:51.824481+00:00"
+    },
+    {
       "id": "SONAR-IMP-S2077",
       "sonar_key": "S2077",
       "sonar_rule_id": "python:S2077",

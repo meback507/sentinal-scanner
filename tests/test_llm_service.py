@@ -27,7 +27,7 @@ class TestLLMService(unittest.TestCase):
 
         # Ensure findings exist
         projects = db.list_projects()
-        demo_proj = next((p for p in projects if "demo" in p["name"].lower() or not p.get("git_url")), None)
+        demo_proj = next((p for p in projects if "automotive-cloud-demo" in p["name"].lower()), None)
         cls.created_project = False
         if not demo_proj:
             demo_proj = db.create_project("Automotive-Cloud-Demo-Suite", "Test Desc", "", "main", "", "admin")

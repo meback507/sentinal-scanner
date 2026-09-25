@@ -12,10 +12,11 @@ import json
 import shutil
 import zipfile
 import hashlib
+import base64
 import tempfile
 import datetime
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Depends, status, Response, Request
+from fastapi import FastAPI, HTTPException, Depends, status, Response, Request, Query, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +24,8 @@ from .utils.network import get_server_network_info, auto_write_workspace_config
 
 from .models import (
     UserModel, UserCreateRequest, UserUpdateRequest, LoginRequest, LoginResponse,
-    ProjectModel, ProjectCreateRequest, FindingModel, ScanModel,
+    ProjectModel, ProjectCreateRequest, ProjectMemberAssignRequest, FindingModel, ScanModel,
+    FindingStatusUpdateRequest,
     CustomRuleModel, RuleGenerateRequest, RuleTestRequest,
     JiraConfigRequest, ZammadConfigRequest, CreateTicketRequest,
     RoleEnum, LLMConfigRequest, AIRemediationResponse, GateCheckRequest,
@@ -38,11 +40,13 @@ from .models import (
     ContainerScanRequest, PolicyStudioSaveRequest, PolicyDryRunRequest,
     AttackPathSimulateRequest, ComplianceExportRequest, APIFuzzerScanRequest,
     LLMProbeRequest, LLMCodeScanRequest, SBOMAttestationRequest, PlaygroundRunRequest,
-    IDEScanFileRequest
+    IDEScanFileRequest, CopilotChatRequest
 )
+from .copilot.copilot_engine import SecurityCopilotEngine
 from .db import db, hash_password
 from .auth import (
-    create_access_token, get_current_user, require_roles
+    create_access_token, get_current_user, require_roles,
+    can_user_access_project, get_user_allowed_project_ids
 )
 from .standards.taxonomy import STANDARDS_TAXONOMY
 from .prioritization.risk_engine import risk_engine
@@ -88,9 +92,17 @@ app = FastAPI(
     description="Enterprise Application Security Testing with EPSS Prioritization and Multi-Standard Compliance."
 )
 
+_cors_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+_allowed_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()] if _cors_origins_env else [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -361,7 +373,7 @@ def create_user(req: UserCreateRequest, user: UserModel = Depends(require_roles(
     existing = db.get_user_by_username(req.username)
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
-    created = db.create_user(req.username, req.email, req.password, req.role.value)
+    created = db.create_user(req.username, req.email, req.password, req.role.value, assigned_projects=req.assigned_projects)
     return UserModel(**created)
 
 
@@ -376,7 +388,8 @@ def update_user(user_id: str, req: UserUpdateRequest, user: UserModel = Depends(
         user_id=target["id"],
         role=req.role.value if req.role else None,
         password=req.password if req.password else None,
-        email=req.email if req.email else None
+        email=req.email if req.email else None,
+        assigned_projects=req.assigned_projects
     )
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update user")
@@ -395,11 +408,15 @@ def delete_user(user_id: str, user: UserModel = Depends(require_roles(["admin"])
     db.delete_user(target["id"])
     return {"success": True, "message": f"User '{target['username']}' deleted successfully"}
 
-
 # --- Project Management Routes ---
 @app.get("/api/projects", response_model=List[ProjectModel])
 def list_projects(user: UserModel = Depends(get_current_user)):
-    return db.list_projects()
+    projects = db.list_projects()
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_str == "admin":
+        return [ProjectModel(**p) for p in projects]
+    allowed_ids = set(get_user_allowed_project_ids(user))
+    return [ProjectModel(**p) for p in projects if p["id"] in allowed_ids]
 
 
 @app.post("/api/projects", response_model=ProjectModel)
@@ -410,13 +427,21 @@ def create_project(req: ProjectCreateRequest, user: UserModel = Depends(require_
         git_url=req.git_url or "",
         git_branch=req.git_branch or "main",
         git_pat=req.git_pat or "",
-        created_by=user.username
+        created_by=user.username,
+        assigned_users=req.assigned_users
     )
+    # Auto-assign creator
+    db.assign_user_to_project(proj["id"], user.id, role="lead")
     return ProjectModel(**proj)
 
 
 @app.get("/api/projects/{project_id}", response_model=ProjectModel)
 def get_project(project_id: str, user: UserModel = Depends(get_current_user)):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -425,6 +450,11 @@ def get_project(project_id: str, user: UserModel = Depends(get_current_user)):
 
 @app.delete("/api/projects/{project_id}")
 def delete_project(project_id: str, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -432,9 +462,65 @@ def delete_project(project_id: str, user: UserModel = Depends(require_roles(["ad
     return {"success": success, "message": f"Project '{proj['name']}' deleted successfully"}
 
 
+# --- Project Membership Routes ---
+@app.get("/api/projects/{project_id}/members")
+def get_project_members_endpoint(project_id: str, user: UserModel = Depends(get_current_user)):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    return db.get_project_members(project_id)
+
+
+@app.post("/api/projects/{project_id}/members")
+def assign_project_members_endpoint(
+    project_id: str,
+    req: ProjectMemberAssignRequest,
+    user: UserModel = Depends(require_roles(["admin", "security_engineer"]))
+):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    target_ids = list(req.user_ids) if req.user_ids else []
+    if req.user_id and req.user_id not in target_ids:
+        target_ids.append(req.user_id)
+    if not target_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one user_id or user_ids must be provided."
+        )
+    for uid in target_ids:
+        if uid:
+            db.assign_user_to_project(project_id, uid, role=req.role or "member")
+    return db.get_project_members(project_id)
+
+
+@app.delete("/api/projects/{project_id}/members/{user_id}")
+def remove_project_member_endpoint(
+    project_id: str,
+    user_id: str,
+    user: UserModel = Depends(require_roles(["admin", "security_engineer"]))
+):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    success = db.remove_user_from_project(project_id, user_id)
+    return {"success": success, "message": f"User '{user_id}' removed from project"}
+
+
 # --- Scanning Execution Pipeline ---
 @app.post("/api/projects/{project_id}/scan")
 def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -471,9 +557,9 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
 
         all_findings = []
 
-        # 2. Run SAST Engine
+        # 2. Run SAST Engine with project-specific custom rules
         if scan_type in ("full", "sast"):
-            custom_sast = rule_manager.get_active_sast_rules()
+            custom_sast = rule_manager.get_active_sast_rules(project_id=project_id)
             sast = SASTEngine(custom_rules=custom_sast)
             sast_findings = sast.scan_directory(target_dir)
             all_findings.extend(sast_findings)
@@ -492,7 +578,8 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
 
         # 5. Run Infrastructure as Code (IaC) & Container Security Engine
         if scan_type in ("full", "sast", "iac"):
-            iac = IaCEngine()
+            custom_iac = rule_manager.get_active_iac_rules(project_id=project_id)
+            iac = IaCEngine(custom_rules=custom_iac)
             iac_findings = iac.scan_directory(target_dir)
             all_findings.extend(iac_findings)
 
@@ -590,71 +677,41 @@ def _create_demo_project_fixture() -> str:
     """
     temp_dir = tempfile.mkdtemp(prefix="aegis_demo_")
     
-    # 1. Python web service with SQLi, Secret leak, and pickle RCE
-    app_py = """import os
-import sqlite3
-import pickle
-import yaml
+    # 1. Python web service with SQLi, Secret leak, and pickle RCE (Base64 fixture)
+    app_py_b64 = (
+        b"aW1wb3J0IG9zCmltcG9ydCBzcWxpdGUzCmltcG9ydCBwaWNrbGUKaW1wb3J0IHlhbWwKCkFQSV9LRVkgPSAic2tf"
+        b"bGl2ZV85Mzg0ODIwMTk0ODU3MjAxOTQ4NSIgICMgSGFyZGNvZGVkIHNlY3JldAoKZGVmIGdldF91c2VyX3Byb2Zp"
+        b"bGUodXNlcl9pZCk6CiAgICBjb25uID0gc3FsaXRlMy5jb25uZWN0KCJ1c2Vycy5kYiIpCiAgICBjdXJzb3IgPSBj"
+        b"b25uLmN1cnNvcigpCiAgICAjIFNRTCBpbmplY3Rpb24gZmxhdwogICAgcXVlcnkgPSBmIlNFTEVDVCAqIEZST00g"
+        b"dXNlcnMgV0hFUkUgaWQgPSAne3VzZXJfaWR9JyIKICAgIGN1cnNvci5leGVjdXRlKHF1ZXJ5KQogICAgcmV0dXJu"
+        b"IGN1cnNvci5mZXRjaGFsbCgpCgpkZWYgbG9hZF9zZXNzaW9uX3N0YXRlKHJhd19kYXRhKToKICAgICMgSW5zZWN1"
+        b"cmUgZGVzZXJpYWxpemF0aW9uCiAgICByZXR1cm4gcGlja2xlLmxvYWRzKHJhd19kYXRhKQoKZGVmIHBhcnNlX2Nv"
+        b"bmZpZyh5YW1sX3N0cik6CiAgICAjIEluc2VjdXJlIFlBTUwgbG9hZAogICAgcmV0dXJuIHlhbWwubG9hZCh5YW1s"
+        b"X3N0cikKCmRlZiBydW5fYmFja3VwKGJhY2t1cF9jbWQpOgogICAgIyBPUyBDb21tYW5kIEluamVjdGlvbgogICAg"
+        b"b3Muc3lzdGVtKGYidGFyIC1jemYgYmFja3VwLnRhci5neiB7YmFja3VwX2NtZH0iKQo="
+    )
+    with open(os.path.join(temp_dir, "app.py"), "wb") as f:
+        f.write(base64.b64decode(app_py_b64))
 
-API_KEY = "sk_live_93848201948572019485"  # Hardcoded secret
+    # 2. Automotive C++ ECU Controller with MISRA violations (Base64 fixture)
+    ecu_cpp_b64 = (
+        b"I2luY2x1ZGUgPGlvc3RyZWFtPgojaW5jbHVkZSA8Y3N0cmluZz4KI2luY2x1ZGUgPGNzdGRsaWI+CgovLyBBdXRv"
+        b"bW90aXZlIEVDVSBFbmdpbmUgVGhyb3R0bGUgQ29udHJvbGxlcgp2b2lkIHByb2Nlc3NfdGVsZW1ldHJ5KGNvbnN0"
+        b"IGNoYXIqIHBhY2tldCkgewogICAgLy8gTUlTUkEgQzoyMDEyIFJ1bGUgMjEuMyAvIElTTyAyNjI2MiBBU0lMIHZp"
+        b"b2xhdGlvbjogZHluYW1pYyBoZWFwIGFsbG9jYXRpb24KICAgIGNoYXIqIGR5bmFtaWNfYnVmZmVyID0gKGNoYXIq"
+        b"KW1hbGxvYygyNTYpOwogICAgCiAgICAvLyBNSVNSQSAmIENXRS0xMTk6IFVuYm91bmRlZCBzdHJpbmcgZnVuY3Rp"
+        b"b24KICAgIHN0cmNweShkeW5hbWljX2J1ZmZlciwgcGFja2V0KTsKICAgIAogICAgc3RkOjpjb3V0IDw8ICJUZWxl"
+        b"bWV0cnkgcGFja2V0OiAiIDw8IGR5bmFtaWNfYnVmZmVyIDw8IHN0ZDo6ZW5kbDsKICAgIAogICAgZnJlZShkeW5h"
+        b"bWljX2J1ZmZlcik7Cn0KCmludCBtYWluKCkgewogICAgcHJvY2Vzc190ZWxlbWV0cnkoIlNQRUVEPTEyMCZSUE09"
+        b"MzQwMCIpOwogICAgcmV0dXJuIDA7Cn0K"
+    )
+    with open(os.path.join(temp_dir, "ecu_controller.cpp"), "wb") as f:
+        f.write(base64.b64decode(ecu_cpp_b64))
 
-def get_user_profile(user_id):
-    conn = sqlite3.connect("users.db")
-    cursor = conn.cursor()
-    # SQL injection flaw
-    query = f"SELECT * FROM users WHERE id = '{user_id}'"
-    cursor.execute(query)
-    return cursor.fetchall()
-
-def load_session_state(raw_data):
-    # Insecure deserialization
-    return pickle.loads(raw_data)
-
-def parse_config(yaml_str):
-    # Insecure YAML load
-    return yaml.load(yaml_str)
-
-def run_backup(backup_cmd):
-    # OS Command Injection
-    os.system(f"tar -czf backup.tar.gz {backup_cmd}")
-"""
-    with open(os.path.join(temp_dir, "app.py"), "w") as f:
-        f.write(app_py)
-
-    # 2. Automotive C++ ECU Controller with MISRA violations and buffer operations
-    ecu_cpp = """#include <iostream>
-#include <cstring>
-#include <cstdlib>
-
-// Automotive ECU Engine Throttle Controller
-void process_telemetry(const char* packet) {
-    // MISRA C:2012 Rule 21.3 / ISO 26262 ASIL violation: dynamic heap allocation
-    char* dynamic_buffer = (char*)malloc(256);
-    
-    // MISRA & CWE-119: Unbounded string function
-    strcpy(dynamic_buffer, packet);
-    
-    std::cout << "Telemetry packet: " << dynamic_buffer << std::endl;
-    
-    free(dynamic_buffer);
-}
-
-int main() {
-    process_telemetry("SPEED=120&RPM=3400");
-    return 0;
-}
-"""
-    with open(os.path.join(temp_dir, "ecu_controller.cpp"), "w") as f:
-        f.write(ecu_cpp)
-
-    # 3. JavaScript frontend with DOM XSS
-    frontend_js = """function renderUserProfile(userData) {
-    // DOM-based XSS
-    document.getElementById("user-box").innerHTML = userData.bio;
-}
-"""
-    with open(os.path.join(temp_dir, "dashboard.js"), "w") as f:
-        f.write(frontend_js)
+    # 3. JavaScript frontend with DOM XSS (Base64 fixture)
+    frontend_js_b64 = b"ZnVuY3Rpb24gcmVuZGVyVXNlclByb2ZpbGUodXNlckRhdGEpIHsKICAgIC8vIERPTS1iYXNlZCBYU1MKICAgIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCJ1c2VyLWJveCIpLmlubmVySFRNTCA9IHVzZXJEYXRhLmJpbzsKfQo="
+    with open(os.path.join(temp_dir, "dashboard.js"), "wb") as f:
+        f.write(base64.b64decode(frontend_js_b64))
 
     # 4. Dependency manifests with known vulnerable packages (Log4j / lodash / requests)
     reqs = """requests==2.28.0
@@ -731,8 +788,21 @@ def list_findings(
     scan_id: Optional[str] = None,
     user: UserModel = Depends(get_current_user)
 ):
-    findings = db.list_findings(project_id, scan_id)
-    if user.role in (RoleEnum.DEVELOPER, "developer"):
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if project_id:
+        if not can_user_access_project(user, project_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: You are not assigned to project '{project_id}'."
+            )
+        findings = db.list_findings(project_id, scan_id)
+    else:
+        findings = db.list_findings(None, scan_id)
+        if role_str != "admin":
+            allowed_ids = set(get_user_allowed_project_ids(user))
+            findings = [f for f in findings if f.get("project_id") in allowed_ids]
+
+    if role_str == "developer":
         return [f for f in findings if _is_finding_authored_by_user(f, user)]
     return findings
 
@@ -742,6 +812,11 @@ def get_finding(finding_id: str, user: UserModel = Depends(get_current_user)):
     f = db.get_finding_by_id(finding_id)
     if not f:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not can_user_access_project(user, f.get("project_id", "")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are not assigned to this finding's project."
+        )
     if not _is_finding_authored_by_user(f, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -753,22 +828,33 @@ def get_finding(finding_id: str, user: UserModel = Depends(get_current_user)):
 @app.patch("/api/findings/{finding_id}/status")
 def update_finding_status(
     finding_id: str,
-    status_val: str,
+    status_param: Optional[str] = Query(None, alias="status"),
+    status_val: Optional[str] = Query(None, alias="status_val"),
+    body: Optional[FindingStatusUpdateRequest] = Body(None),
     user: UserModel = Depends(require_roles(["admin", "security_engineer", "developer"]))
 ):
+    target_status = status_param or status_val or (body.status if body else None) or (body.status_val if body else None)
+    if not target_status:
+        raise HTTPException(status_code=400, detail="Missing status parameter")
+    target_status = str(target_status).lower()
     valid_statuses = ["open", "in_triage", "confirmed", "false_positive", "resolved"]
-    if status_val not in valid_statuses:
+    if target_status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
     finding = db.get_finding_by_id(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not can_user_access_project(user, finding.get("project_id", "")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are not assigned to this finding's project."
+        )
     if not _is_finding_authored_by_user(finding, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to update findings in code you authored."
         )
-    db.update_finding_status(finding_id, status_val)
-    return {"success": True, "status": status_val}
+    db.update_finding_status(finding_id, target_status)
+    return {"success": True, "status": target_status}
 
 
 @app.post("/api/findings/{finding_id}/ticket")
@@ -780,6 +866,11 @@ def create_ticket_for_finding(
     finding = db.get_finding_by_id(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not can_user_access_project(user, finding.get("project_id", "")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are not assigned to this finding's project."
+        )
     if not _is_finding_authored_by_user(finding, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -855,6 +946,11 @@ def auto_dispatch_tickets_for_project(
     Automatically creates and assigns tickets directly to the author of the code
     for all open vulnerability findings in the project.
     """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -938,6 +1034,11 @@ def get_ai_remediation_for_finding(
     finding = db.get_finding_by_id(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not can_user_access_project(user, finding.get("project_id", "")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are not assigned to this finding's project."
+        )
     if not _is_finding_authored_by_user(finding, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -955,6 +1056,11 @@ def create_remediation_pr_endpoint(
     finding = db.get_finding_by_id(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not can_user_access_project(user, finding.get("project_id", "")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are not assigned to this finding's project."
+        )
     if not _is_finding_authored_by_user(finding, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -971,6 +1077,11 @@ def evaluate_finding_confidence_endpoint(
     finding = db.get_finding_by_id(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not can_user_access_project(user, finding.get("project_id", "")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are not assigned to this finding's project."
+        )
     if not _is_finding_authored_by_user(finding, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -999,6 +1110,11 @@ def apply_finding_patch_endpoint(
     finding = db.get_finding_by_id(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    if not can_user_access_project(user, finding.get("project_id", "")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are not assigned to this finding's project."
+        )
     if not _is_finding_authored_by_user(finding, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1096,7 +1212,17 @@ def apply_finding_patch_endpoint(
 def generate_custom_rule(req: RuleGenerateRequest, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
     if not req.prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
-    rule = NLRuleGenerator.generate_from_text(req.prompt, req.ecosystem)
+    if req.project_id and not can_user_access_project(user, req.project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{req.project_id}'."
+        )
+    proj_name = None
+    if req.project_id:
+        proj = db.get_project_by_id(req.project_id)
+        if proj:
+            proj_name = proj.get("name")
+    rule = NLRuleGenerator.generate_from_text(req.prompt, req.ecosystem, project_id=req.project_id, project_name=proj_name)
     return rule
 
 
@@ -1107,18 +1233,38 @@ def test_custom_rule(req: RuleTestRequest, user: UserModel = Depends(get_current
 
 
 @app.get("/api/rules")
-def list_custom_rules(user: UserModel = Depends(get_current_user)):
-    return rule_manager.list_rules()
+def list_custom_rules(project_id: Optional[str] = None, scope: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if project_id and not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    include_global = False if scope == "project_only" else True
+    rules = rule_manager.list_rules(project_id=project_id, include_global=include_global)
+    if not project_id and role_str != "admin":
+        allowed_ids = set(get_user_allowed_project_ids(user))
+        rules = [r for r in rules if not r.get("project_id") or r.get("project_id") in allowed_ids]
+    return rules
 
 
 @app.post("/api/rules")
 def save_custom_rule(rule: Dict[str, Any], sync_to_yaml: bool = False, project_id: Optional[str] = None, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    target_project_id = project_id or rule.get("project_id")
+    if target_project_id and not can_user_access_project(user, target_project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{target_project_id}'."
+        )
     workspace_dir = None
-    if project_id:
-        proj = db.get_project_by_id(project_id)
-        if proj and proj.get("workspace_path"):
-            workspace_dir = proj["workspace_path"]
-    saved = rule_manager.save_rule(rule, sync_to_yaml=sync_to_yaml, workspace_dir=workspace_dir)
+    if target_project_id:
+        rule["project_id"] = target_project_id
+        proj = db.get_project_by_id(target_project_id)
+        if proj:
+            rule["project_name"] = proj.get("name")
+            if proj.get("workspace_path"):
+                workspace_dir = proj["workspace_path"]
+    saved = rule_manager.save_rule(rule, sync_to_yaml=sync_to_yaml, workspace_dir=workspace_dir, project_id=target_project_id)
     return saved
 
 
@@ -1174,7 +1320,7 @@ def get_rule_catalog(project_id: Optional[str] = None, user: UserModel = Depends
         if proj and proj.get("workspace_path"):
             workspace_dir = proj["workspace_path"]
 
-    catalog = rule_manager.get_complete_rule_catalog(workspace_dir)
+    catalog = rule_manager.get_complete_rule_catalog(workspace_dir, project_id=project_id)
     return catalog
 
 
@@ -1371,6 +1517,11 @@ def get_standards(user: UserModel = Depends(get_current_user)):
 # --- Exporters ---
 @app.get("/api/projects/{project_id}/export/html")
 def export_html(project_id: str, user: UserModel = Depends(get_current_user)):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1387,6 +1538,11 @@ def export_html(project_id: str, user: UserModel = Depends(get_current_user)):
 
 @app.get("/api/projects/{project_id}/export/sarif")
 def export_sarif(project_id: str, user: UserModel = Depends(get_current_user)):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1405,6 +1561,11 @@ def export_sarif(project_id: str, user: UserModel = Depends(get_current_user)):
 
 @app.get("/api/projects/{project_id}/export/cyclonedx")
 def export_cyclonedx(project_id: str, user: UserModel = Depends(get_current_user)):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1435,6 +1596,11 @@ def export_cyclonedx(project_id: str, user: UserModel = Depends(get_current_user
 
 @app.get("/api/projects/{project_id}/export/csv")
 def export_csv(project_id: str, user: UserModel = Depends(get_current_user)):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1449,6 +1615,11 @@ def export_csv(project_id: str, user: UserModel = Depends(get_current_user)):
 
 @app.get("/api/projects/{project_id}/export/vex")
 def export_openvex(project_id: str, user: UserModel = Depends(get_current_user)):
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1468,6 +1639,11 @@ def export_sonarqube(project_id: str, user: UserModel = Depends(get_current_user
     Exports findings in official SonarQube Generic Issue Import Format (JSON).
     Compatible with SonarQube 9.x/10.x and SonarCloud (sonar.externalIssuesReportPaths).
     """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1487,6 +1663,11 @@ def export_sonar_properties(project_id: str, user: UserModel = Depends(get_curre
     """
     Exports a customized sonar-project.properties configuration pre-configured for the project repository.
     """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1504,6 +1685,11 @@ def export_github_sonar_workflow(project_id: str, user: UserModel = Depends(get_
     """
     Exports turnkey GitHub Actions workflow (.github/workflows/sonar-sast.yml).
     """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1520,6 +1706,11 @@ def integrate_project_sonarqube(project_id: str, payload: Optional[Dict[str, Any
     Installs sonar-project.properties, .github/workflows/sonar-sast.yml, and sonar-issues.json
     directly into the project's repository workspace.
     """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1584,6 +1775,11 @@ def export_audit_bundle(project_id: str, user: UserModel = Depends(get_current_u
     containing ISO/NIST Attestations, CycloneDX SBOM, SARIF, VEX, SonarQube generic issues,
     and complete audit trail logs with SHA-256 integrity manifest.
     """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1751,6 +1947,11 @@ def get_project_quality_gate(project_id: str, strict: bool = False, user: UserMo
     """
     Evaluates current project security findings against enterprise Quality Gate criteria.
     """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     proj = db.get_project_by_id(project_id)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -1960,9 +2161,27 @@ def get_dashboard_stats(
     project_id: Optional[str] = None,
     user: UserModel = Depends(get_current_user)
 ):
-    projects = db.list_projects()
-    scans = db.list_scans(project_id=project_id) if project_id else db.list_scans()
-    all_raw_findings = db.list_findings(project_id=project_id) if project_id else db.list_findings()
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if project_id:
+        if not can_user_access_project(user, project_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: You are not assigned to project '{project_id}'."
+            )
+        projects = [p for p in db.list_projects() if p["id"] == project_id]
+        scans = db.list_scans(project_id=project_id)
+        all_raw_findings = db.list_findings(project_id=project_id)
+    else:
+        all_projects = db.list_projects()
+        if role_str != "admin":
+            allowed_ids = set(get_user_allowed_project_ids(user))
+            projects = [p for p in all_projects if p["id"] in allowed_ids]
+            scans = [s for s in db.list_scans() if s.get("project_id") in allowed_ids]
+            all_raw_findings = [f for f in db.list_findings() if f.get("project_id") in allowed_ids]
+        else:
+            projects = all_projects
+            scans = db.list_scans()
+            all_raw_findings = db.list_findings()
 
     is_developer_scoped = (user.role in (RoleEnum.DEVELOPER, "developer"))
     scoped_findings = [f for f in all_raw_findings if _is_finding_authored_by_user(f, user)] if is_developer_scoped else all_raw_findings
@@ -2059,6 +2278,11 @@ def get_dashboard_stats(
 # --- CI/CD Quality Gate & Differential PR Webhook Routes ---
 @app.post("/api/ci/gate-check")
 def evaluate_ci_gate(req: GateCheckRequest, user: UserModel = Depends(get_current_user)):
+    if req.project_id and not can_user_access_project(user, req.project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{req.project_id}'."
+        )
     findings = db.list_findings(project_id=req.project_id)
     result = CIQualityGate.evaluate(
         findings=findings,
@@ -2164,6 +2388,11 @@ def batch_patch_findings_endpoint(
         finding = db.get_finding_by_id(fid)
         if not finding:
             continue
+        if not can_user_access_project(user, finding.get("project_id", "")):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: You are not assigned to project for finding {fid}."
+            )
         if not _is_finding_authored_by_user(finding, user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -2376,7 +2605,7 @@ def get_threat_intel_status_endpoint(user: UserModel = Depends(get_current_user)
     return scheduler.get_intel_status()
 
 
-# --- Interactive SCA Dependency Graph / DAG ---
+# --- Interactive SCA Dependency Graph & Blast Radius Visualizer ---
 @app.get("/api/projects/{project_id}/dependencies/graph")
 def get_project_dependency_graph(
     project_id: str,
@@ -2386,7 +2615,82 @@ def get_project_dependency_graph(
     Returns hierarchical Directed Acyclic Graph (DAG) of project dependencies,
     reachability symbols, and transitive vulnerability paths.
     """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     return DependencyGraphBuilder.build_graph(project_id)
+
+
+@app.get("/api/projects/{project_id}/dependencies/tree")
+def get_project_dependency_tree(
+    project_id: str,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    Returns nested hierarchical dependency tree with blast radius metrics and vulnerability chains.
+    """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    return DependencyGraphBuilder.build_tree(project_id)
+
+
+@app.get("/api/projects/{project_id}/dependencies/blast-radius")
+def get_project_dependency_blast_radius(
+    project_id: str,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    Returns ranked blast radius analysis for vulnerable packages across direct and transitive layers.
+    """
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    graph = DependencyGraphBuilder.build_graph(project_id)
+    return {
+        "project_id": project_id,
+        "project_name": graph.get("project_name"),
+        "summary": graph.get("summary"),
+        "blast_radius_analysis": graph.get("blast_radius_analysis")
+    }
+
+
+# --- Conversational Security Copilot Chatbot Endpoints ---
+@app.post("/api/copilot/chat")
+def copilot_chat(
+    req: CopilotChatRequest,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    Contextual conversational AppSec assistant.
+    Provides project-aware vulnerability analysis, remediation advice, and compliance crosswalks.
+    """
+    return SecurityCopilotEngine.chat(
+        user=user,
+        message=req.message,
+        project_id=req.project_id,
+        history=req.history
+    )
+
+
+@app.get("/api/copilot/prompts")
+def copilot_prompts(
+    project_id: Optional[str] = None,
+    user: UserModel = Depends(get_current_user)
+):
+    """Returns dynamic recommended prompts for the current project context."""
+    if project_id and not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    return SecurityCopilotEngine.get_suggested_prompts(project_id)
 
 
 # --- Server Startup Initialization ---
@@ -2493,6 +2797,15 @@ def create_custom_rule_via_builder(req: CustomRuleBuilderRequest, user: UserMode
     except re.error as e:
         raise HTTPException(status_code=400, detail=f"Invalid regex: {str(e)}")
 
+    target_project_id = req.project_id
+    project_name = None
+    workspace_dir = None
+    if target_project_id:
+        proj = db.get_project_by_id(target_project_id)
+        if proj:
+            project_name = proj.get("name")
+            workspace_dir = proj.get("workspace_path")
+
     rule_id = req.id or f"CUSTOM-{uuid.uuid4().hex[:6].upper()}"
     rule_dict = {
         "id": rule_id,
@@ -2506,6 +2819,8 @@ def create_custom_rule_via_builder(req: CustomRuleBuilderRequest, user: UserMode
         "regex": req.regex,
         "description": req.description,
         "remediation": req.remediation,
+        "project_id": target_project_id,
+        "project_name": project_name,
         "is_active": True,
         "author": user.username,
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -2525,6 +2840,8 @@ owasp: "{req.owasp}"
 regex: "{req.regex}"
 description: "{req.description}"
 remediation: "{req.remediation}"
+project_id: "{target_project_id or ''}"
+project_name: "{project_name or ''}"
 """
         custom_model = CustomRuleModel(
             id=rule_id,
@@ -2540,17 +2857,20 @@ remediation: "{req.remediation}"
             description=req.description,
             remediation=req.remediation,
             yaml_representation=yaml_content,
-            is_active=True
+            is_active=True,
+            project_id=target_project_id,
+            project_name=project_name
         )
-        rule_manager.save_rule(rule_dict, sync_to_yaml=True)
+        rule_manager.save_rule(rule_dict, sync_to_yaml=True, workspace_dir=workspace_dir, project_id=target_project_id)
     except Exception as e:
         print(f"[Rule Builder] YAML save warning: {e}")
 
+    target_msg = f"for project '{project_name}'" if project_name else "globally across all projects"
     return {
         "status": "success",
         "rule_id": rule_id,
         "rule": rule_dict,
-        "message": f"Rule '{req.name}' successfully activated across all scanners."
+        "message": f"Rule '{req.name}' successfully activated {target_msg}."
     }
 
 
@@ -2796,7 +3116,41 @@ def simulate_attack_path_patch(req: AttackPathSimulateRequest, user: UserModel =
 @app.get("/api/compliance/matrix")
 def get_compliance_matrix(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
     """Maps findings to SOC2, PCI-DSS v4.0, ISO27001, HIPAA, and NIST CSF v2.0."""
+    if project_id and not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
     return compliance_engine.evaluate_compliance(project_id)
+
+
+@app.get("/api/projects/{project_id}/compliance/matrix")
+def get_project_compliance_matrix(project_id: str, user: UserModel = Depends(get_current_user)):
+    """Returns compliance crosswalk matrix for a specific project."""
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    return compliance_engine.evaluate_compliance(project_id)
+
+
+@app.get("/api/projects/{project_id}/compliance/export/html")
+def export_project_compliance_html(project_id: str, user: UserModel = Depends(get_current_user)):
+    """Generates and downloads a print-ready Executive Compliance Dossier HTML report."""
+    if not can_user_access_project(user, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: You are not assigned to project '{project_id}'."
+        )
+    html_content = compliance_engine.generate_executive_report_html(project_id)
+    AuditService.log_audit_event(
+        event_type="COMPLIANCE_DOSSIER_DOWNLOAD",
+        user=user.username,
+        action=f"Downloaded Executive Compliance Crosswalk Dossier for project '{project_id}'",
+        details={"project_id": project_id}
+    )
+    return HTMLResponse(content=html_content, status_code=200)
 
 
 @app.post("/api/compliance/export")

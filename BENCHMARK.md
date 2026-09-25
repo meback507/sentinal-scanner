@@ -15,7 +15,7 @@
 | **Threat Intelligence** | **EPSS + CVSS v3.1/v4.0** | CVSS base severity only | Static Severity / CVSS | Raw CVSS base scores |
 | **Alert Noise Reduction** | **~72% Reduction** | ~40% (Paid Reachability) | 0% (All CVSS alerts) | High False Positives (CPE) |
 | **Automotive & Safety** | **ISO 26262 ASIL-D & MISRA** | None | Partial (Commercial C++) | None (SCA only) |
-| **Developer Isolation** | **Strict Git Blame RBAC (403)** | None (Global repo access) | None (Project-wide permissions) | None |
+| **Project & Developer Isolation** | **Dual-Layer (Project + Git Blame 403)** | None (Global repo access) | Coarse (Workspace groups only) | None |
 | **Custom Rule Latency** | **< 10s (Natural Language)** | 15–45 min (Manual YAML) | 2–8 hrs (Java Plugins) | N/A (XML suppressions only) |
 | **Autonomous Remediation** | **1-Click AI Fix PRs & Diffs** | Static regex autofix only | Generic documentation | External NVD links |
 
@@ -86,6 +86,7 @@ Recognized & Natively Mapped Regulatory / Safety Standards
 | :--- | :--- | :--- | :--- | :--- |
 | **Natural Language Human-to-Rule** | **Instant AI Synthesis**: Human English prompt directly compiles into AST/regex YAML rules. | **Manual YAML**: Security engineers must manually write and debug Semgrep syntax. | **Java Plugins**: Requires creating a Java project, compiling JARs against Sonar API. | **XML Files**: Manual XML suppression file editing only. |
 | **Rule Authoring Latency** | **< 10 Seconds**: Human prompt to verified YAML. | **15 – 45 Minutes**: Writing, testing, and debugging YAML patterns. | **2 – 8 Hours**: Writing Java classes, compiling, testing, and server reboot. | **N/A**: Cannot author source code rules. |
+| **Project-Oriented Rule Scoping** | **Granular Per-Project Scoping**: Rules can target specific projects or apply globally; IDE & scans filter automatically. | **None**: Rules apply globally across all scans unless filtered with manual CLI flags. | **Complex Quality Profiles**: Complex multi-profile assignments required across groups. | **None**: No custom source code rules. |
 | **Interactive Test Bench Sandbox** | **Built-in Sandbox**: Real-time positive & negative code validation before rule rollout. | **Web-Only Playground**: Available only on external semgrep.dev website. | **None**: Requires deploying JAR to test instance and rescanning. | **None**: No testing sandbox. |
 
 ---
@@ -93,6 +94,7 @@ Recognized & Natively Mapped Regulatory / Safety Standards
 ### D. Developer Isolation & Code Attribution
 | Capability | AegisSec | Semgrep (OSS/Pro) | SonarQube | OWASP Dependency-Check |
 | :--- | :--- | :--- | :--- | :--- |
+| **Project Assignment & Scoping (RBAC)** | **Strict Project Isolation**: Non-admins are strictly isolated to their assigned projects (403 on unassigned). | **None**: All repository viewers have access to all projects in workspace. | **Coarse Permissions**: Project group permissions without developer-level blame isolation. | **None**: No user or project scoping. |
 | **Per-Line Git Blame Attribution** | **Native Line Blame**: Enriches every finding with author name, email, commit SHA, and date. | **None**: Line numbers only; engine has no Git author metadata. | **Supported**: Shows blame author in the code viewer gutter. | **None**: Manifest file level only. |
 | **Developer-Scoped Vulnerability Isolation** | **Strict Row-Level Isolation**: Developer logs in and ONLY sees vulnerabilities in code they authored. | **None**: Global repository view or individual PR decoration bot. | **None**: Project-wide access permissions; all project viewers see all flaws. | **None**: No user scoping. |
 | **Cross-Developer Tamper Guards** | **Enforced (403 Forbidden)**: Prevents developers from inspecting or dismissing peers' flaws. | **None**: No permission model at vulnerability row level. | **None**: Anyone with triage role can modify any issue. | **None**: No role management. |

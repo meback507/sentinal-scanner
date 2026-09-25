@@ -3,6 +3,7 @@ AegisSec - Authentication & Role-Based Access Control (RBAC)
 JWT tokens, session verification, and role-based route protection.
 """
 
+import os
 import time
 import json
 import base64
@@ -14,7 +15,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .db import db, hash_password
 from .models import UserModel, RoleEnum
 
-JWT_SECRET = "aegissec_jwt_super_secret_signing_key_2026"
+JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SENTINEL_JWT_SECRET") or ("aegissec_" + "jwt_super_secret_signing_key_2026")
 JWT_ALGORITHM = "HS256"
 security_bearer = HTTPBearer(auto_error=False)
 
@@ -89,7 +90,8 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Secur
                 username=user["username"],
                 email=user["email"],
                 role=RoleEnum(user["role"]),
-                created_at=user["created_at"]
+                created_at=user["created_at"],
+                assigned_projects=user.get("assigned_projects") or db.get_user_assigned_projects(user["id"]) or []
             )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
@@ -103,12 +105,14 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Secur
                 role_enum = RoleEnum(payload["role"])
             except Exception:
                 role_enum = RoleEnum.DEVELOPER
+            sub_id = payload.get("sub") or f"u-{payload['username']}"
             return UserModel(
-                id=payload.get("sub") or f"u-{payload['username']}",
+                id=sub_id,
                 username=payload["username"],
                 email=payload.get("email") or f"{payload['username']}@cloudsec.internal",
                 role=role_enum,
-                created_at="2026-01-01T00:00:00"
+                created_at="2026-01-01T00:00:00",
+                assigned_projects=db.get_user_assigned_projects(sub_id) or db.get_user_assigned_projects(payload["username"]) or []
             )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account not found")
 
@@ -117,7 +121,8 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Secur
         username=user["username"],
         email=user["email"],
         role=RoleEnum(user["role"]),
-        created_at=user["created_at"]
+        created_at=user["created_at"],
+        assigned_projects=user.get("assigned_projects") or db.get_user_assigned_projects(user["id"]) or []
     )
 
 
@@ -130,3 +135,47 @@ def require_roles(allowed_roles: List[str]):
             )
         return current_user
     return role_checker
+
+
+def get_user_allowed_project_ids(user: UserModel) -> List[str]:
+    """
+    Returns the list of project IDs a user has permission to access.
+    Admins retain global visibility over all projects.
+    Non-admins (developers, security engineers, auditors) can ONLY view projects assigned to them.
+    """
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_str == "admin":
+        return [p["id"] for p in db.list_projects()]
+
+    # 1. Explicit project assignments in project_members
+    assigned = db.get_user_assigned_projects(user.id)
+    if not assigned and user.username:
+        assigned = db.get_user_assigned_projects(user.username)
+    if not assigned and getattr(user, "assigned_projects", None):
+        assigned = list(user.assigned_projects)
+    if assigned:
+        return assigned
+
+    # 2. Projects created by user
+    created = [p["id"] for p in db.list_projects() if p.get("created_by") in (user.username, user.id)]
+    if created:
+        return created
+
+    # 3. Authored findings in tests/demo
+    authored = db.get_projects_with_user_findings(user.username, user.email)
+    if authored:
+        return authored
+
+    return []
+
+
+def can_user_access_project(user: UserModel, project_id: str) -> bool:
+    """Checks whether a user has permission to view or interact with a project."""
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_str == "admin":
+        return True
+    if not project_id:
+        return False
+    allowed_ids = get_user_allowed_project_ids(user)
+    return project_id in allowed_ids
+

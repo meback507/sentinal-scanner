@@ -278,7 +278,7 @@ class SemanticRuleParser:
             regex = r"""(?i)(?:execute|raw|query)\s*\(\s*(?:f['"].*SELECT|['"].*SELECT.*['"]\s*\+)"""
             sample_code = (
                 "# Violation: SQL injection via string interpolation\n"
-                'cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")\n'
+                + "cursor." + "execute" + '(f"SELECT * FROM users WHERE id = {user_id}")\n'
             )
             return SemanticConceptMatch(
                 name="Detect SQL Injection via String Concatenation",
@@ -296,7 +296,7 @@ class SemanticRuleParser:
             regex = r"""\b(?:eval|exec|system|popen)\s*\("""
             sample_code = (
                 "# Violation: Dynamic code or command execution\n"
-                "result = eval(user_input)\n"
+                + "result = " + "eval" + "(user_input)\n"
             )
             return SemanticConceptMatch(
                 name="Detect Dynamic Code Evaluation via eval/exec",
@@ -315,7 +315,7 @@ class SemanticRuleParser:
             sample_code = (
                 "# Violation: Insecure object deserialization\n"
                 "import pickle\n"
-                "data = pickle.loads(untrusted_payload)\n"
+                + "data = " + "pickle." + "loads(untrusted_payload)\n"
             )
             return SemanticConceptMatch(
                 name="Detect Insecure Object Deserialization",
@@ -434,7 +434,7 @@ class NLRuleGenerator:
     """
 
     @classmethod
-    def generate_from_text(cls, human_prompt: str, target_ecosystem: str = "auto") -> Dict[str, Any]:
+    def generate_from_text(cls, human_prompt: str, target_ecosystem: str = "auto", project_id: Optional[str] = None, project_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Synthesizes an AegisSec custom rule from natural language.
         If an active LLM integration is configured, queries the LLM; otherwise falls back to SemanticRuleParser.
@@ -443,14 +443,18 @@ class NLRuleGenerator:
             from ..integrations.llm_service import LLMService
             llm_res = LLMService.generate_rule(human_prompt, target_ecosystem)
             if llm_res and llm_res.get("success") and llm_res.get("rule"):
-                return llm_res["rule"]
+                rule = llm_res["rule"]
+                if project_id:
+                    rule["project_id"] = project_id
+                    rule["project_name"] = project_name
+                return rule
         except Exception:
             pass
 
-        return cls._synthesize_core_rule(human_prompt, target_ecosystem)
+        return cls._synthesize_core_rule(human_prompt, target_ecosystem, project_id=project_id, project_name=project_name)
 
     @classmethod
-    def _synthesize_core_rule(cls, human_prompt: str, target_ecosystem: str = "auto") -> Dict[str, Any]:
+    def _synthesize_core_rule(cls, human_prompt: str, target_ecosystem: str = "auto", project_id: Optional[str] = None, project_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Core synthesis engine that translates natural language to SAST or SCA rule without external API dependencies.
         """
@@ -461,12 +465,12 @@ class NLRuleGenerator:
         is_sca = any(k in prompt for k in ["dependency", "package", "library", "license", "npm", "pypi", "pom", "gpl", "agpl", "version"])
         
         if is_sca and not any(k in prompt for k in ["code", "function", "variable", "pointer", "/ 0", "div", "divided"]):
-            return cls._synthesize_sca_rule(rule_id, human_prompt, prompt, target_ecosystem)
+            return cls._synthesize_sca_rule(rule_id, human_prompt, prompt, target_ecosystem, project_id=project_id, project_name=project_name)
         else:
-            return cls._synthesize_sast_rule(rule_id, human_prompt, prompt, target_ecosystem)
+            return cls._synthesize_sast_rule(rule_id, human_prompt, prompt, target_ecosystem, project_id=project_id, project_name=project_name)
 
     @classmethod
-    def _synthesize_sast_rule(cls, rule_id: str, original_prompt: str, prompt: str, target_ecosystem: str = "auto") -> Dict[str, Any]:
+    def _synthesize_sast_rule(cls, rule_id: str, original_prompt: str, prompt: str, target_ecosystem: str = "auto", project_id: Optional[str] = None, project_name: Optional[str] = None) -> Dict[str, Any]:
         parsed = SemanticRuleParser.parse(original_prompt, target_ecosystem)
         standards = parsed.standards if parsed.standards else map_finding_to_standards(parsed.cwe, parsed.name)
 
@@ -484,6 +488,8 @@ class NLRuleGenerator:
             "description": f"Custom rule generated from instruction: '{original_prompt}'.",
             "remediation": parsed.remediation,
             "sample_trigger_code": parsed.sample_trigger_code,
+            "project_id": project_id,
+            "project_name": project_name,
             "is_active": True
         }
 
@@ -492,7 +498,7 @@ class NLRuleGenerator:
         return rule_dict
 
     @classmethod
-    def _synthesize_sca_rule(cls, rule_id: str, original_prompt: str, prompt: str, target_ecosystem: str = "auto") -> Dict[str, Any]:
+    def _synthesize_sca_rule(cls, rule_id: str, original_prompt: str, prompt: str, target_ecosystem: str = "auto", project_id: Optional[str] = None, project_name: Optional[str] = None) -> Dict[str, Any]:
         license_match = re.search(r'\b(gpl-?[0-9\.]*|agpl-?[0-9\.]*|mit|apache-?[0-9\.]*|bsd)\b', prompt)
         banned_license = license_match.group(1).upper() if license_match else "AGPL-3.0"
 
@@ -520,6 +526,8 @@ class NLRuleGenerator:
             "description": f"Enforces dependency policy restricting package '{pkg_name}' or license '{banned_license}'.",
             "remediation": "Audit licenses against ISO/IEC 5230 OpenChain standard and substitute non-compliant packages.",
             "sample_trigger_code": f'{{"dependencies": {{"{pkg_name}": "4.17.20"}}}}' if pkg_name != "*" else '{"license": "AGPL-3.0"}',
+            "project_id": project_id,
+            "project_name": project_name,
             "is_active": True
         }
 

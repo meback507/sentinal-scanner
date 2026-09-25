@@ -55,8 +55,8 @@ RUN mkdir -p /app/data /app/reports /app/workspaces && \
     chown -R admin:sentinel /app/data /app/reports /app/workspaces && \
     chmod -R 775 /app/data /app/reports /app/workspaces
 
-# Switch to user root to guarantee storage mount permissions
-USER root
+# Switch to unprivileged admin user for secure container execution
+USER admin
 
 # Expose default HTTP port (overridable via $PORT in cloud environments)
 EXPOSE 8000

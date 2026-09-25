@@ -82,6 +82,12 @@ function showToast(message, type = "info") {
 
 // --- Navigation ---
 function navigate(viewName) {
+    if (viewName === "users" && state.currentUser && state.currentUser.role !== "admin") {
+        showToast("Access Denied: Only administrators have access to RBAC user management.", "error");
+        navigate("projects");
+        return;
+    }
+
     document.querySelectorAll(".page-container").forEach(el => el.classList.remove("active"));
     document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
 
@@ -106,6 +112,7 @@ function navigate(viewName) {
     if (viewName === "api-fuzzer") loadAPIFuzzerData();
     if (viewName === "llm-sec") loadLLMSecData();
     if (viewName === "sbom-drift") loadSBOMDriftData();
+    if (viewName === "deptree") loadDependencyTree();
     if (viewName === "sandbox") loadSandboxData();
 }
 
@@ -291,6 +298,20 @@ function updateUserDisplay() {
     if (roleEl) {
         roleEl.textContent = (state.currentUser.role || "admin").replace("_", " ");
     }
+    
+    // RBAC menu visibility: Only admin can access Users & RBAC view
+    const navUsers = document.getElementById("nav-users");
+    if (navUsers) {
+        navUsers.style.display = (state.currentUser && state.currentUser.role === "admin") ? "flex" : "none";
+    }
+
+    // Project creation button visibility: Only admin and security_engineer
+    const btnCreateProj = document.getElementById("btn-open-create-project");
+    if (btnCreateProj) {
+        const canCreate = state.currentUser && (state.currentUser.role === "admin" || state.currentUser.role === "security_engineer");
+        btnCreateProj.style.display = canCreate ? "inline-flex" : "none";
+    }
+
     updateDeveloperIsolationUI();
 }
 
@@ -330,6 +351,63 @@ function renderProjectsDropdown() {
         if (p.id === state.activeProjectId) opt.selected = true;
         sel.appendChild(opt);
     });
+
+    renderRuleProjectSelectors();
+}
+
+function renderRuleProjectSelectors() {
+    const nlSel = document.getElementById("nl-rule-project-select");
+    const builderSel = document.getElementById("builder-rule-project");
+
+    if (nlSel) {
+        const prevVal = nlSel.value || state.activeProjectId || "";
+        nlSel.innerHTML = '<option value="">🌐 All Projects (Global Scope)</option>';
+        (state.projects || []).forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = `📁 ${p.name}`;
+            if (p.id === prevVal) opt.selected = true;
+            nlSel.appendChild(opt);
+        });
+        onRuleScopeChange();
+    }
+
+    if (builderSel) {
+        const prevVal = builderSel.value || state.activeProjectId || "";
+        builderSel.innerHTML = '<option value="">🌐 All Projects (Global Policy)</option>';
+        (state.projects || []).forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = `📁 ${p.name}`;
+            if (p.id === prevVal) opt.selected = true;
+            builderSel.appendChild(opt);
+        });
+    }
+}
+
+function onRuleScopeChange() {
+    const sel = document.getElementById("nl-rule-project-select");
+    const badge = document.getElementById("nl-rule-scope-badge");
+    const hint = document.getElementById("nl-rule-scope-hint");
+    if (!sel) return;
+
+    if (sel.value) {
+        const proj = (state.projects || []).find(p => p.id === sel.value);
+        const pName = proj ? proj.name : sel.value;
+        if (badge) {
+            badge.textContent = `PROJECT: ${pName.toUpperCase()}`;
+            badge.style.background = "rgba(56, 189, 248, 0.2)";
+            badge.style.color = "#38bdf8";
+        }
+        if (hint) hint.textContent = `Rule executes only during scans of '${pName}'`;
+    } else {
+        if (badge) {
+            badge.textContent = "GLOBAL RULE (ALL PROJECTS)";
+            badge.style.background = "rgba(148, 163, 184, 0.2)";
+            badge.style.color = "#94a3b8";
+        }
+        if (hint) hint.textContent = "Rule executes across all projects in the organization";
+    }
 }
 
 function onProjectChange(projectId) {
@@ -341,6 +419,8 @@ function onProjectChange(projectId) {
     }
     loadFindings();
     loadDashboardStats();
+    renderRuleProjectSelectors();
+    loadCustomRules();
     showToast(`Active project changed to: ${state.projects.find(p => p.id === projectId)?.name || projectId}`);
 }
 
@@ -351,17 +431,19 @@ function renderProjectsTable() {
 
     if (state.projects.length === 0) {
         tbody.innerHTML = `<tr>
-            <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 48px 20px;">
-                <div style="font-size: 15px; margin-bottom: 12px; color: var(--text-secondary); font-weight: 500;">No security projects configured yet.</div>
+            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 48px 20px;">
+                <div style="font-size: 15px; margin-bottom: 12px; color: var(--text-secondary); font-weight: 500;">No security projects configured or assigned to your account.</div>
+                ${state.currentUser && (state.currentUser.role === 'admin' || state.currentUser.role === 'security_engineer') ? `
                 <button class="btn btn-primary btn-sm" onclick="openCreateProjectModal()" style="display: inline-flex; align-items: center; gap: 6px;">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     <span>Create Your First Project</span>
-                </button>
+                </button>` : `<div style="font-size: 13px; color: var(--text-muted);">Please contact your security administrator to assign you to a project.</div>`}
             </td>
         </tr>`;
         return;
     }
 
+    const isAdmin = state.currentUser && state.currentUser.role === "admin";
     state.projects.forEach(p => {
         const tr = document.createElement("tr");
         const patBadge = p.git_pat_configured 
@@ -370,16 +452,21 @@ function renderProjectsTable() {
 
         const lastScanned = p.last_scanned ? new Date(p.last_scanned).toLocaleString() : "Never";
         const riskColor = p.risk_score > 70 ? "#ef4444" : p.risk_score > 40 ? "#f97316" : "#10b981";
+        const memberCount = p.member_count !== undefined ? p.member_count : (p.members ? p.members.length : 0);
+        const memberBadge = memberCount > 0
+            ? `<button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="openProjectMembersModal('${p.id}', '${p.name.replace(/'/g, "\\'")}')" style="color: #38bdf8; font-weight: 600;"><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 11px;">👥 ${memberCount} Member${memberCount !== 1 ? 's' : ''}</span></button>`
+            : `<button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="openProjectMembersModal('${p.id}', '${p.name.replace(/'/g, "\\'")}')" style="color: #94a3b8;"><span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; font-size: 11px;">+ Assign Team</span></button>`;
 
         tr.innerHTML = `
             <td>
-                <strong>${p.name}</strong>
-                <div style="font-size: 12px; color: var(--text-muted);">${p.description || "No description"}</div>
+                <strong>${escapeHtml(p.name)}</strong>
+                <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(p.description || "No description")}</div>
             </td>
             <td>
-                <code style="font-size: 12px;">${p.git_url || "Local / Demo Repository"}</code>
-                <div style="font-size: 11px; color: var(--text-secondary);">Branch: <strong>${p.git_branch}</strong></div>
+                <code style="font-size: 12px;">${escapeHtml(p.git_url || "Local / Demo Repository")}</code>
+                <div style="font-size: 11px; color: var(--text-secondary);">Branch: <strong>${escapeHtml(p.git_branch)}</strong></div>
             </td>
+            <td>${memberBadge}</td>
             <td>${patBadge}</td>
             <td>
                 <div style="display: flex; align-items: center; gap: 6px;">
@@ -390,20 +477,57 @@ function renderProjectsTable() {
             <td><strong style="color: ${riskColor};">${p.risk_score || 0.0}</strong> / 100</td>
             <td style="font-size: 13px; color: var(--text-secondary);">${lastScanned}</td>
             <td style="text-align: right; display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap;">
+                <button class="btn btn-secondary btn-sm" onclick="openProjectMembersModal('${p.id}', '${p.name.replace(/'/g, "\\'")}')" title="Manage project team members" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">👥 Team</button>
                 <button class="btn btn-secondary btn-sm" onclick="openBadgeModal('${p.id}', '${p.name.replace(/'/g, "\\'")}')" title="Get dynamic SVG status badge for GitHub README" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">🛡️ Badge</button>
                 <button class="btn btn-secondary btn-sm" onclick="triggerScanForProject('${p.id}')">Scan</button>
                 <button class="btn btn-secondary btn-sm" onclick="triggerScanForProject('${p.id}', 'secrets')" title="Scan secrets & credentials only" style="color: #f472b6; border-color: rgba(244, 114, 182, 0.4);">🔑 Secrets</button>
-                <button class="btn btn-danger btn-sm" onclick="promptDeleteProject('${p.id}', '${p.name.replace(/'/g, "\\'")}')">Delete</button>
+                ${isAdmin ? `<button class="btn btn-danger btn-sm" onclick="promptDeleteProject('${p.id}', '${p.name.replace(/'/g, "\\'")}')">Delete</button>` : ''}
             </td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-function openCreateProjectModal() {
+async function openCreateProjectModal() {
     openModal("modal-new-project");
     const nameInput = document.getElementById("new-proj-name");
     if (nameInput) setTimeout(() => nameInput.focus(), 60);
+
+    const membersGroup = document.getElementById("new-proj-members-group");
+    const membersList = document.getElementById("new-proj-members-list");
+    if (!membersList) return;
+    
+    // Only admin can assign other members; if not admin, hide member selection
+    if (state.currentUser && state.currentUser.role !== "admin") {
+        if (membersGroup) membersGroup.style.display = "none";
+        return;
+    }
+    if (membersGroup) membersGroup.style.display = "block";
+
+    if (!state.users || state.users.length === 0) {
+        try {
+            const resp = await fetch("/api/users");
+            if (resp.ok) {
+                state.users = await resp.json();
+            }
+        } catch (e) {
+            console.error("Could not fetch users for project creation:", e);
+        }
+    }
+
+    const eligibleUsers = (state.users || []).filter(u => u.role !== "admin");
+    if (eligibleUsers.length === 0) {
+        membersList.innerHTML = `<span style="font-size: 12px; color: var(--text-muted);">No non-admin users registered yet. You can assign users later.</span>`;
+    } else {
+        membersList.innerHTML = eligibleUsers.map(u => `
+            <label class="d-flex align-items-center gap-2 mb-2 p-1" style="font-size: 13px; cursor: pointer;">
+                <input type="checkbox" name="new-proj-member" value="${u.id}" class="form-check-input mt-0">
+                <span style="font-weight: 500; color: #fff;">${escapeHtml(u.username)}</span>
+                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-size: 10px;">${escapeHtml(u.role)}</span>
+                <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(u.email)}</span>
+            </label>
+        `).join("");
+    }
 }
 
 async function submitCreateProject(e) {
@@ -419,6 +543,11 @@ async function submitCreateProject(e) {
         return;
     }
 
+    const assignedUsers = [];
+    document.querySelectorAll("input[name='new-proj-member']:checked").forEach(cb => {
+        assignedUsers.push(cb.value);
+    });
+
     const submitBtn = e.target.querySelector('button[type="submit"]');
     if (submitBtn) {
         submitBtn.disabled = true;
@@ -430,7 +559,8 @@ async function submitCreateProject(e) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                name, description: desc, git_url: gitUrl, git_branch: branch, git_pat: pat
+                name, description: desc, git_url: gitUrl, git_branch: branch, git_pat: pat,
+                assigned_users: assignedUsers.length > 0 ? assignedUsers : undefined
             })
         });
 
@@ -441,7 +571,6 @@ async function submitCreateProject(e) {
             document.getElementById("form-create-project").reset();
             await loadProjects();
             state.activeProjectId = created.id;
-            // Trigger automatic initial scan
             triggerScanForProject(created.id);
         } else {
             const err = await resp.json().catch(() => ({}));
@@ -454,6 +583,165 @@ async function submitCreateProject(e) {
             submitBtn.disabled = false;
             submitBtn.textContent = "Create Project";
         }
+    }
+}
+
+let currentMembersProjectId = null;
+
+async function openProjectMembersModal(projectId, projectName) {
+    currentMembersProjectId = projectId;
+    const titleEl = document.getElementById("project-members-modal-title");
+    const idInput = document.getElementById("project-members-project-id");
+    const addSection = document.getElementById("project-members-add-section");
+    
+    if (titleEl) titleEl.textContent = projectName || projectId;
+    if (idInput) idInput.value = projectId;
+
+    const isAdmin = state.currentUser && state.currentUser.role === "admin";
+    if (addSection) {
+        addSection.style.display = isAdmin ? "block" : "none";
+    }
+
+    openModal("modal-project-members");
+    await loadProjectMembers(projectId);
+}
+
+async function loadProjectMembers(projectId) {
+    const tbody = document.getElementById("project-members-tbody");
+    const userSelect = document.getElementById("project-members-user-select");
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading team members...</td></tr>';
+    }
+
+    try {
+        const resp = await fetch(`/api/projects/${projectId}/members`);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.detail || "Failed to fetch project members", "error");
+            if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--severity-critical); padding: 20px;">${escapeHtml(err.detail || "Error loading members")}</td></tr>`;
+            return;
+        }
+
+        const members = await resp.json();
+        const isAdmin = state.currentUser && state.currentUser.role === "admin";
+
+        if (!members || members.length === 0) {
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">No members explicitly assigned yet. Only Administrators can view this project.</td></tr>`;
+            }
+        } else if (tbody) {
+            tbody.innerHTML = members.map(m => {
+                const assignedDate = m.assigned_at ? new Date(m.assigned_at).toLocaleDateString() : "Active";
+                return `
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-weight: 700;">@</span>
+                                <strong>${escapeHtml(m.username || m.user_id)}</strong>
+                            </div>
+                        </td>
+                        <td style="color: var(--text-secondary); font-size: 13px;">${escapeHtml(m.email || "-")}</td>
+                        <td>
+                            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); text-transform: uppercase; font-size: 10px;">
+                                ${escapeHtml(m.role || "developer")}
+                            </span>
+                        </td>
+                        <td style="font-size: 12px; color: var(--text-muted);">${assignedDate}</td>
+                        <td style="text-align: right;">
+                            ${isAdmin ? `
+                                <button class="btn btn-danger btn-sm" onclick="removeProjectMember('${m.user_id}', '${escapeHtml(m.username || m.user_id)}')" style="font-size: 11px; padding: 3px 8px;">
+                                    Unassign
+                                </button>
+                            ` : `<span style="font-size: 11px; color: var(--text-muted);">Assigned</span>`}
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        // If admin, populate the user select dropdown with users not yet assigned
+        if (isAdmin && userSelect) {
+            if (!state.users || state.users.length === 0) {
+                try {
+                    const uResp = await fetch("/api/users");
+                    if (uResp.ok) state.users = await uResp.json();
+                } catch (e) {
+                    console.error("Failed loading users for member selector:", e);
+                }
+            }
+
+            const assignedUserIds = new Set((members || []).map(m => m.user_id));
+            const availableUsers = (state.users || []).filter(u => u.role !== "admin" && !assignedUserIds.has(u.id));
+
+            userSelect.innerHTML = '<option value="">-- Select User to Assign --</option>';
+            availableUsers.forEach(u => {
+                const opt = document.createElement("option");
+                opt.value = u.id;
+                opt.textContent = `${u.username} (${u.email} - ${u.role})`;
+                userSelect.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.error("Error loading project members:", e);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--severity-critical); padding: 20px;">Network error loading team members.</td></tr>';
+    }
+}
+
+async function addSelectedUserToProject() {
+    const projectId = currentMembersProjectId || document.getElementById("project-members-project-id")?.value;
+    const userSelect = document.getElementById("project-members-user-select");
+    const roleSelect = document.getElementById("project-members-role-select");
+    const userId = userSelect?.value;
+    const role = roleSelect?.value || "developer";
+
+    if (!projectId || !userId) {
+        showToast("Please select a user to assign to this project", "error");
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/projects/${projectId}/members`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId, role })
+        });
+
+        if (resp.ok) {
+            showToast("User successfully assigned to project!", "success");
+            await loadProjectMembers(projectId);
+            await loadProjects();
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.detail || "Failed to assign user to project", "error");
+        }
+    } catch (e) {
+        showToast("Network error assigning user", "error");
+    }
+}
+
+async function removeProjectMember(userId, username) {
+    const projectId = currentMembersProjectId || document.getElementById("project-members-project-id")?.value;
+    if (!projectId || !userId) return;
+
+    if (!confirm(`Are you sure you want to remove ${username || 'this user'} from this project? They will immediately lose access to all its findings and scans.`)) {
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/projects/${projectId}/members/${userId}`, {
+            method: "DELETE"
+        });
+
+        if (resp.ok) {
+            showToast(`User '${username}' removed from project.`, "success");
+            await loadProjectMembers(projectId);
+            await loadProjects();
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.detail || "Failed to remove user from project", "error");
+        }
+    } catch (e) {
+        showToast("Network error removing user", "error");
     }
 }
 
@@ -1906,11 +2194,13 @@ async function generateRuleFromPrompt() {
     const btn = document.getElementById("btn-generate-rule");
     if (btn) btn.disabled = true;
 
+    const targetProjectId = document.getElementById("nl-rule-project-select")?.value || "";
+
     try {
         const resp = await fetch("/api/rules/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: promptInput })
+            body: JSON.stringify({ prompt: promptInput, project_id: targetProjectId || null })
         });
 
         if (resp.ok) {
@@ -1925,8 +2215,10 @@ async function generateRuleFromPrompt() {
                 codeBox.value = rule.sample_trigger_code;
             }
 
-            const creator = rule.created_by || "AegisSec Synthesizer";
-            showToast(`Rule synthesized successfully via ${creator}!`, "success");
+            const creator = rule.created_by || "Sentinel AI Synthesizer";
+            const targetName = (state.projects || []).find(p => p.id === targetProjectId)?.name;
+            const scopeNote = targetName ? ` for project '${targetName}'` : " globally";
+            showToast(`Rule synthesized successfully${scopeNote} via ${creator}!`, "success");
         } else {
             const errData = await resp.json().catch(() => ({}));
             showToast(errData.detail || "Failed to synthesize rule", "error");
@@ -1993,6 +2285,7 @@ async function saveActiveRule() {
     }
 
     const syncToYaml = document.getElementById("check-sync-to-yaml")?.checked !== false;
+    const targetProjectId = document.getElementById("nl-rule-project-select")?.value || "";
 
     try {
         let ruleObj = activeGeneratedRule;
@@ -2009,7 +2302,13 @@ async function saveActiveRule() {
             ruleObj.yaml_representation = editor.value;
         }
 
-        const url = `/api/rules?sync_to_yaml=${syncToYaml}${state.activeProjectId ? `&project_id=${state.activeProjectId}` : ''}`;
+        ruleObj.project_id = targetProjectId || null;
+        if (targetProjectId) {
+            const p = (state.projects || []).find(x => x.id === targetProjectId);
+            if (p) ruleObj.project_name = p.name;
+        }
+
+        const url = `/api/rules?sync_to_yaml=${syncToYaml}${targetProjectId ? `&project_id=${targetProjectId}` : ''}`;
         const resp = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -2017,9 +2316,11 @@ async function saveActiveRule() {
         });
 
         if (resp.ok) {
+            const projObj = (state.projects || []).find(x => x.id === targetProjectId);
+            const scopeDesc = projObj ? `for project '${projObj.name}'` : "globally across all projects";
             const msg = syncToYaml
-                ? "Custom rule saved to catalog & synced to .sentinel/rules.yaml!"
-                : "Custom rule saved and activated for all future scans!";
+                ? `Custom rule saved ${scopeDesc} & synced to .sentinel/rules.yaml!`
+                : `Custom rule saved and activated ${scopeDesc}!`;
             showToast(msg, "success");
             await loadCustomRules();
         } else {
@@ -2028,6 +2329,23 @@ async function saveActiveRule() {
     } catch (e) {
         showToast("Error saving rule", "error");
     }
+}
+
+let currentRulesScopeFilter = "all";
+
+function filterRulesTableByScope(scope) {
+    currentRulesScopeFilter = scope;
+    ["all", "project", "global"].forEach(s => {
+        const btn = document.getElementById(`btn-filter-rules-${s}`);
+        if (btn) {
+            if (s === scope) {
+                btn.classList.add("active");
+            } else {
+                btn.classList.remove("active");
+            }
+        }
+    });
+    renderCustomRulesTable();
 }
 
 async function loadCustomRules() {
@@ -2047,19 +2365,40 @@ function renderCustomRulesTable() {
     if (!tbody) return;
     tbody.innerHTML = "";
 
-    if (state.customRules.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">No custom platform rules active in database. Click "View rules.yaml" to inspect project rules!</td></tr>';
+    let rulesToDisplay = state.customRules || [];
+    if (currentRulesScopeFilter === "project") {
+        rulesToDisplay = rulesToDisplay.filter(r => r.project_id === state.activeProjectId);
+    } else if (currentRulesScopeFilter === "global") {
+        rulesToDisplay = rulesToDisplay.filter(r => !r.project_id || r.project_id === "global");
+    }
+
+    if (rulesToDisplay.length === 0) {
+        const activeProjName = state.projects.find(p => p.id === state.activeProjectId)?.name || "Active Project";
+        const emptyMsg = currentRulesScopeFilter === "project"
+            ? `No custom rules specifically assigned to ${activeProjName}.`
+            : (currentRulesScopeFilter === "global"
+                ? "No global custom rules found."
+                : 'No custom rules found matching current filter. Click "Synthesize Rule" or "Rule Studio" to create one!');
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">${escapeHtml(emptyMsg)}</td></tr>`;
         return;
     }
 
-    state.customRules.forEach(r => {
+    rulesToDisplay.forEach(r => {
         const tr = document.createElement("tr");
+
+        let projectBadge = `<span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); font-weight: 500;"><i class="bi bi-globe me-1"></i>Global (All)</span>`;
+        if (r.project_id) {
+            const pName = r.project_name || state.projects.find(p => p.id === r.project_id)?.name || r.project_id;
+            projectBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-weight: 500;"><i class="bi bi-folder-check me-1"></i>${escapeHtml(pName)}</span>`;
+        }
+
         tr.innerHTML = `
             <td><code>${escapeHtml(r.id)}</code></td>
             <td>
                 <strong>${escapeHtml(r.name)}</strong>
                 <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(r.nl_prompt || r.description || '')}</div>
             </td>
+            <td>${projectBadge}</td>
             <td><span class="badge" style="background: rgba(255,255,255,0.06);">${(r.rule_category || 'sast').toUpperCase()}</span></td>
             <td><span class="badge badge-${(r.severity || 'medium').toLowerCase()}">${escapeHtml(r.severity || 'MEDIUM')}</span></td>
             <td><code>${escapeHtml(r.cwe || 'CWE-699')}</code></td>
@@ -2810,7 +3149,7 @@ async function loadUsers() {
             tbody.innerHTML = "";
 
             if (!users || users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 30px;">No users registered.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">No users registered.</td></tr>';
                 return;
             }
 
@@ -2828,10 +3167,24 @@ async function loadUsers() {
                 const safeRole = escapeHtml(u.role);
                 const isDefaultAdmin = u.username === "admin";
 
+                let projectsScopeHtml = "";
+                if (u.role === "admin") {
+                    projectsScopeHtml = `<span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-weight: 600;">Global (All Projects)</span>`;
+                } else if (u.assigned_projects && u.assigned_projects.length > 0) {
+                    projectsScopeHtml = u.assigned_projects.map(pid => {
+                        const proj = (state.projects || []).find(p => p.id === pid);
+                        const name = proj ? proj.name : pid;
+                        return `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); margin-right: 4px; margin-bottom: 2px;">${escapeHtml(name)}</span>`;
+                    }).join("");
+                } else {
+                    projectsScopeHtml = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">No Projects Assigned</span>`;
+                }
+
                 tr.innerHTML = `
                     <td><strong>${safeUsername}</strong></td>
                     <td>${safeEmail}</td>
                     <td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-weight: 600;">${safeRole.toUpperCase()}</span></td>
+                    <td>${projectsScopeHtml}</td>
                     <td style="font-size: 12px; color: var(--text-secondary);">${privMap[u.role] || 'Standard Access'}</td>
                     <td style="font-size: 13px; color: var(--text-muted);">${new Date(u.created_at).toLocaleDateString()}</td>
                     <td style="text-align: right; white-space: nowrap;">
@@ -2857,7 +3210,36 @@ async function loadUsers() {
     }
 }
 
-function openCreateUserModal() {
+function onUserRoleChange(mode) {
+    const roleSelect = document.getElementById(mode === "create" ? "new-user-role" : "update-user-role");
+    const groupEl = document.getElementById(mode === "create" ? "create-user-projects-group" : "update-user-projects-group");
+    const hintEl = document.getElementById(mode === "create" ? "create-user-projects-hint" : "update-user-projects-hint");
+    if (!roleSelect || !groupEl) return;
+
+    const role = roleSelect.value;
+    if (role === "admin") {
+        if (hintEl) {
+            hintEl.textContent = "Administrators have global enterprise access across all projects automatically.";
+            hintEl.style.color = "#c084fc";
+        }
+        const checkboxes = groupEl.querySelectorAll("input[type='checkbox']");
+        checkboxes.forEach(cb => {
+            cb.checked = true;
+            cb.disabled = true;
+        });
+    } else {
+        if (hintEl) {
+            hintEl.textContent = "Non-admin users will strictly ONLY view, inspect findings, run scans, and export reports for checked projects.";
+            hintEl.style.color = "var(--text-muted)";
+        }
+        const checkboxes = groupEl.querySelectorAll("input[type='checkbox']");
+        checkboxes.forEach(cb => {
+            cb.disabled = false;
+        });
+    }
+}
+
+async function openCreateUserModal() {
     const form = document.getElementById("form-create-user");
     if (form) form.reset();
     const errBox = document.getElementById("create-user-error");
@@ -2865,6 +3247,27 @@ function openCreateUserModal() {
         errBox.classList.add("d-none");
         errBox.textContent = "";
     }
+
+    if (!state.projects || state.projects.length === 0) {
+        await loadProjects();
+    }
+
+    const projectsList = document.getElementById("create-user-projects-list");
+    if (projectsList) {
+        if (!state.projects || state.projects.length === 0) {
+            projectsList.innerHTML = `<span style="font-size: 12px; color: var(--text-muted);">No projects available to assign.</span>`;
+        } else {
+            projectsList.innerHTML = state.projects.map(p => `
+                <label class="d-flex align-items-center gap-2 mb-2 p-1" style="font-size: 13px; cursor: pointer;">
+                    <input type="checkbox" name="create-user-project" value="${p.id}" class="form-check-input mt-0">
+                    <span style="font-weight: 500; color: #fff;">${escapeHtml(p.name)}</span>
+                    <span style="font-size: 11px; color: var(--text-muted);">(${escapeHtml(p.git_branch || 'main')})</span>
+                </label>
+            `).join("");
+        }
+    }
+
+    onUserRoleChange("create");
     openModal("modal-create-user");
     const userField = document.getElementById("new-user-username");
     if (userField) setTimeout(() => userField.focus(), 60);
@@ -2897,6 +3300,13 @@ async function submitCreateUser(event) {
         email = `${email}@sentinel.internal`;
     }
 
+    const assigned_projects = [];
+    if (role !== "admin") {
+        document.querySelectorAll("input[name='create-user-project']:checked").forEach(cb => {
+            assigned_projects.push(cb.value);
+        });
+    }
+
     const btn = document.getElementById("btn-submit-create-user");
     if (btn) {
         btn.disabled = true;
@@ -2907,7 +3317,7 @@ async function submitCreateUser(event) {
         const resp = await fetch("/api/users", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, email, password, role })
+            body: JSON.stringify({ username, email, password, role, assigned_projects })
         });
 
         if (resp.ok) {
@@ -2945,10 +3355,10 @@ function openUpdateUserModalById(id) {
         showToast(`User '${id}' not found in system state.`, "error");
         return;
     }
-    openUpdateUserModal(u.id, u.username, u.email, u.role);
+    openUpdateUserModal(u.id, u.username, u.email, u.role, u.assigned_projects || []);
 }
 
-function openUpdateUserModal(id, username, email, role) {
+async function openUpdateUserModal(id, username, email, role, assignedProjects = []) {
     const errBox = document.getElementById("update-user-error");
     if (errBox) {
         errBox.classList.add("d-none");
@@ -2967,6 +3377,27 @@ function openUpdateUserModal(id, username, email, role) {
     if (roleField) roleField.value = role || "developer";
     if (pwdField) pwdField.value = "";
 
+    if (!state.projects || state.projects.length === 0) {
+        await loadProjects();
+    }
+
+    const assignedSet = new Set(assignedProjects || []);
+    const projectsList = document.getElementById("update-user-projects-list");
+    if (projectsList) {
+        if (!state.projects || state.projects.length === 0) {
+            projectsList.innerHTML = `<span style="font-size: 12px; color: var(--text-muted);">No projects available.</span>`;
+        } else {
+            projectsList.innerHTML = state.projects.map(p => `
+                <label class="d-flex align-items-center gap-2 mb-2 p-1" style="font-size: 13px; cursor: pointer;">
+                    <input type="checkbox" name="update-user-project" value="${p.id}" class="form-check-input mt-0" ${assignedSet.has(p.id) ? 'checked' : ''}>
+                    <span style="font-weight: 500; color: #fff;">${escapeHtml(p.name)}</span>
+                    <span style="font-size: 11px; color: var(--text-muted);">(${escapeHtml(p.git_branch || 'main')})</span>
+                </label>
+            `).join("");
+        }
+    }
+
+    onUserRoleChange("update");
     openModal("modal-update-user");
     if (emailField) setTimeout(() => emailField.focus(), 60);
 }
@@ -3012,6 +3443,16 @@ async function submitUpdateUser(event) {
     const payload = { role, email };
     if (password && password.trim()) {
         payload.password = password.trim();
+    }
+
+    if (role !== "admin") {
+        const assigned_projects = [];
+        document.querySelectorAll("input[name='update-user-project']:checked").forEach(cb => {
+            assigned_projects.push(cb.value);
+        });
+        payload.assigned_projects = assigned_projects;
+    } else {
+        payload.assigned_projects = [];
     }
 
     const btn = document.getElementById("btn-submit-update-user");
@@ -4393,6 +4834,11 @@ async function simulateRASPAttack(vector) {
 // 3. INTERACTIVE CUSTOM RULE STUDIO & LIVE SANDBOX
 // ==============================================================================
 function openRuleBuilderModal() {
+    renderRuleProjectSelectors();
+    const builderSel = document.getElementById("builder-rule-project");
+    if (builderSel && state.activeProjectId) {
+        builderSel.value = state.activeProjectId;
+    }
     openModal("modal-rule-builder");
 }
 
@@ -4461,6 +4907,7 @@ async function saveCustomRuleFromBuilder() {
     const owasp = document.getElementById("builder-rule-owasp")?.value || "OWASP:A01:2021";
     const regex = document.getElementById("builder-rule-regex")?.value;
     const remediation = document.getElementById("builder-rule-remediation")?.value || "Review and patch.";
+    const targetProjectId = document.getElementById("builder-rule-project")?.value || "";
 
     if (!name || !regex) {
         showToast("Please provide Rule Title and Regex Pattern", "warning");
@@ -4481,14 +4928,17 @@ async function saveCustomRuleFromBuilder() {
                 standards: [owasp, "ISO-27001:A.8.28"],
                 regex,
                 description: `Custom inspection rule: ${name}`,
-                remediation
+                remediation,
+                project_id: targetProjectId || null
             })
         });
         if (resp.ok) {
             const data = await resp.json();
-            showToast(`🚀 Rule '${name}' activated globally!`, "success");
+            const projObj = (state.projects || []).find(p => p.id === targetProjectId);
+            const scopeNote = projObj ? `for project '${projObj.name}'` : "globally across all projects";
+            showToast(`🚀 Rule '${name}' activated ${scopeNote}!`, "success");
             closeModal("modal-rule-builder");
-            if (typeof loadRules === 'function') await loadRules();
+            if (typeof loadCustomRules === 'function') await loadCustomRules();
         } else {
             const err = await resp.json();
             showToast(err.detail || "Error saving custom rule", "error");
@@ -5165,9 +5615,39 @@ function exportAttackPathReport() {
 let cachedComplianceData = null;
 let activeComplianceTab = "soc2";
 
+async function populateComplianceProjectSelect() {
+    const sel = document.getElementById("compliance-project-select");
+    if (!sel) return;
+    if (state.projects && state.projects.length > 0) {
+        sel.innerHTML = state.projects.map(p => `
+            <option value="${p.id}" ${p.id === state.activeProjectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>
+        `).join("");
+    } else {
+        sel.innerHTML = `<option value="">Default Project</option>`;
+    }
+}
+
+async function onComplianceProjectChange() {
+    const sel = document.getElementById("compliance-project-select");
+    const pid = sel ? sel.value : null;
+    if (pid) state.activeProjectId = pid;
+    await loadRegulatoryComplianceData();
+}
+
+function downloadExecutiveComplianceDossier() {
+    const sel = document.getElementById("compliance-project-select");
+    const pid = (sel && sel.value) || state.activeProjectId || (state.projects[0] && state.projects[0].id) || "default";
+    showToast("Generating Executive Compliance Crosswalk Dossier...", "info");
+    window.open(`/api/projects/${pid}/compliance/export/html`, "_blank");
+}
+
 async function loadRegulatoryComplianceData() {
+    await populateComplianceProjectSelect();
+    const sel = document.getElementById("compliance-project-select");
+    const pid = (sel && sel.value) || state.activeProjectId || "";
     try {
-        const resp = await fetch("/api/compliance/matrix");
+        const url = pid ? `/api/projects/${pid}/compliance/matrix` : "/api/compliance/matrix";
+        const resp = await fetch(url);
         if (!resp.ok) return;
         const data = await resp.json();
         cachedComplianceData = data;
@@ -5723,5 +6203,405 @@ ${isSolved ? '\n[+] VERIFICATION PASSED: Security vulnerability has been success
         showToast("Sandbox execution failed", "error");
     }
 }
+
+
+/* ==========================================================================
+   INTERACTIVE DEPENDENCY TREE & TRANSITIVE BLAST RADIUS CONTROLLER
+   ========================================================================== */
+let currentDeptreeFilter = "all";
+let cachedDeptreeData = null;
+
+async function populateDeptreeProjectSelect() {
+    const sel = document.getElementById("deptree-project-select");
+    if (!sel) return;
+    if (state.projects && state.projects.length > 0) {
+        sel.innerHTML = state.projects.map(p => `
+            <option value="${p.id}" ${p.id === state.activeProjectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>
+        `).join("");
+    } else {
+        sel.innerHTML = `<option value="">Default Project</option>`;
+    }
+}
+
+async function onDeptreeProjectChange() {
+    const sel = document.getElementById("deptree-project-select");
+    if (sel && sel.value) {
+        state.activeProjectId = sel.value;
+    }
+    await loadDependencyTree();
+}
+
+function exportDeptreeSBOM() {
+    const sel = document.getElementById("deptree-project-select");
+    const pid = (sel && sel.value) || state.activeProjectId || (state.projects[0] && state.projects[0].id) || "default";
+    showToast("Exporting CycloneDX Software Bill of Materials...", "info");
+    window.open(`/api/projects/${pid}/export/cyclonedx`, "_blank");
+}
+
+function setDeptreeFilter(filter) {
+    currentDeptreeFilter = filter;
+    ["all", "vuln", "direct", "transitive"].forEach(f => {
+        const btn = document.getElementById(`deptree-filter-${f}`);
+        if (btn) btn.classList.toggle("active", f === filter);
+    });
+    renderDeptreeView();
+}
+
+function filterDeptreeView() {
+    renderDeptreeView();
+}
+
+async function loadDependencyTree() {
+    await populateDeptreeProjectSelect();
+    const sel = document.getElementById("deptree-project-select");
+    const pid = (sel && sel.value) || state.activeProjectId || (state.projects[0] && state.projects[0].id) || "default";
+    try {
+        const resp = await fetch(`/api/projects/${pid}/dependencies/tree`);
+        if (!resp.ok) {
+            showToast("Failed to load dependency tree for project", "error");
+            return;
+        }
+        const data = await resp.json();
+        cachedDeptreeData = data;
+
+        // Populate KPIs
+        const sum = data.summary || {};
+        const totalEl = document.getElementById("deptree-stat-total");
+        if (totalEl) totalEl.textContent = sum.total_dependencies || 0;
+        const dirEl = document.getElementById("deptree-stat-direct");
+        if (dirEl) dirEl.textContent = sum.direct_count || 0;
+        const transEl = document.getElementById("deptree-stat-transitive");
+        if (transEl) transEl.textContent = sum.transitive_count || 0;
+        const vulnEl = document.getElementById("deptree-stat-vuln");
+        if (vulnEl) vulnEl.textContent = sum.vulnerable_count || 0;
+        const blastEl = document.getElementById("deptree-stat-blast");
+        if (blastEl) blastEl.textContent = sum.max_blast_radius || 1;
+
+        renderDeptreeView();
+    } catch (e) {
+        console.error("Error loading dependency tree:", e);
+    }
+}
+
+function renderDeptreeView() {
+    if (!cachedDeptreeData) return;
+    const tree = cachedDeptreeData.tree;
+    const canvas = document.getElementById("deptree-tree-canvas");
+    const showingCount = document.getElementById("deptree-showing-count");
+    const searchVal = (document.getElementById("deptree-search-input")?.value || "").toLowerCase().trim();
+
+    // Render Blast Radius Table
+    const blastList = document.getElementById("deptree-blast-list");
+    const blastItems = cachedDeptreeData.blast_radius_analysis || [];
+    if (blastList) {
+        if (!blastItems || blastItems.length === 0) {
+            blastList.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 30px 10px;">✅ No vulnerable supply chain libraries detected in active dependency hierarchy.</div>`;
+        } else {
+            blastList.innerHTML = blastItems.map(item => {
+                const sevColor = item.severity === 'CRITICAL' ? '#ef4444' : item.severity === 'HIGH' ? '#f59e0b' : '#38bdf8';
+                return `
+                <div class="deptree-blast-card">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                        <div>
+                            <span style="font-weight: 700; color: #fff; font-size: 13px;">${escapeHtml(item.package)}</span>
+                            <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">v${escapeHtml(item.version)}</span>
+                        </div>
+                        <span class="badge" style="background: ${sevColor}20; color: ${sevColor}; border: 1px solid ${sevColor}; font-size: 10px;">${item.severity}</span>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">
+                        Exposure Path: <code style="color: #cbd5e1; font-size: 10px;">${escapeHtml(item.path_display)}</code>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                        <span style="color: #f87171; font-weight: 600;">💥 Blast Radius: ${item.blast_radius_score} downstream</span>
+                        <span style="color: #38bdf8;">${item.cve_id ? escapeHtml(item.cve_id) : 'Known Flaw'}</span>
+                    </div>
+                    <div style="margin-top: 6px; font-size: 11px; color: #94a3b8; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 6px;">
+                        💡 <em>${escapeHtml(item.remediation)}</em>
+                    </div>
+                </div>`;
+            }).join("");
+        }
+    }
+
+    // Render Interactive Tree Nodes
+    if (canvas && tree) {
+        let renderedNodesCount = 0;
+        function renderNodeHtml(node, depth = 0) {
+            const isRoot = node.type === 'root';
+            const name = node.name || 'component';
+            const ver = node.version && node.version !== 'root' ? `v${node.version}` : '';
+            const sev = node.severity || 'CLEAN';
+            const isVuln = sev !== 'CLEAN';
+            const typeLabel = node.type || 'direct';
+
+            // Filter check
+            let matchesFilter = true;
+            if (currentDeptreeFilter === 'vuln' && !isVuln && !isRoot) matchesFilter = false;
+            if (currentDeptreeFilter === 'direct' && node.type !== 'direct' && !isRoot) matchesFilter = false;
+            if (currentDeptreeFilter === 'transitive' && node.type !== 'transitive' && !isRoot) matchesFilter = false;
+
+            if (searchVal && !isRoot) {
+                const text = `${name} ${ver} ${sev} ${node.cve_id || ''}`.toLowerCase();
+                if (!text.includes(searchVal)) matchesFilter = false;
+            }
+
+            const sevColor = sev === 'CRITICAL' ? '#ef4444' : sev === 'HIGH' ? '#f59e0b' : sev === 'MEDIUM' ? '#eab308' : '#10b981';
+            const sevBg = isVuln ? `${sevColor}15` : 'rgba(255,255,255,0.04)';
+            const sevBorder = isVuln ? `${sevColor}60` : 'rgba(255,255,255,0.08)';
+
+            let childrenHtml = '';
+            if (node.children && node.children.length > 0) {
+                childrenHtml = `
+                <div class="deptree-node-wrap">
+                    ${node.children.map(child => renderNodeHtml(child, depth + 1)).join('')}
+                </div>`;
+            }
+
+            if (!matchesFilter && (!childrenHtml || !childrenHtml.includes('deptree-node-card'))) {
+                return '';
+            }
+
+            renderedNodesCount++;
+            return `
+            <div style="margin: 4px 0;">
+                <div class="deptree-node-card" style="background: ${sevBg}; border-color: ${sevBorder};" onclick="inspectDeptreeNode('${escapeHtml(node.id)}')">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 14px;">${isRoot ? '🏢' : isVuln ? '⚠️' : '📦'}</span>
+                        <strong style="color: #fff; font-size: 12px;">${escapeHtml(name)}</strong>
+                        <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${escapeHtml(ver)}</span>
+                        ${!isRoot ? `<span class="badge" style="background: rgba(255,255,255,0.08); color: #94a3b8; font-size: 9px;">${typeLabel}</span>` : ''}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        ${node.blast_radius && node.blast_radius > 1 ? `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; font-size: 9px;">💥 Blast: ${node.blast_radius}</span>` : ''}
+                        ${node.cve_id ? `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 9px;">${escapeHtml(node.cve_id)}</span>` : ''}
+                        <span class="badge" style="background: ${sevColor}20; color: ${sevColor}; border: 1px solid ${sevColor}; font-size: 9px;">${sev}</span>
+                    </div>
+                </div>
+                ${childrenHtml}
+            </div>`;
+        }
+
+        canvas.innerHTML = renderNodeHtml(tree);
+        if (showingCount) showingCount.textContent = `Showing ${renderedNodesCount} components in exposure hierarchy`;
+    }
+}
+
+function inspectDeptreeNode(nodeId) {
+    if (!cachedDeptreeData || !cachedDeptreeData.nodes) return;
+    const node = cachedDeptreeData.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    showToast(`Inspecting ${node.name}: ${node.severity} (${node.type || 'component'})`, "info");
+}
+
+
+/* ==========================================================================
+   CONVERSATIONAL SECURITY COPILOT CHATBOT CONTROLLER
+   ========================================================================== */
+let copilotChatHistory = [];
+let isCopilotThinking = false;
+
+function toggleCopilot() {
+    const win = document.getElementById("copilot-chat-window");
+    if (!win) return;
+    const isHidden = win.style.display === "none" || !win.style.display;
+    win.style.display = isHidden ? "flex" : "none";
+    if (isHidden) {
+        updateCopilotActiveProject();
+        const input = document.getElementById("copilot-user-input");
+        if (input) setTimeout(() => input.focus(), 150);
+    }
+}
+
+function updateCopilotActiveProject() {
+    const lbl = document.getElementById("copilot-active-project-label");
+    if (!lbl) return;
+    const activeP = state.projects.find(p => p.id === state.activeProjectId);
+    lbl.textContent = activeP ? activeP.name : (state.projects[0] ? state.projects[0].name : "Enterprise");
+}
+
+function clearCopilotChat() {
+    copilotChatHistory = [];
+    const container = document.getElementById("copilot-messages");
+    if (container) {
+        container.innerHTML = `
+            <div class="copilot-msg copilot-msg-assistant">
+                <div class="copilot-msg-avatar">🛡️</div>
+                <div class="copilot-msg-bubble">
+                    <p>Conversation reset. How can I assist you with your project security posture or vulnerabilities?</p>
+                </div>
+            </div>`;
+    }
+    showToast("Copilot conversation cleared", "info");
+}
+
+function handleCopilotKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendCopilotMessage();
+    }
+}
+
+function sendCopilotSuggestedPrompt(promptText) {
+    const input = document.getElementById("copilot-user-input");
+    if (input) {
+        input.value = promptText;
+        sendCopilotMessage();
+    }
+}
+
+async function sendCopilotMessage() {
+    const input = document.getElementById("copilot-user-input");
+    if (!input || isCopilotThinking) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = "";
+    input.style.height = "auto";
+
+    const container = document.getElementById("copilot-messages");
+    if (!container) return;
+
+    // Append User Message
+    container.innerHTML += `
+        <div class="copilot-msg copilot-msg-user">
+            <div class="copilot-msg-avatar">👤</div>
+            <div class="copilot-msg-bubble">
+                <p>${escapeHtml(text)}</p>
+            </div>
+        </div>`;
+
+    // Append Thinking Indicator
+    const thinkingId = `copilot-thinking-${Date.now()}`;
+    container.innerHTML += `
+        <div class="copilot-msg copilot-msg-assistant" id="${thinkingId}">
+            <div class="copilot-msg-avatar">🛡️</div>
+            <div class="copilot-msg-bubble" style="display: flex; align-items: center; gap: 8px;">
+                <span class="spinner-border spinner-border-sm" style="color: #38bdf8;" role="status"></span>
+                <span style="font-size: 12px; color: #94a3b8;">Analyzing security telemetry &amp; generating guidance...</span>
+            </div>
+        </div>`;
+    container.scrollTop = container.scrollHeight;
+    isCopilotThinking = true;
+
+    try {
+        const activePid = state.activeProjectId || (state.projects[0] && state.projects[0].id) || null;
+        const resp = await fetch("/api/copilot/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                message: text,
+                project_id: activePid,
+                history: copilotChatHistory
+            })
+        });
+
+        const thinkingEl = document.getElementById(thinkingId);
+        if (thinkingEl) thinkingEl.remove();
+
+        if (resp.ok) {
+            const data = await resp.json();
+            copilotChatHistory.push({ role: "user", content: text });
+            copilotChatHistory.push({ role: "assistant", content: data.reply });
+
+            // Render Markdown text & Code
+            const formattedReply = renderCopilotMarkdown(data.reply);
+
+            // Render Actions
+            let actionsHtml = "";
+            if (data.suggested_actions && data.suggested_actions.length > 0) {
+                actionsHtml = `<div class="copilot-action-row">` +
+                    data.suggested_actions.map(act => `
+                        <button class="copilot-action-btn" onclick="executeCopilotAction('${act.action}')">${escapeHtml(act.label)}</button>
+                    `).join("") +
+                `</div>`;
+            }
+
+            container.innerHTML += `
+                <div class="copilot-msg copilot-msg-assistant">
+                    <div class="copilot-msg-avatar">🛡️</div>
+                    <div class="copilot-msg-bubble">
+                        ${formattedReply}
+                        ${actionsHtml}
+                    </div>
+                </div>`;
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            container.innerHTML += `
+                <div class="copilot-msg copilot-msg-assistant">
+                    <div class="copilot-msg-avatar">🛡️</div>
+                    <div class="copilot-msg-bubble" style="color: #f87171;">
+                        ⚠️ ${escapeHtml(err.detail || "Error connecting to Security Copilot service.")}
+                    </div>
+                </div>`;
+        }
+    } catch (e) {
+        const thinkingEl = document.getElementById(thinkingId);
+        if (thinkingEl) thinkingEl.remove();
+        container.innerHTML += `
+            <div class="copilot-msg copilot-msg-assistant">
+                <div class="copilot-msg-avatar">🛡️</div>
+                <div class="copilot-msg-bubble" style="color: #f87171;">
+                    ⚠️ Network error querying Security Copilot.
+                </div>
+            </div>`;
+    } finally {
+        isCopilotThinking = false;
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function renderCopilotMarkdown(md) {
+    if (!md) return "";
+    let html = escapeHtml(md);
+
+    // Format Code Blocks
+    html = html.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        return `<pre><code>${code.trim()}</code></pre>`;
+    });
+
+    // Format Inline Code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Headers
+    html = html.replace(/^#### (.*$)/gim, '<h5 style="color: #fff; font-size: 13px; margin: 10px 0 4px 0;">$1</h5>');
+    html = html.replace(/^### (.*$)/gim, '<h4 style="color: #38bdf8; font-size: 14px; margin: 12px 0 6px 0;">$1</h4>');
+    html = html.replace(/^## (.*$)/gim, '<h3 style="color: #fff; font-size: 15px; margin: 14px 0 6px 0;">$1</h3>');
+
+    // Bold & Italics
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // Lists
+    html = html.replace(/^\* (.*$)/gim, '• $1<br>');
+    html = html.replace(/^- (.*$)/gim, '• $1<br>');
+
+    // Blockquotes
+    html = html.replace(/^> (.*$)/gim, '<div style="border-left: 2px solid #38bdf8; padding-left: 8px; color: #94a3b8; margin: 6px 0;">$1</div>');
+
+    // Newlines to breaks for paragraphs
+    html = html.replace(/\n\n/g, '<br><br>');
+
+    return html;
+}
+
+function executeCopilotAction(action) {
+    if (action === "navigate_triage") navigate("triage");
+    else if (action === "navigate_deptree") navigate("deptree");
+    else if (action === "navigate_compliance") navigate("compliance");
+    else if (action === "navigate_patch") {
+        navigate("triage");
+        showToast("Open Batch Patching via the Patch Studio button in Vulnerabilities tab", "info");
+    }
+    else if (action === "download_compliance_dossier") downloadExecutiveComplianceDossier();
+    else if (action === "export_sarif") {
+        const pid = state.activeProjectId || (state.projects[0] && state.projects[0].id) || "default";
+        window.open(`/api/projects/${pid}/export/sarif`, "_blank");
+    }
+    else if (action === "export_cyclonedx") exportDeptreeSBOM();
+    else if (action === "prompt_summary") sendCopilotSuggestedPrompt("Summarize the security posture and critical risks of this project.");
+    else if (action === "prompt_dependencies") sendCopilotSuggestedPrompt("Which dependencies have the largest blast radius and known CVEs?");
+    else if (action === "prompt_compliance") sendCopilotSuggestedPrompt("What is our compliance readiness score for SOC 2 and ISO 27001?");
+}
+
 
 
