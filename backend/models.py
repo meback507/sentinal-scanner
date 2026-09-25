@@ -431,3 +431,9 @@ class PlaygroundRunRequest(BaseModel):
     user_code: str
     test_payload: Optional[str] = None
 
+
+class IDEScanFileRequest(BaseModel):
+    file_path: str
+    content: str
+    project_id: Optional[str] = None
+

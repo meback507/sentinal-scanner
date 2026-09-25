@@ -278,6 +278,38 @@ rules:
         cmd_ids = [c["command"] for c in manifest["contributes"]["commands"]]
         self.assertIn("sentinel.openRulesYaml", cmd_ids)
 
+    def test_09_ide_api_endpoints(self):
+        """Test /api/ide/workspace-findings, /api/ide/scan-file, and /api/ide/rules."""
+        # 1. Test workspace findings
+        r1 = self.client.get("/api/ide/workspace-findings")
+        self.assertEqual(r1.status_code, 200)
+        self.assertIn("findings", r1.json())
+
+        # 2. Test real-time single file scanning
+        sample_code = """
+import os
+def run_command(user_input):
+    os.system("echo " + user_input)
+    api_key = "sk-proj-FAKE-SECRET-KEY-12345678901234"
+"""
+        r2 = self.client.post("/api/ide/scan-file", json={
+            "file_path": "backend/app.py",
+            "content": sample_code
+        })
+        self.assertEqual(r2.status_code, 200)
+        data = r2.json()
+        self.assertIn("diagnostics", data)
+        self.assertGreater(data["total"], 0)
+        # Should catch os.system command injection and/or api_key
+        codes = [d["code"] for d in data["diagnostics"]]
+        self.assertTrue(any("RCE" in c or "SEC" in c or "INJ" in c for c in codes))
+
+        # 3. Test unauthenticated IDE rules endpoint
+        r3 = self.client.get("/api/ide/rules")
+        self.assertEqual(r3.status_code, 200)
+        self.assertIn("rules", r3.json())
+        self.assertGreater(r3.json()["total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

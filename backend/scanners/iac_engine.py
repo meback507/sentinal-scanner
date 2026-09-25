@@ -214,34 +214,43 @@ class IaCEngine:
 
                 try:
                     with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                    file_content = "".join(lines)
+                        file_content = f.read()
+                    findings.extend(self.scan_content(file_content, rel_path, file_type))
                 except Exception:
                     continue
 
-                # Run pattern-based checks
-                for rule in self.rules:
-                    if file_type not in rule.get("file_types", []):
-                        continue
+        return findings
 
-                    regex_pat = rule.get("regex")
-                    if regex_pat:
-                        for idx, line in enumerate(lines):
-                            if re.search(regex_pat, line):
-                                finding = self._build_finding(rule, rel_path, idx + 1, idx + 1, line.strip())
-                                findings.append(finding)
-                    else:
-                        # Structural check (e.g. missing USER or missing HEALTHCHECK in Dockerfile)
-                        if rule["id"] == "IAC-DOCKER-001":
-                            has_user = any(re.match(r"""(?i)^\s*USER\s+\S+""", l) for l in lines)
-                            if not has_user and len(lines) > 0:
-                                finding = self._build_finding(rule, rel_path, 1, 1, lines[0].strip())
-                                findings.append(finding)
-                        elif rule["id"] == "IAC-DOCKER-005":
-                            has_hc = any(re.match(r"""(?i)^\s*HEALTHCHECK\b""", l) for l in lines)
-                            if not has_hc and len(lines) > 0:
-                                finding = self._build_finding(rule, rel_path, 1, 1, lines[0].strip())
-                                findings.append(finding)
+    def scan_content(self, content: str, rel_path: str, file_type: str = None) -> List[Dict[str, Any]]:
+        fname = os.path.basename(rel_path)
+        if not file_type:
+            file_type = self._classify_file(fname, rel_path)
+        if not file_type:
+            return []
+
+        lines = content.splitlines(keepends=True)
+        findings = []
+        for rule in self.rules:
+            if file_type not in rule.get("file_types", []):
+                continue
+
+            regex_pat = rule.get("regex")
+            if regex_pat:
+                for idx, line in enumerate(lines):
+                    if re.search(regex_pat, line):
+                        finding = self._build_finding(rule, rel_path, idx + 1, idx + 1, line.strip())
+                        findings.append(finding)
+            else:
+                if rule["id"] == "IAC-DOCKER-001":
+                    has_user = any(re.match(r"""(?i)^\s*USER\s+\S+""", l) for l in lines)
+                    if not has_user and len(lines) > 0:
+                        finding = self._build_finding(rule, rel_path, 1, 1, lines[0].strip())
+                        findings.append(finding)
+                elif rule["id"] == "IAC-DOCKER-005":
+                    has_hc = any(re.match(r"""(?i)^\s*HEALTHCHECK\b""", l) for l in lines)
+                    if not has_hc and len(lines) > 0:
+                        finding = self._build_finding(rule, rel_path, 1, 1, lines[0].strip())
+                        findings.append(finding)
 
         return findings
 

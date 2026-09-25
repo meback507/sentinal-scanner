@@ -215,14 +215,33 @@ class SASTEngine:
         return findings
 
     def scan_file(self, full_path: str, rel_path: str, language: str) -> List[Dict[str, Any]]:
-        findings = []
         try:
             with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
-                lines = f.readlines()
+                content = f.read()
+            return self.scan_content(content, rel_path, language)
         except Exception:
-            return findings
+            return []
 
-        content = "".join(lines)
+    def scan_content(self, content: str, rel_path: str, language: str = None) -> List[Dict[str, Any]]:
+        findings = []
+        if not language:
+            fname = os.path.basename(rel_path).lower()
+            if fname.endswith(".py"): language = "python"
+            elif fname.endswith((".js", ".jsx")): language = "javascript"
+            elif fname.endswith((".ts", ".tsx")): language = "typescript"
+            elif fname.endswith(".java"): language = "java"
+            elif fname.endswith(".go"): language = "go"
+            elif fname.endswith((".c", ".h")): language = "c"
+            elif fname.endswith((".cpp", ".hpp", ".cc", ".cxx")): language = "cpp"
+            elif fname.endswith(".php"): language = "php"
+            elif fname.endswith(".rb"): language = "ruby"
+            elif fname.endswith((".sh", ".bash")): language = "shell"
+            elif fname.endswith(".tf"): language = "terraform"
+            elif fname.endswith((".yaml", ".yml")): language = "yaml"
+            elif "dockerfile" in fname: language = "dockerfile"
+            else: language = "text"
+
+        lines = content.splitlines(keepends=True)
 
         # 1. Pattern / Regex Rule Matching
         for rule in self.rules:

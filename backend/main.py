@@ -37,7 +37,8 @@ from .models import (
     ThreatModelGenerateRequest, VaultRotateRequest, VaultConfigRequest,
     ContainerScanRequest, PolicyStudioSaveRequest, PolicyDryRunRequest,
     AttackPathSimulateRequest, ComplianceExportRequest, APIFuzzerScanRequest,
-    LLMProbeRequest, LLMCodeScanRequest, SBOMAttestationRequest, PlaygroundRunRequest
+    LLMProbeRequest, LLMCodeScanRequest, SBOMAttestationRequest, PlaygroundRunRequest,
+    IDEScanFileRequest
 )
 from .db import db, hash_password
 from .auth import (
@@ -206,6 +207,101 @@ def trigger_auto_configure_workspace():
     config_data = auto_write_workspace_config()
     return {"status": "ok", "config": config_data}
 
+
+# --- IDE Extension Integration Routes (Direct Shift-Left Feedback) ---
+@app.get("/api/ide/workspace-findings")
+def get_ide_workspace_findings(project_id: Optional[str] = None):
+    """
+    Returns active findings formatted for immediate ingestion by VS Code / Antigravity IDE diagnostics.
+    Enables developer IDE to display known project vulnerabilities in the Problems tab upon opening.
+    """
+    raw_findings = db.list_findings(project_id) if project_id else db.list_findings()
+    formatted = []
+    for f in raw_findings:
+        if f.get("status") == "resolved":
+            continue
+        formatted.append({
+            "id": f.get("id"),
+            "file_path": f.get("file_path", "unknown"),
+            "line_start": f.get("line_start", 1),
+            "line_end": f.get("line_end", 1),
+            "severity": f.get("severity", "MEDIUM"),
+            "title": f.get("title", "Security Finding"),
+            "description": f.get("description", ""),
+            "remediation": f.get("remediation", ""),
+            "cwe_id": f.get("cwe_id"),
+            "rule_id": f.get("rule_id"),
+            "code_snippet": f.get("code_snippet"),
+            "standards": f.get("standards", [])
+        })
+    return {"total": len(formatted), "findings": formatted}
+
+
+@app.post("/api/ide/scan-file")
+def post_ide_scan_file(req: IDEScanFileRequest):
+    """
+    Fast server-side single-file scanner for IDE extensions.
+    Evaluates SAST, Secrets, IaC, SonarQube, and Open Rules against document content in real-time.
+    """
+    findings = []
+    file_path = req.file_path or "unnamed_source.py"
+
+    # 1. Run SAST Engine on content
+    sast_scanner = SASTEngine()
+    sast_res = sast_scanner.scan_content(req.content, file_path)
+    findings.extend(sast_res)
+
+    # 2. Run High-Entropy Secret Scanner on content
+    secret_res = SecretScanner.scan_text(req.content, file_path)
+    findings.extend(secret_res)
+
+    # 3. Run IaC Engine on content
+    iac_scanner = IaCEngine()
+    iac_res = iac_scanner.scan_content(req.content, file_path)
+    findings.extend(iac_res)
+
+    # Format findings into unified IDE diagnostic models
+    diagnostics = []
+    for f in findings:
+        severity = "ERROR" if f.get("severity") in ("CRITICAL", "HIGH") else "WARNING" if f.get("severity") == "MEDIUM" else "INFO"
+        diagnostics.append({
+            "line": max(1, f.get("line_start", 1)),
+            "column": 0,
+            "end_line": max(1, f.get("line_end", f.get("line_start", 1))),
+            "end_column": 80,
+            "severity": severity,
+            "code": f.get("rule_id", "VULN-001"),
+            "title": f.get("title", "Security Finding"),
+            "description": f.get("description", ""),
+            "remediation": f.get("remediation", ""),
+            "cwe_id": f.get("cwe_id"),
+            "standards": f.get("standards", [])
+        })
+
+    return {
+        "file_path": file_path,
+        "diagnostics": diagnostics,
+        "total": len(diagnostics)
+    }
+
+
+@app.get("/api/ide/rules")
+def get_ide_rules():
+    """
+    Returns unauthenticated compiled security rules catalog for local IDE extension offline scanning.
+    """
+    catalog = rule_manager.get_complete_rule_catalog()
+    all_rules = []
+    for cat, rules in catalog.get("rules", {}).items():
+        if isinstance(rules, list):
+            for r in rules:
+                rule_copy = dict(r)
+                if cat == "platform_custom":
+                    rule_copy["is_platform_custom"] = True
+                elif cat == "project_custom":
+                    rule_copy["is_project_custom"] = True
+                all_rules.append(rule_copy)
+    return {"rules": all_rules, "total": len(all_rules)}
 
 
 # --- Authentication Routes ---

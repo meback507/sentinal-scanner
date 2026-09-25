@@ -111,6 +111,12 @@
         "title": "Sentinel: View / Open .sentinel/rules.yaml",
         "category": "Sentinel AppSec",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "sentinel.syncWorkspaceFindings",
+        "title": "Sentinel: Sync Server Findings into IDE Problems",
+        "category": "Sentinel AppSec",
+        "icon": "$(sync)"
       }
     ],
     "menus": {

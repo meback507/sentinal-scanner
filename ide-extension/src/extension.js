@@ -16,6 +16,9 @@ let projectCustomRules = [];
 let diagnosticCollection = null;
 let rulesTreeProvider = null;
 let statusBarItem = null;
+let serverFindingsByFile = new Map(); // normalizedFilePath -> Array<vscode.Diagnostic>
+let serverFindingsRaw = []; // raw array of findings
+
 
 // --- Built-in Default Security Rules ---
 const DEFAULT_RULES = [
@@ -331,6 +334,90 @@ const DEFAULT_RULES = [
         description: "Deserializing untrusted pickle streams allows arbitrary code execution via __reduce__ hooks.",
         remediation: "Use secure serialization formats like JSON, Protocol Buffers, or HMAC-signed tokens."
     },
+    {
+        id: "XSS-001",
+        name: "DOM-Based Cross-Site Scripting via innerHTML",
+        type: "sast",
+        severity: "HIGH",
+        languages: ["javascript", "typescript"],
+        cwe: "CWE-79",
+        standards: ["OWASP:A03:2021", "ISO-27001:A.8.28"],
+        regex: "(?:\\.innerHTML|\\.outerHTML|document\\.write)\\s*=",
+        description: "Writing untrusted input directly into innerHTML or document.write creates DOM XSS vulnerabilities.",
+        remediation: "Use textContent, innerText, or parameterized framework templates to safely encode browser output."
+    },
+    {
+        id: "CRY-001",
+        name: "Use of Broken Cryptographic Hash Algorithm (MD5/SHA1)",
+        type: "sast",
+        severity: "MEDIUM",
+        languages: ["python", "javascript", "typescript", "java", "c", "cpp", "go"],
+        cwe: "CWE-327",
+        standards: ["OWASP:A02:2021", "NIST-SP-800-131A"],
+        regex: "(?:hashlib\\.md5|hashlib\\.sha1|crypto\\.createHash\\(['\"](?:md5|sha1)['\"]\\)|MD5_Init|SHA1_Init)",
+        description: "MD5 and SHA1 suffer from practical collision attacks and must not be used for security purposes.",
+        remediation: "Upgrade to SHA-256, SHA-3, or use Argon2id/bcrypt for password hashing."
+    },
+    {
+        id: "MISRA-001",
+        name: "MISRA C:2012 Rule 21.3 - Dynamic Memory Allocation in Safety-Critical Code",
+        type: "sast",
+        severity: "HIGH",
+        languages: ["c", "cpp"],
+        cwe: "CWE-401",
+        standards: ["MISRA-C:2012:Rule-21.3", "ISO-26262-6"],
+        regex: "\\b(?:malloc|calloc|realloc|free)\\s*\\(",
+        description: "Dynamic heap allocation introduces fragmentation and non-deterministic latency in safety-critical systems.",
+        remediation: "Allocate static memory buffers or pre-initialized object pools at boot."
+    },
+    {
+        id: "MISRA-002",
+        name: "MISRA C:2012 Rule 21.6 - Unbounded String Buffer Operation",
+        type: "sast",
+        severity: "HIGH",
+        languages: ["c", "cpp"],
+        cwe: "CWE-120",
+        standards: ["MISRA-C:2012:Rule-21.6", "ISO-27001:A.8.28"],
+        regex: "\\b(?:strcpy|strcat|sprintf|vsprintf|gets)\\s*\\(",
+        description: "Unbounded string operations do not check target buffer capacity, causing stack buffer overflows.",
+        remediation: "Use bounded string functions with explicit destination size limits: strncpy, snprintf, or strlcpy."
+    },
+    {
+        id: "OPEN-COMM-001",
+        name: "OWASP A01: Broken Access Control - Direct Insecure Object Reference (IDOR)",
+        type: "sast",
+        severity: "HIGH",
+        languages: ["python", "javascript", "typescript"],
+        cwe: "CWE-639",
+        standards: ["OWASP:A01:2021", "ISO-27001:A.8.28"],
+        regex: "(?:SELECT.*FROM.*WHERE\\s+id\\s*=\\s*(?:req\\.params|request\\.args)|find(?:ById)?\\s*\\(\\s*(?:req\\.params\\.id|request\\.args\\.get\\(['\"]id['\"]\\))\\s*\\)(?!.*user_id))",
+        description: "Fetching resources by client-supplied ID without verifying ownership allows unauthorized tenant access.",
+        remediation: "Scope queries to authenticated session identifiers: WHERE id = %s AND user_id = %s."
+    },
+    {
+        id: "SONAR-S2068",
+        name: "Hard-coded credentials are security-sensitive",
+        type: "sast",
+        severity: "HIGH",
+        languages: ["python", "javascript", "typescript", "java", "c", "cpp", "go"],
+        cwe: "CWE-798",
+        standards: ["OWASP:A07:2021", "ISO-27001:A.8.12", "SonarQube:S2068"],
+        regex: "(?:password|passwd|pwd|secret)\\s*[:=]\\s*['\"][^'\"]{8,}['\"]",
+        description: "Hard-coding sensitive credentials directly in source code allows anyone with repo access to impersonate identities.",
+        remediation: "Extract secrets into environment variables or cloud secret managers."
+    },
+    {
+        id: "DEP-SPRING4SHELL",
+        name: "Spring4Shell - Remote Code Execution via Insecure Data Binding",
+        type: "sca",
+        severity: "CRITICAL",
+        languages: ["xml", "json", "yaml"],
+        cwe: "CWE-94",
+        standards: ["CVE-2022-22965", "CISA-KEV", "OWASP:A06:2021"],
+        regex: "(?:spring-boot-starter-parent|spring-boot)[\"'>\\s]*[:<]?(?:2\\.[567]\\.[0-8]|5\\.[34]\\.[0-9])",
+        description: "Spring Framework vulnerable to class loader data binding RCE (CVE-2022-22965 / Spring4Shell).",
+        remediation: "Upgrade Spring Boot to >= 2.6.9, 2.7.1, or 3.0+ immediately."
+    },
 
     // Built-in IaC
     {
@@ -391,8 +478,12 @@ function activate(context) {
     rulesTreeProvider = new SentinelRulesTreeProvider();
     vscode.window.registerTreeDataProvider('sentinel.rulesExplorer', rulesTreeProvider);
 
-    // 4. Load Project Custom Rules from workspace
-    loadAllRules();
+    // 4. Load Project Custom Rules from workspace and synchronize findings
+    loadAllRules().then(() => {
+        syncWorkspaceFindingsFromServer().catch(err => {
+            console.warn('[Sentinel IDE] Initial workspace findings sync warning:', err.message);
+        });
+    });
 
     // 5. Register Extension Commands
     context.subscriptions.push(
@@ -408,9 +499,21 @@ function activate(context) {
             scanWorkspace();
         }),
 
-        vscode.commands.registerCommand('sentinel.refreshRules', () => {
-            loadAllRules();
-            vscode.window.showInformationMessage('🛡️ Sentinel: Refreshed security rules and project custom rules (.sentinel/rules.yaml).');
+        vscode.commands.registerCommand('sentinel.refreshRules', async () => {
+            await loadAllRules();
+            await syncWorkspaceFindingsFromServer();
+            vscode.window.showInformationMessage('🛡️ Sentinel: Refreshed security rules and synchronized IDE Problems findings.');
+        }),
+
+        vscode.commands.registerCommand('sentinel.syncWorkspaceFindings', async () => {
+            vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: '🛡️ Sentinel AppSec: Syncing server findings into IDE Problems...',
+                cancellable: false
+            }, async () => {
+                const count = await syncWorkspaceFindingsFromServer();
+                vscode.window.showInformationMessage(`🛡️ Sentinel: Loaded ${count} project vulnerability findings into IDE Problems tab.`);
+            });
         }),
 
         vscode.commands.registerCommand('sentinel.inspectRule', (rule) => {
@@ -1010,6 +1113,12 @@ async function loadAllRules() {
     // Purge stale diagnostics so deleted rules immediately stop reflecting in open code
     if (diagnosticCollection) {
         diagnosticCollection.clear();
+        // Re-populate server findings across workspace files
+        for (const [filePath, diags] of serverFindingsByFile.entries()) {
+            try {
+                diagnosticCollection.set(vscode.Uri.file(filePath), diags);
+            } catch (_) {}
+        }
     }
 
     // Re-evaluate all currently open/visible documents with updated rules
@@ -1027,6 +1136,187 @@ async function loadAllRules() {
         rulesTreeProvider.refresh();
     }
     updateStatusBar();
+}
+
+/**
+ * Resolves candidate backend URLs for auto-discovery (host loopback, docker network, LAN, config)
+ */
+function getServerCandidateUrls() {
+    const urls = [];
+    const config = vscode.workspace.getConfiguration('sentinel');
+    const confUrl = config.get('serverUrl');
+    if (confUrl) urls.push(confUrl);
+
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders && workspaceFolders.length > 0) {
+        const rootPath = workspaceFolders[0].uri.fsPath;
+        const autoConfigPaths = [
+            path.join(rootPath, '.sentinel', 'config.json'),
+            path.join(rootPath, '.sentinel', 'connection.json'),
+            path.join(rootPath, '.vscode', 'settings.json')
+        ];
+        for (const p of autoConfigPaths) {
+            if (fs.existsSync(p)) {
+                try {
+                    const raw = fs.readFileSync(p, 'utf-8');
+                    const parsed = JSON.parse(raw);
+                    const discovered = parsed.lanUrl || parsed.serverUrl || parsed['sentinel.serverUrl'];
+                    if (discovered) urls.push(discovered);
+                } catch (_) {}
+            }
+        }
+    }
+
+    urls.push('http://127.0.0.1:8000');
+    urls.push('http://localhost:8000');
+    urls.push('http://172.19.0.2:8000');
+    urls.push('http://192.168.0.101:8000');
+
+    // Deduplicate and filter out dead public WAN IPs
+    const deduped = [];
+    for (const u of urls) {
+        if (!u) continue;
+        const trimmed = u.trim().replace(/\/+$/, '');
+        if (!deduped.includes(trimmed) && !trimmed.includes('103.79.222.59')) {
+            deduped.push(trimmed);
+        }
+    }
+    return deduped;
+}
+
+/**
+ * Synchronizes scan findings directly from Sentinel backend server into VS Code / IDE Problems panel
+ */
+async function syncWorkspaceFindingsFromServer() {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return 0;
+    }
+    const rootPath = workspaceFolders[0].uri.fsPath;
+    const config = vscode.workspace.getConfiguration('sentinel');
+    const apiToken = config.get('apiToken');
+    const headers = {};
+    if (apiToken) {
+        headers['Authorization'] = `Bearer ${apiToken.trim()}`;
+    }
+
+    const candidateUrls = getServerCandidateUrls();
+    let findings = [];
+    let connectedServerUrl = null;
+
+    for (const targetUrl of candidateUrls) {
+        try {
+            // First check if there is an active matching project
+            let targetProjectId = null;
+            try {
+                const projUrl = buildApiUrl(targetUrl, '/api/projects');
+                const projRes = await makeApiRequest(projUrl, { method: 'GET', headers, timeout: 2500 });
+                if (projRes.statusCode >= 200 && projRes.statusCode < 300) {
+                    const projects = JSON.parse(projRes.body);
+                    if (Array.isArray(projects) && projects.length > 0) {
+                        const folderName = path.basename(rootPath).toLowerCase();
+                        let matched = projects.find(p => {
+                            const gitUrl = (p.git_url || '').toLowerCase();
+                            const pName = (p.name || '').toLowerCase();
+                            return gitUrl.includes('sentinal-scanner') || gitUrl.includes('appsec') ||
+                                   gitUrl.includes(folderName) || pName.includes(folderName);
+                        });
+                        if (!matched && projects.length > 0) {
+                            matched = [...projects].sort((a, b) => (b.total_findings || 0) - (a.total_findings || 0))[0];
+                        }
+                        if (matched) {
+                            targetProjectId = matched.id;
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            // Try dedicated workspace findings endpoint first if present
+            try {
+                const wsUrl = buildApiUrl(targetUrl, '/api/ide/workspace-findings');
+                const wsRes = await makeApiRequest(wsUrl, { method: 'GET', headers, timeout: 2500 });
+                if (wsRes.statusCode >= 200 && wsRes.statusCode < 300) {
+                    const wsData = JSON.parse(wsRes.body);
+                    if (wsData && Array.isArray(wsData.findings) && wsData.findings.length > 0) {
+                        findings = wsData.findings;
+                        connectedServerUrl = targetUrl;
+                        break;
+                    }
+                }
+            } catch (_) {}
+
+            // Fetch from /api/findings
+            const queryParam = targetProjectId ? `?project_id=${targetProjectId}&status=open` : '?status=open';
+            const findingsUrl = buildApiUrl(targetUrl, `/api/findings${queryParam}`);
+            const res = await makeApiRequest(findingsUrl, { method: 'GET', headers, timeout: 3500 });
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+                const data = JSON.parse(res.body);
+                if (Array.isArray(data)) {
+                    findings = data;
+                    connectedServerUrl = targetUrl;
+                    break;
+                }
+            }
+        } catch (err) {
+            // try next candidate
+        }
+    }
+
+    if (!findings || findings.length === 0) {
+        return 0;
+    }
+
+    serverFindingsRaw = findings;
+    serverFindingsByFile.clear();
+
+    let totalMapped = 0;
+    const fileDiagnosticsMap = new Map();
+
+    for (const f of findings) {
+        if (!f.file_path) continue;
+        const cleanRelPath = f.file_path.replace(/^\/+/, '');
+        const candidateAbs = path.isAbsolute(f.file_path) ? f.file_path : path.join(rootPath, cleanRelPath);
+
+        const sevStr = (f.severity || 'HIGH').toUpperCase();
+        let severity = vscode.DiagnosticSeverity.Warning;
+        if (sevStr === 'CRITICAL' || sevStr === 'HIGH') {
+            severity = vscode.DiagnosticSeverity.Error;
+        } else if (sevStr === 'LOW' || sevStr === 'INFO') {
+            severity = vscode.DiagnosticSeverity.Information;
+        }
+
+        const rawLine = f.line_start || f.line_number || 1;
+        const lineIdx = Math.max(0, parseInt(rawLine, 10) - 1);
+        const endLineIdx = Math.max(lineIdx, (parseInt(f.line_end || rawLine, 10) - 1));
+        const colIdx = Math.max(0, parseInt(f.column_number || f.column_start || 0, 10));
+        const range = new vscode.Range(lineIdx, colIdx, endLineIdx, 999);
+
+        const typeLabel = (f.type || f.scanner_type || 'VULN').toUpperCase();
+        const codeId = f.cve_id || f.cwe_id || f.rule_id || typeLabel;
+        const fixHint = f.remediation ? ` - Fix: ${f.remediation}` : (f.description ? ` - ${f.description}` : '');
+        const msg = `[${typeLabel}:${codeId}] ${f.title || 'Security flaw detected'}${fixHint}`;
+
+        const diag = new vscode.Diagnostic(range, msg, severity);
+        diag.source = `Sentinel Server (${typeLabel})`;
+        diag.code = codeId;
+
+        const normKey = path.normalize(candidateAbs);
+        if (!fileDiagnosticsMap.has(normKey)) {
+            fileDiagnosticsMap.set(normKey, []);
+        }
+        fileDiagnosticsMap.get(normKey).push(diag);
+        totalMapped++;
+    }
+
+    for (const [filePath, diags] of fileDiagnosticsMap.entries()) {
+        serverFindingsByFile.set(filePath, diags);
+        const fileUri = vscode.Uri.file(filePath);
+        diagnosticCollection.set(fileUri, diags);
+    }
+
+    console.log(`[Sentinel IDE] Synchronized ${totalMapped} findings across ${fileDiagnosticsMap.size} files into IDE Problems tab from ${connectedServerUrl}.`);
+    updateStatusBar();
+    return totalMapped;
 }
 
 /**
@@ -1210,7 +1500,38 @@ function scanDocument(document) {
         }
     }
 
-    diagnosticCollection.set(document.uri, diagnostics);
+    // Merge server-synced findings for this file
+    const merged = [...diagnostics];
+    const docPathNorm = path.normalize(document.fileName);
+    let serverDiagsForFile = serverFindingsByFile.get(docPathNorm);
+    if (!serverDiagsForFile) {
+        // Try fuzzy relative match (match filename and relative path suffix)
+        const baseName = path.basename(docPathNorm);
+        for (const [keyPath, diags] of serverFindingsByFile.entries()) {
+            if (path.basename(keyPath) === baseName) {
+                if (docPathNorm.endsWith(keyPath) || keyPath.endsWith(docPathNorm) || 
+                    docPathNorm.includes(path.normalize(keyPath).replace(/^.*?([/\\](?:frontend|backend|src|tests|scripts|config)[/\\])/, '$1'))) {
+                    serverDiagsForFile = diags;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (serverDiagsForFile && serverDiagsForFile.length > 0) {
+        for (const sd of serverDiagsForFile) {
+            // Avoid duplicates if local rule hit on the exact line with same code
+            const duplicate = diagnostics.some(ld =>
+                ld.range.start.line === sd.range.start.line &&
+                (ld.code === sd.code || (typeof ld.code === 'string' && typeof sd.code === 'string' && (ld.code.includes(sd.code) || sd.code.includes(ld.code))))
+            );
+            if (!duplicate) {
+                merged.push(sd);
+            }
+        }
+    }
+
+    diagnosticCollection.set(document.uri, merged);
     updateStatusBar();
 }
 
@@ -1501,5 +1822,7 @@ module.exports = {
     parseSimpleYamlRules,
     fetchCloudRules,
     loginToCloudServer,
-    compileRegex
+    compileRegex,
+    syncWorkspaceFindingsFromServer,
+    getServerCandidateUrls
 };
