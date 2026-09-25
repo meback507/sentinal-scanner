@@ -12,7 +12,7 @@ from ..prioritization.risk_engine import risk_engine
 
 
 # Built-in multi-language SAST rule patterns
-BUILTIN_SAST_RULES = [
+CORE_BUILTIN_RULES = [
     # --- Secrets & Credentials ---
     {
         "id": "SEC-001",
@@ -129,6 +129,11 @@ BUILTIN_SAST_RULES = [
     }
 ]
 
+from ..rules.sonar_rules_db import SONARQUBE_SAST_RULES
+
+# Built-in multi-language SAST default rule set: incorporates core security patterns and complete SonarQube RSPEC rules
+BUILTIN_SAST_RULES = list(CORE_BUILTIN_RULES) + [dict(r) for r in SONARQUBE_SAST_RULES]
+
 
 LANGUAGE_EXTENSIONS = {
     ".py": "python",
@@ -151,10 +156,21 @@ LANGUAGE_EXTENSIONS = {
 
 
 class SASTEngine:
-    def __init__(self, custom_rules: List[Dict[str, Any]] = None):
+    def __init__(self, custom_rules: List[Dict[str, Any]] = None, include_open_db: bool = True):
         self.rules = list(BUILTIN_SAST_RULES)
+        if include_open_db:
+            try:
+                from ..rules.open_rule_database import open_rule_db
+                open_rules = open_rule_db.get_all_rules(active_only=True)
+                for r in open_rules:
+                    if not any(existing.get("id") == r.get("id") for existing in self.rules):
+                        self.rules.append(r)
+            except Exception:
+                pass
         if custom_rules:
-            self.rules.extend(custom_rules)
+            for r in custom_rules:
+                if not any(existing.get("id") == r.get("id") for existing in self.rules):
+                    self.rules.append(r)
 
     def scan_directory(self, target_dir: str, max_files: int = 2000) -> List[Dict[str, Any]]:
         """
@@ -231,7 +247,7 @@ class SASTEngine:
                         vuln_name=rule.get("name")
                     )
 
-                    findings.append({
+                    finding_data = {
                         "rule_id": rule.get("id"),
                         "type": "sast",
                         "title": rule.get("name"),
@@ -255,7 +271,19 @@ class SASTEngine:
                         "sla_days": risk["sla_days"],
                         "standards": standards,
                         "status": "open"
-                    })
+                    }
+                    if rule.get("sonar_key"):
+                        finding_data["sonar_key"] = rule.get("sonar_key")
+                    if rule.get("sonar_rule_id"):
+                        finding_data["sonar_rule_id"] = rule.get("sonar_rule_id")
+                    if rule.get("sonar_type"):
+                        finding_data["sonar_type"] = rule.get("sonar_type")
+                    if rule.get("sonar_severity"):
+                        finding_data["sonar_severity"] = rule.get("sonar_severity")
+                    if rule.get("rule_source"):
+                        finding_data["rule_source"] = rule.get("rule_source")
+
+                    findings.append(finding_data)
             except Exception:
                 continue
 

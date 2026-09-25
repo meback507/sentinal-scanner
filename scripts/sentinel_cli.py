@@ -62,11 +62,13 @@ def list_rules(target_path: str = ".", output_json: bool = False) -> int:
 
     summary = catalog["summary"]
     print(f"{CLR_BOLD}Active Security Rules Catalog:{CLR_RESET} {summary['total_active_rules']} total active rules")
-    print(f"  • {CLR_CYAN}Built-in SAST:{CLR_RESET} {summary['sast_builtin']}")
-    print(f"  • {CLR_CYAN}Built-in IaC & Containers:{CLR_RESET} {summary['iac_builtin']}")
-    print(f"  • {CLR_CYAN}Built-in API Security:{CLR_RESET} {summary['api_builtin']}")
-    print(f"  • {CLR_YELLOW}Platform Custom (DB):{CLR_RESET} {summary['platform_custom']}")
-    print(f"  • {CLR_GREEN}Project Custom (.sentinel/rules.yaml):{CLR_RESET} {summary['project_custom']}\n")
+    print(f"  • {CLR_CYAN}Built-in SAST:{CLR_RESET} {summary.get('sast_builtin', 0)}")
+    print(f"  • {CLR_CYAN}Built-in IaC & Containers:{CLR_RESET} {summary.get('iac_builtin', 0)}")
+    print(f"  • {CLR_CYAN}Built-in API Security:{CLR_RESET} {summary.get('api_builtin', 0)}")
+    print(f"  • {CLR_MAGENTA}SonarQube RSPEC Rules:{CLR_RESET} {summary.get('sonarqube_rules', 0)}")
+    print(f"  • {CLR_BLUE}Open Community Database:{CLR_RESET} {summary.get('open_database_rules', 0)}")
+    print(f"  • {CLR_YELLOW}Platform Custom (DB):{CLR_RESET} {summary.get('platform_custom', 0)}")
+    print(f"  • {CLR_GREEN}Project Custom (.sentinel/rules.yaml):{CLR_RESET} {summary.get('project_custom', 0)}\n")
 
     print(f"{CLR_BOLD}{'ID':<18} {'TYPE':<8} {'SEV':<10} {'TITLE'}{CLR_RESET}")
     print("-" * 80)
@@ -87,12 +89,23 @@ def list_rules(target_path: str = ".", output_json: bool = False) -> int:
             color = CLR_RED if sev == "CRITICAL" else (CLR_YELLOW if sev == "HIGH" else CLR_BLUE)
             print(f"{CLR_YELLOW}{r.get('id', ''):<18}{CLR_RESET} {r.get('rule_category', 'sast').upper():<8} {color}{sev:<10}{CLR_RESET} {r.get('name', '')[:40]}")
 
-    # 3. Built-in SAST
+    # 3. SonarQube RSPEC Rules
+    if catalog["rules"].get("sonarqube_rules"):
+        print(f"\n{CLR_MAGENTA}{CLR_BOLD}--- SonarQube RSPEC Rules ({len(catalog['rules']['sonarqube_rules'])}) ---{CLR_RESET}")
+        for r in catalog["rules"]["sonarqube_rules"][:10]:
+            sev = r.get("severity", "HIGH")
+            color = CLR_RED if sev == "CRITICAL" else (CLR_YELLOW if sev == "HIGH" else CLR_BLUE)
+            sonar_key = r.get("sonar_key", "")
+            print(f"{CLR_MAGENTA}{r['id']:<18}{CLR_RESET} {'SONAR':<8} {color}{sev:<10}{CLR_RESET} [{sonar_key}] {r.get('name', '')[:38]}")
+        if len(catalog["rules"]["sonarqube_rules"]) > 10:
+            print(f"  ... and {len(catalog['rules']['sonarqube_rules']) - 10} more active SonarQube RSPEC rules")
+
+    # 4. Built-in SAST
     print(f"\n{CLR_CYAN}{CLR_BOLD}--- Built-in SAST Rules ({len(catalog['rules']['sast_builtin'])}) ---{CLR_RESET}")
     for r in catalog["rules"]["sast_builtin"]:
         print(f"{r['id']:<18} {'SAST':<8} {'HIGH':<10} {r.get('name', '')[:45]}")
 
-    # 4. Built-in IaC
+    # 5. Built-in IaC
     print(f"\n{CLR_CYAN}{CLR_BOLD}--- Built-in IaC & Container Rules ({len(catalog['rules']['iac_builtin'])}) ---{CLR_RESET}")
     for r in catalog["rules"]["iac_builtin"]:
         sev = r.get("severity", "HIGH")
@@ -103,7 +116,7 @@ def list_rules(target_path: str = ".", output_json: bool = False) -> int:
     return 0
 
 
-def run_scan(target_path: str, fail_on: str = "HIGH", output_json: bool = False, custom_rules_file: str = None) -> int:
+def run_scan(target_path: str, fail_on: str = "HIGH", output_json: bool = False, custom_rules_file: str = None, sonar_export: str = None) -> int:
     target_path = os.path.abspath(target_path)
     if not os.path.exists(target_path):
         if output_json:
@@ -114,7 +127,7 @@ def run_scan(target_path: str, fail_on: str = "HIGH", output_json: bool = False,
 
     if not output_json:
         print(f"{CLR_BOLD}Target Directory:{CLR_RESET} {target_path}")
-        print(f"{CLR_BOLD}Scanning engines:{CLR_RESET} SAST, High-Entropy Secrets, IaC/Containers, OpenAPI Specs\n")
+        print(f"{CLR_BOLD}Scanning engines:{CLR_RESET} SAST (Built-in + SonarQube RSPEC), High-Entropy Secrets, IaC/Containers, OpenAPI Specs\n")
 
     all_findings = []
 
@@ -123,7 +136,7 @@ def run_scan(target_path: str, fail_on: str = "HIGH", output_json: bool = False,
     secrets = secret_scanner.scan_directory(target_path)
     all_findings.extend(secrets)
 
-    # 2. SAST
+    # 2. SAST (with SonarQube rules loaded automatically)
     sast = SASTEngine()
     sast_res = sast.scan_directory(target_path)
     all_findings.extend(sast_res)
@@ -141,6 +154,22 @@ def run_scan(target_path: str, fail_on: str = "HIGH", output_json: bool = False,
     # Enrich with CISA KEV
     for f in all_findings:
         cisa_service.enrich_finding_with_cisa_kev(f)
+
+    # Export to SonarQube Generic Issue JSON if requested
+    if sonar_export:
+        try:
+            from backend.exporters.report_generator import ReportGenerator
+            proj_info = {"name": os.path.basename(target_path) or "appsec"}
+            sonar_json = ReportGenerator.generate_sonarqube_generic_issues(proj_info, None, all_findings)
+            out_file = os.path.abspath(sonar_export)
+            os.makedirs(os.path.dirname(out_file), exist_ok=True) if os.path.dirname(out_file) else None
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(sonar_json)
+            if not output_json:
+                print(f"{CLR_GREEN}{CLR_BOLD}✔ Exported SonarQube Generic Issue Report:{CLR_RESET} {out_file} ({len(all_findings)} issues)")
+        except Exception as e:
+            if not output_json:
+                print(f"{CLR_YELLOW}Warning exporting SonarQube report: {e}{CLR_RESET}")
 
     if output_json:
         print(json.dumps(all_findings, indent=2))
@@ -172,6 +201,8 @@ def run_scan(target_path: str, fail_on: str = "HIGH", output_json: bool = False,
             loc = "..." + loc[-30:]
 
         title = f.get("title", "")
+        if f.get("sonar_key"):
+            title = f"[{f.get('sonar_key')}] {title}"
         if f.get("cisa_kev"):
             title = f"[🚨 CISA KEV] {title}"
 
@@ -189,6 +220,50 @@ def run_scan(target_path: str, fail_on: str = "HIGH", output_json: bool = False,
     else:
         print(f"{CLR_GREEN}✔ Security Gate PASSED: No violations exceeding threshold '{fail_on.upper()}'.{CLR_RESET}\n")
         return 0
+
+
+def init_sonar(target_path: str = ".", project_key: str = None) -> int:
+    """
+    Initializes SonarQube integration by creating sonar-project.properties and GitHub Actions CI workflow.
+    """
+    target_path = os.path.abspath(target_path)
+    if not os.path.isdir(target_path):
+        print(f"{CLR_RED}Error: '{target_path}' is not a valid directory.{CLR_RESET}")
+        return 1
+
+    from backend.exporters.report_generator import ReportGenerator
+
+    folder_name = os.path.basename(target_path) or "appsec-project"
+    pk = project_key or folder_name.lower().replace(" ", "-")
+
+    proj_meta = {
+        "name": folder_name,
+        "git_branch": "main"
+    }
+
+    # 1. Write sonar-project.properties
+    props_content = ReportGenerator.generate_sonar_project_properties(proj_meta)
+    props_path = os.path.join(target_path, "sonar-project.properties")
+    with open(props_path, "w", encoding="utf-8") as f:
+        f.write(props_content)
+
+    # 2. Write GitHub Actions workflow
+    workflows_dir = os.path.join(target_path, ".github", "workflows")
+    os.makedirs(workflows_dir, exist_ok=True)
+    workflow_path = os.path.join(workflows_dir, "sonar-sast.yml")
+    workflow_content = ReportGenerator.generate_github_actions_sonar_workflow(proj_meta)
+    with open(workflow_path, "w", encoding="utf-8") as f:
+        f.write(workflow_content)
+
+    print(f"{CLR_GREEN}{CLR_BOLD}✔ SonarQube Integration Configured Successfully!{CLR_RESET}")
+    print(f"  • Generated: {CLR_CYAN}{props_path}{CLR_RESET}")
+    print(f"  • Generated: {CLR_CYAN}{workflow_path}{CLR_RESET}\n")
+    print(f"{CLR_BOLD}Next steps:{CLR_RESET}")
+    print(f"  1. Run audit & export to SonarQube format:")
+    print(f"     {CLR_YELLOW}sentinel-cli scan . --sonar-export sonar-issues.json{CLR_RESET}")
+    print(f"  2. Run SonarScanner locally or push to trigger GitHub Actions:")
+    print(f"     {CLR_YELLOW}sonar-scanner -Dsonar.projectKey={pk} -Dsonar.externalIssuesReportPaths=sonar-issues.json{CLR_RESET}\n")
+    return 0
 
 
 def install_pre_commit_hook():
@@ -231,11 +306,17 @@ def main():
     scan_p.add_argument("--fail-on", default="HIGH", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW"], help="Severity threshold that triggers a non-zero exit code")
     scan_p.add_argument("--json", action="store_true", help="Output findings as structured JSON")
     scan_p.add_argument("--rules", default=None, help="Path to custom rules YAML/JSON file")
+    scan_p.add_argument("--sonar-export", default=None, help="Export findings in SonarQube Generic Issue Import JSON format to specified file path")
 
     # List rules command
     rules_p = subparsers.add_parser("list-rules", help="List all active security rules (built-in and project custom)")
     rules_p.add_argument("path", nargs="?", default=".", help="Workspace path to check for project custom rules")
     rules_p.add_argument("--json", action="store_true", help="Output rule catalog as structured JSON")
+
+    # Init SonarQube command
+    init_sonar_p = subparsers.add_parser("init-sonar", help="Initialize SonarQube repository integration (sonar-project.properties & CI/CD workflow)")
+    init_sonar_p.add_argument("path", nargs="?", default=".", help="Target repository directory (default: current directory)")
+    init_sonar_p.add_argument("--project-key", default=None, help="SonarQube project key (defaults to folder name)")
 
     # Hook installer command
     subparsers.add_parser("install-hook", help="Install automated Git pre-commit security hook")
@@ -250,6 +331,10 @@ def main():
 
     if args.command == "install-hook":
         sys.exit(install_pre_commit_hook())
+    elif args.command == "init-sonar":
+        target = getattr(args, "path", ".")
+        project_key = getattr(args, "project_key", None)
+        sys.exit(init_sonar(target, project_key))
     elif args.command == "list-rules":
         target = getattr(args, "path", ".")
         output_json = getattr(args, "json", False)
@@ -259,7 +344,8 @@ def main():
         threshold = getattr(args, "fail_on", "HIGH")
         output_json = getattr(args, "json", False)
         custom_rules = getattr(args, "rules", None)
-        sys.exit(run_scan(target, threshold, output_json, custom_rules))
+        sonar_export = getattr(args, "sonar_export", None)
+        sys.exit(run_scan(target, threshold, output_json, custom_rules, sonar_export=sonar_export))
     else:
         parser.print_help()
         sys.exit(1)
@@ -267,4 +353,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 

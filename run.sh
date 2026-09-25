@@ -8,6 +8,13 @@ echo "============================================================"
 echo " AegisSec Platform - Unified SAST & SCA Security Engine     "
 echo "============================================================"
 
+# Load environment variables if .env exists
+if [ -f ".env" ]; then
+    set -a
+    source .env
+    set +a
+fi
+
 # Check if .venv exists
 if [ ! -d ".venv" ]; then
     echo "[*] Creating virtual environment..."
@@ -19,5 +26,8 @@ if [ ! -d ".venv" ]; then
     .venv/bin/pip install -r requirements.txt
 fi
 
-echo "[*] Starting AegisSec on http://127.0.0.1:8000 ..."
+LAN_IP=$(hostname -I | awk '{print $1}')
+echo "[*] Starting AegisSec on:"
+echo "    • Local URL:   http://127.0.0.1:8000"
+echo "    • Network URL: http://${LAN_IP}:8000"
 exec .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload

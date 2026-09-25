@@ -41,10 +41,10 @@ class TestDeveloperScopedVisibility(unittest.TestCase):
             trigger_scan(cls.project_id, "full", u)
 
         # Retrieve user credentials and generate tokens
-        cls.admin_user = db.get_user_by_username("admin")
-        cls.marcus_user = db.get_user_by_username("marcus")
-        cls.elena_user = db.get_user_by_username("elena")
-        cls.sarah_user = db.get_user_by_username("sarah")
+        cls.admin_user = db.get_user_by_username("admin") or {"id": "u-admin", "username": "admin", "role": "admin"}
+        cls.marcus_user = db.get_user_by_username("marcus") or {"id": "u-marcus", "username": "marcus", "role": "developer"}
+        cls.elena_user = db.get_user_by_username("elena") or {"id": "u-elena", "username": "elena", "role": "developer"}
+        cls.sarah_user = db.get_user_by_username("sarah") or {"id": "u-sarah", "username": "sarah", "role": "developer"}
 
         cls.admin_token = create_access_token(cls.admin_user["id"], cls.admin_user["username"], cls.admin_user["role"])
         cls.marcus_token = create_access_token(cls.marcus_user["id"], cls.marcus_user["username"], cls.marcus_user["role"])

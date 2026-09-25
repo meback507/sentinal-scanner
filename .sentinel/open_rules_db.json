@@ -1,0 +1,342 @@
+{
+  "version": "1.0",
+  "disabled_rules": [],
+  "imported_rules": [
+    {
+      "id": "CUSTOM-4D1279",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T04:54:44.833425+00:00"
+    },
+    {
+      "id": "CUSTOM-CD24A3",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T04:55:19.246812+00:00"
+    },
+    {
+      "id": "CUSTOM-4EBB8D",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T04:56:01.972889+00:00"
+    },
+    {
+      "id": "CUSTOM-0A3F36",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T04:56:11.845423+00:00"
+    },
+    {
+      "id": "CUSTOM-96C137",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T04:59:58.924828+00:00"
+    },
+    {
+      "id": "CUSTOM-2F67EC",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T05:07:09.533058+00:00"
+    },
+    {
+      "id": "CUSTOM-7FFD06",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T05:11:35.049975+00:00"
+    },
+    {
+      "id": "CUSTOM-66F667",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T05:14:57.170240+00:00"
+    },
+    {
+      "id": "CUSTOM-FAC0AF",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T05:20:07.681523+00:00"
+    },
+    {
+      "id": "CUSTOM-CCABDE",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T05:23:56.028038+00:00"
+    },
+    {
+      "id": "CUSTOM-1220E6",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T05:32:21.980250+00:00"
+    },
+    {
+      "id": "CUSTOM-FCAC9D",
+      "name": "Disallow Insecure Deserialization Pickle",
+      "type": "sast",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-502",
+      "owasp": "OWASP:A08:2021",
+      "standards": [
+        "OWASP:A08:2021"
+      ],
+      "regex": "(?i)pickle\\.(?:loads|load)\\s*\\(",
+      "description": "Unpickling untrusted data allows arbitrary remote code execution.",
+      "remediation": "Use safe JSON serialization or HMAC signature verification.",
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-25T05:35:23.382376+00:00"
+    },
+    {
+      "id": "SONAR-IMP-S2077",
+      "sonar_key": "S2077",
+      "sonar_rule_id": "python:S2077",
+      "name": "Formatting SQL queries is security-sensitive (SQL Injection)",
+      "type": "sast",
+      "rule_category": "sast",
+      "rule_source": "sonarqube_imported",
+      "sonar_type": "VULNERABILITY",
+      "sonar_severity": "BLOCKER",
+      "severity": "CRITICAL",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-89",
+      "owasp": "OWASP:A03:2021",
+      "standards": [
+        "SonarQube:S2077",
+        "CWE-89"
+      ],
+      "regex": "(?i)(?:execute|query|raw|cursor\\.execute|createQuery)\\s*\\(\\s*(?:f['\"].*(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION).*\\{|['\"].*(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION).*['\"]\\s*\\+|\\`.*(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION).*\\$\\{)",
+      "description": "SQL queries formatted with variables allows SQL injection.",
+      "remediation": "Use parameterized queries or ORM query builders with bind parameters instead of string interpolation (e.g. cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))).",
+      "is_active": true
+    },
+    {
+      "id": "SONAR-IMP-S5144",
+      "sonar_key": "S5144",
+      "sonar_rule_id": "python:S5144",
+      "name": "Server-side requests should not be vulnerable to SSRF attacks",
+      "type": "sast",
+      "rule_category": "sast",
+      "rule_source": "sonarqube_imported",
+      "sonar_type": "VULNERABILITY",
+      "sonar_severity": "CRITICAL",
+      "severity": "HIGH",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-918",
+      "owasp": "OWASP:A10:2021",
+      "standards": [
+        "SonarQube:S5144",
+        "CWE-918"
+      ],
+      "regex": "(?i)(?:requests\\.(?:get|post|put|delete)|urllib\\.request\\.urlopen|axios\\.(?:get|post)|http\\.Get|fetch)\\s*\\(\\s*(?:req\\.(?:query|params|body)|request\\.(?:args|form|GET|POST)|url\\b)[^\\)]*\\)",
+      "description": "Unchecked URLs in requests cause SSRF.",
+      "remediation": "Validate target URLs against an explicit allowlist of domain names and block access to private/loopback IP address ranges.",
+      "is_active": true
+    },
+    {
+      "id": "SONAR-IMP-S4790",
+      "sonar_key": "S4790",
+      "sonar_rule_id": "python:S4790",
+      "name": "Using weak hashing algorithms is security-sensitive (MD5 / SHA-1)",
+      "type": "sast",
+      "rule_category": "sast",
+      "rule_source": "sonarqube_imported",
+      "sonar_type": "SECURITY_HOTSPOT",
+      "sonar_severity": "MAJOR",
+      "severity": "HIGH",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-699",
+      "owasp": "OWASP:A03:2021",
+      "standards": [
+        "SonarQube:S4790",
+        "CWE-699"
+      ],
+      "regex": "(?i)(?:MessageDigest\\.getInstance\\(['\"](?:MD5|SHA-1|SHA1)['\"]\\)|crypto\\.createHash\\(['\"](?:md5|sha1)['\"]\\)|hashlib\\.(?:md5|sha1)\\s*\\()",
+      "description": "MD5 and SHA-1 have known collision issues.",
+      "remediation": "Remediate according to SonarQube rule specification S4790.",
+      "is_active": true
+    },
+    {
+      "id": "SEMGREP-python-hardcoded-bearer",
+      "name": "Hardcoded Bearer token found in code",
+      "type": "sast",
+      "rule_category": "sast",
+      "rule_source": "semgrep_community",
+      "severity": "HIGH",
+      "languages": [
+        "python",
+        "javascript"
+      ],
+      "cwe": "CWE-798",
+      "owasp": "A07:2021",
+      "standards": [
+        "CWE-798"
+      ],
+      "regex": "Bearer\\s+[a-zA-Z0-9_\\-\\.]{32,}",
+      "description": "Hardcoded Bearer token found in code",
+      "remediation": "Apply recommended secure coding pattern.",
+      "is_active": true
+    }
+  ]
+}

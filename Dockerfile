@@ -3,12 +3,15 @@
 
 FROM python:3.12-slim
 
-# Set environment variables for unbuffered logging, bytecode prevention, and default cloud port
+# Set environment variables for unbuffered logging, bytecode prevention, default port, and admin credentials
+ARG ADMIN_PASSWORD=admin
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
     SENTINEL_DB_PATH=/app/data/sentinel.db \
-    APP_ENV=production
+    APP_ENV=production \
+    ADMIN_USERNAME=admin \
+    ADMIN_PASSWORD=${ADMIN_PASSWORD}
 
 # Install system dependencies:
 # - git: for repository cloning, git blame, commit-level vulnerability attribution & age tracking
@@ -43,6 +46,8 @@ COPY frontend/ ./frontend/
 COPY .sentinel/ ./.sentinel/
 COPY ide-extension/ ./ide-extension/
 COPY scripts/ ./scripts/
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Create persistent storage directories for SQLite DB, reports, and temp workspaces
 RUN mkdir -p /app/data /app/reports /app/workspaces && \
@@ -50,8 +55,8 @@ RUN mkdir -p /app/data /app/reports /app/workspaces && \
     chown -R admin:sentinel /app/data /app/reports /app/workspaces && \
     chmod -R 775 /app/data /app/reports /app/workspaces
 
-# Switch to user admin with admin rights
-USER admin
+# Switch to user root to guarantee storage mount permissions
+USER root
 
 # Expose default HTTP port (overridable via $PORT in cloud environments)
 EXPOSE 8000
@@ -60,5 +65,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://127.0.0.1:${PORT:-8000}/api/health || exit 1
 
-# Launch uvicorn dynamically bound to $PORT with multi-worker concurrency
-CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WORKERS:-2}"]
+# Start Sentinel Server binding --host 0.0.0.0 for external network reachability
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD []

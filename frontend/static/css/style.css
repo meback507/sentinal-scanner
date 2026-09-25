@@ -130,6 +130,7 @@ body {
   letter-spacing: -0.5px;
   background: linear-gradient(135deg, #ffffff, #cbd5e1);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -243,42 +244,47 @@ body {
 
 /* Header */
 header {
-  height: 70px;
+  height: 64px;
   border-bottom: 1px solid var(--border);
-  padding: 0 32px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(11, 15, 25, 0.8);
+  background: rgba(11, 15, 25, 0.85);
   backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 40;
+  gap: 12px;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .project-select-wrapper {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .project-select {
   background: var(--bg-card-solid);
   border: 1px solid var(--border);
   color: var(--text-primary);
-  padding: 8px 14px;
+  padding: 6px 12px;
   border-radius: var(--radius-md);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   outline: none;
   cursor: pointer;
-  min-width: 240px;
+  min-width: 170px;
+  max-width: 220px;
+  height: 34px;
   transition: var(--transition);
 }
 
@@ -290,7 +296,138 @@ header {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 6px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.header-nav-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Individual Toolbar Action Buttons */
+.btn-tool-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  height: 34px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  white-space: nowrap;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.btn-tool-nav:hover {
+  background: rgba(30, 41, 59, 0.9);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.btn-tool-sbom {
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+.btn-tool-sbom:hover {
+  border-color: rgba(16, 185, 129, 0.6);
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+}
+
+.btn-tool-rasp {
+  color: #fb7185;
+  border-color: rgba(244, 63, 94, 0.3);
+}
+.btn-tool-rasp:hover {
+  border-color: rgba(244, 63, 94, 0.6);
+  background: rgba(244, 63, 94, 0.12);
+  color: #fda4af;
+}
+
+.btn-tool-rules {
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.btn-tool-rules:hover {
+  border-color: rgba(251, 191, 36, 0.6);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fde68a;
+}
+
+.btn-tool-trackers {
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.3);
+}
+.btn-tool-trackers:hover {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(96, 165, 250, 0.12);
+  color: #bfdbfe;
+}
+
+.btn-tool-dast {
+  color: #7dd3fc;
+  border-color: rgba(56, 189, 248, 0.3);
+}
+.btn-tool-dast:hover {
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.12);
+  color: #bae6fd;
+}
+
+.btn-tool-dag {
+  color: #d8b4fe;
+  border-color: rgba(192, 132, 252, 0.3);
+}
+.btn-tool-dag:hover {
+  border-color: rgba(192, 132, 252, 0.6);
+  background: rgba(192, 132, 252, 0.12);
+  color: #e9d5ff;
+}
+
+.btn-tool-export {
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.btn-tool-export:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-tool-scan {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  height: 34px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: 6px;
+  white-space: nowrap;
+  background: linear-gradient(135deg, var(--accent-cyan), #0284c7);
+  border: 1px solid var(--accent-cyan);
+  color: #050b14;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.35);
+}
+
+.btn-tool-scan:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.5);
+  filter: brightness(1.08);
 }
 
 /* Buttons */
@@ -643,28 +780,45 @@ pre.code-view {
 
 /* Modals - Dual Compatibility for Custom and Bootstrap 5 */
 .modal-overlay, .modal.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 1055;
-  padding: 20px;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0, 0, 0, 0.75) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  display: none !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 99999 !important;
+  padding: 20px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
-.modal-overlay.active, .modal.modal-overlay.active {
+.modal-overlay.active, .modal.modal-overlay.active,
+.modal-overlay.show, .modal.modal-overlay.show {
   display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
 }
 
-.modal-dialog {
+.modal-overlay .modal-dialog,
+.modal.modal-overlay .modal-dialog,
+.modal-overlay.active .modal-dialog,
+.modal.modal-overlay.active .modal-dialog,
+.modal-overlay.show .modal-dialog,
+.modal.modal-overlay.show .modal-dialog {
   width: 100%;
-  margin: auto;
-  pointer-events: auto;
+  margin: auto !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .modal-content {
@@ -751,10 +905,12 @@ pre.code-view {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 200;
+  z-index: 100005 !important;
+  pointer-events: none;
 }
 
 .toast {
+  pointer-events: auto;
   background: #111827;
   border: 1px solid var(--border);
   border-left: 4px solid var(--accent-cyan);
@@ -844,6 +1000,7 @@ pre.code-view {
   letter-spacing: -0.5px;
   background: linear-gradient(135deg, #ffffff 40%, var(--accent-cyan));
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 

@@ -27,7 +27,7 @@ VSIX_MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
     <DisplayName>Sentinel AppSec &amp; Custom Rule Engine</DisplayName>
     <Description xml:space="preserve">Real-time AST security scanning, vulnerability diagnostics, hover tooltips, and project custom rules reflection (.sentinel/rules.yaml).</Description>
     <Tags>security,sast,iac,cisa-kev,secrets,owasp,misra,iso27001,custom-rules,cloud</Tags>
-    <Categories>Security,Linters,Programming Languages</Categories>
+    <Categories>Linters,Programming Languages,Other</Categories>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Code"/>

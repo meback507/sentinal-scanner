@@ -93,18 +93,44 @@ def enrich_finding_age(finding: Dict[str, Any], current_time: Optional[datetime.
 class Database:
     def __init__(self, db_path: str = None):
         self.db_path = db_path or os.getenv("SENTINEL_DB_PATH") or os.getenv("DATABASE_PATH") or DB_FILE
-        db_dir = os.path.dirname(os.path.abspath(self.db_path))
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)
-        self._init_schema()
-        self._seed_default_data()
+        try:
+            db_dir = os.path.dirname(os.path.abspath(self.db_path))
+            if db_dir and not os.path.exists(db_dir):
+                os.makedirs(db_dir, exist_ok=True)
+            self._init_schema()
+            self._seed_default_data()
+        except Exception as e:
+            fallback = "/tmp/sentinel.db"
+            if self.db_path != fallback:
+                print(f"[Sentinel DB] Warning: Cannot initialize database at {self.db_path} ({e}). Falling back to {fallback}")
+                self.db_path = fallback
+                self._init_schema()
+                self._seed_default_data()
+            else:
+                raise
 
     def _get_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA foreign_keys = ON;")
-        return conn
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA foreign_keys = ON;")
+            return conn
+        except sqlite3.OperationalError as e:
+            fallback = "/tmp/sentinel.db"
+            if self.db_path != fallback:
+                print(f"[Sentinel DB] Warning: Connection error on {self.db_path} ({e}). Falling back to {fallback}")
+                self.db_path = fallback
+                conn = sqlite3.connect(self.db_path)
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("PRAGMA foreign_keys = ON;")
+                return conn
+            raise
+
+    def get_connection(self) -> sqlite3.Connection:
+        """Provides an active database connection for direct SQL execution."""
+        return self._get_conn()
 
     def _init_schema(self):
         with self._get_conn() as conn:
@@ -227,6 +253,17 @@ class Database:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                finding_id TEXT,
+                project_id TEXT,
+                user TEXT NOT NULL,
+                details TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                cryptographic_seal TEXT NOT NULL
+            );
             """)
 
             # Automatic schema migration for existing SQLite databases
@@ -316,25 +353,30 @@ class Database:
     def _seed_default_data(self):
         with self._get_conn() as conn:
             now = datetime.datetime.now().isoformat()
-            default_users = [
-                ("u-admin", "admin", "admin@aegissec.internal", hash_password("admin"), "admin", now),
-                ("u-sec-lead", "sec_lead", "seclead@aegissec.internal", hash_password("SecLead@123!"), "security_engineer", now),
-                ("u-marcus", "marcus", "marcus.vance@cloudsec.internal", hash_password("Marcus@123!"), "developer", now),
-                ("u-elena", "elena", "elena.rostova@autocorp.de", hash_password("Elena@123!"), "developer", now),
-                ("u-sarah", "sarah", "sarah.lin@frontend.io", hash_password("Sarah@123!"), "developer", now),
-                ("u-developer", "developer", "dev@aegissec.internal", hash_password("Dev@123!"), "developer", now),
-                ("u-auditor", "auditor", "auditor@aegissec.internal", hash_password("Auditor@123!"), "auditor", now)
-            ]
-            for u in default_users:
+            admin_username = os.getenv("ADMIN_USERNAME", "admin").strip()
+            admin_password = os.getenv("ADMIN_PASSWORD") or os.getenv("SENTINEL_ADMIN_PASSWORD") or "admin"
+            admin_email = os.getenv("ADMIN_EMAIL", f"{admin_username}@sentinel.internal").strip()
+
+            # Remove all test/demo users - ONLY the single admin user exists
+            conn.execute("DELETE FROM users WHERE username != ?", (admin_username,))
+
+            # Upsert the configured default admin user
+            admin_user = conn.execute("SELECT id FROM users WHERE username = ?", (admin_username,)).fetchone()
+            if not admin_user:
                 conn.execute(
-                    "INSERT OR IGNORE INTO users (id, username, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    u
+                    "INSERT INTO users (id, username, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    ("u-admin", admin_username, admin_email, hash_password(admin_password), "admin", now)
                 )
-            # Ensure existing admin user can login with password 'admin'
-            conn.execute(
-                "UPDATE users SET password_hash = ? WHERE username = 'admin' AND password_hash = ?",
-                (hash_password("admin"), hash_password("Admin@123!"))
-            )
+            else:
+                conn.execute(
+                    "UPDATE users SET password_hash = ?, email = ?, role = 'admin' WHERE username = ?",
+                    (hash_password(admin_password), admin_email, admin_username)
+                )
+
+            # Remove all demo/test projects and related test data
+            conn.execute("DELETE FROM findings WHERE project_id IN (SELECT id FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo')")
+            conn.execute("DELETE FROM scans WHERE project_id IN (SELECT id FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo')")
+            conn.execute("DELETE FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo'")
 
     # --- User Operations ---
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
@@ -344,7 +386,7 @@ class Database:
 
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         with self._get_conn() as conn:
-            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            row = conn.execute("SELECT * FROM users WHERE id = ? OR username = ?", (user_id, user_id)).fetchone()
             return dict(row) if row else None
 
     def list_users(self) -> List[Dict[str, Any]]:
@@ -368,6 +410,7 @@ class Database:
             user = self.get_user_by_id(user_id)
             if not user:
                 return None
+            actual_id = user["id"]
             
             updates = []
             params = []
@@ -382,15 +425,15 @@ class Database:
                 params.append(email)
             
             if updates:
-                params.append(user_id)
+                params.append(actual_id)
                 conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", tuple(params))
             
-            row = conn.execute("SELECT id, username, email, role, created_at FROM users WHERE id = ?", (user_id,)).fetchone()
+            row = conn.execute("SELECT id, username, email, role, created_at FROM users WHERE id = ?", (actual_id,)).fetchone()
             return dict(row) if row else None
 
     def delete_user(self, user_id: str) -> bool:
         with self._get_conn() as conn:
-            cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            cur = conn.execute("DELETE FROM users WHERE id = ? OR username = ?", (user_id, user_id))
             return cur.rowcount > 0
 
     # --- Project Operations ---

@@ -305,7 +305,21 @@ class RuleManager:
         except Exception:
             pass
 
-        total_rules = len(BUILTIN_SAST_RULES) + len(IAC_RULES) + len(api_rules) + len(secret_rules) + len(platform_custom) + len(project_custom)
+        sonar_rules = []
+        open_db_rules = []
+        try:
+            from .open_rule_database import open_rule_db
+            sonar_rules = open_rule_db.get_sonarqube_rules(active_only=True)
+            open_db_rules = open_rule_db.get_community_rules(active_only=True)
+        except Exception:
+            pass
+
+        all_rule_ids = set()
+        for r in (BUILTIN_SAST_RULES + IAC_RULES + api_rules + secret_rules +
+                  platform_custom + project_custom + sonar_rules + open_db_rules):
+            if r.get("id"):
+                all_rule_ids.add(r.get("id"))
+        total_rules = len(all_rule_ids)
 
         return {
             "summary": {
@@ -315,7 +329,9 @@ class RuleManager:
                 "api_builtin": len(api_rules),
                 "secret_builtin": len(secret_rules),
                 "platform_custom": len(platform_custom),
-                "project_custom": len(project_custom)
+                "project_custom": len(project_custom),
+                "sonarqube_rules": len(sonar_rules),
+                "open_database_rules": len(open_db_rules)
             },
             "rules": {
                 "sast_builtin": BUILTIN_SAST_RULES,
@@ -323,7 +339,9 @@ class RuleManager:
                 "api_builtin": api_rules,
                 "secret_builtin": secret_rules,
                 "platform_custom": platform_custom,
-                "project_custom": project_custom
+                "project_custom": project_custom,
+                "sonarqube_rules": sonar_rules,
+                "open_database_rules": open_db_rules
             }
         }
 

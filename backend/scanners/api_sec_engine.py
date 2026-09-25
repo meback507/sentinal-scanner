@@ -7,7 +7,7 @@ BOLA, Broken Authentication, Mass Assignment, Resource Exhaustion, and Insecure 
 import os
 import json
 import yaml
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ..standards.taxonomy import map_finding_to_standards
 from ..prioritization.risk_engine import risk_engine
 

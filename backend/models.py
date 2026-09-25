@@ -134,6 +134,11 @@ class FindingModel(BaseModel):
     reachability_status: Optional[str] = "UNKNOWN"
     entropy: Optional[float] = None
     masked_value: Optional[str] = None
+    sonar_key: Optional[str] = None
+    sonar_rule_id: Optional[str] = None
+    sonar_type: Optional[str] = None
+    sonar_severity: Optional[str] = None
+    rule_source: Optional[str] = None
 
 
 class SecretScanRequest(BaseModel):
@@ -246,4 +251,183 @@ class GateCheckRequest(BaseModel):
     max_critical: Optional[int] = 0
     max_high: Optional[int] = 2
 
+
+class ApplyPatchRequest(BaseModel):
+    patch_code: Optional[str] = None
+    resolution_note: Optional[str] = "Auto-remediated via Sentinel AI Assistant"
+
+
+class QualityGateResponse(BaseModel):
+    project_id: str
+    project_name: str
+    status: str  # 'PASSED', 'FAILED'
+    passed: bool
+    summary: str
+    evaluated_at: str
+    criteria: Dict[str, Any]
+    metrics: Dict[str, Any]
+
+
+# --- Batch Patching & Multi-File PR Models ---
+class BatchPatchRequest(BaseModel):
+    finding_ids: List[str]
+    dry_run: Optional[bool] = False
+    resolution_note: Optional[str] = "Batch remediated via Sentinel Auto-Patch Studio"
+
+
+class BatchPatchResponse(BaseModel):
+    success: bool
+    dry_run: bool
+    applied_count: int
+    files_affected: List[str]
+    unified_diff: str
+    patched_findings: List[str]
+    audit_id: Optional[str] = None
+
+
+class BatchPRRequest(BaseModel):
+    finding_ids: List[str]
+    pr_title: Optional[str] = None
+    pr_body: Optional[str] = None
+    target_branch: Optional[str] = "main"
+
+
+# --- Webhook Integration Models ---
+class WebhookConfigRequest(BaseModel):
+    enabled: bool = True
+    slack_webhook_url: Optional[str] = ""
+    teams_webhook_url: Optional[str] = ""
+    discord_webhook_url: Optional[str] = ""
+    generic_webhook_url: Optional[str] = ""
+    generic_secret: Optional[str] = ""
+    notify_on_scan_completed: Optional[bool] = True
+    notify_on_critical_finding: Optional[bool] = True
+    notify_on_cisa_kev: Optional[bool] = True
+    min_severity: Optional[str] = "HIGH"
+
+
+class WebhookTestRequest(BaseModel):
+    webhook_type: str = "slack"  # 'slack', 'teams', 'discord', 'generic'
+    webhook_url: str
+    secret: Optional[str] = ""
+
+
+# --- DAST & Schedules Models ---
+class DASTAuditRequest(BaseModel):
+    target_url: str
+    timeout: Optional[int] = 6
+
+
+class ScheduleCreateRequest(BaseModel):
+    id: Optional[str] = None
+    name: str
+    type: str = "threat_intel_sync"  # 'threat_intel_sync', 'project_scan'
+    interval_hours: int = 24
+    project_id: Optional[str] = None
+    enabled: Optional[bool] = True
+# --- SBOM, Rule Builder, Issue Tracker & RASP Models ---
+class CustomRuleBuilderRequest(BaseModel):
+    id: Optional[str] = None
+    name: str
+    type: str = "sast"  # sast, iac, secret
+    severity: str = "HIGH"
+    languages: List[str] = ["python"]
+    cwe: Optional[str] = "CWE-89"
+    owasp: Optional[str] = "OWASP:A03:2021"
+    standards: List[str] = []
+    regex: str
+    description: str
+    remediation: str
+    test_snippet: Optional[str] = None
+
+
+class RuleSandboxEvaluateRequest(BaseModel):
+    regex: str
+    test_snippet: str
+    language: Optional[str] = "python"
+
+
+class TrackerTicketCreateRequest(BaseModel):
+    finding_id: str
+    provider: str = "jira"  # jira, linear
+    project_key: Optional[str] = None
+
+
+class TrackerConfigRequest(BaseModel):
+    provider: str  # jira, linear
+    config: Dict[str, Any]
+
+
+class RASPSimulateRequest(BaseModel):
+    vector: str  # SQL_INJECTION, COMMAND_INJECTION, PATH_TRAVERSAL, SSRF, XXE_INJECTION, XSS_REFLECTED
+    payload: Optional[str] = None
+
+
+class RASPModeRequest(BaseModel):
+    mode: str  # BLOCK, MONITOR
+
+
+# --- Threat Model, Vault Manager, Container Scanner & Policy Studio Models ---
+class ThreatModelGenerateRequest(BaseModel):
+    project_id: Optional[str] = None
+
+
+class VaultRotateRequest(BaseModel):
+    finding_id: str
+    provider: Optional[str] = "hashicorp_vault"  # hashicorp_vault, aws_secrets_manager, azure_key_vault
+
+
+class VaultConfigRequest(BaseModel):
+    active_provider: str
+    providers: Dict[str, Any]
+
+
+class ContainerScanRequest(BaseModel):
+    dockerfile_content: Optional[str] = None
+    project_id: Optional[str] = None
+
+
+class PolicyStudioSaveRequest(BaseModel):
+    policy_name: str
+    rules: List[Dict[str, Any]]
+    description: Optional[str] = None
+
+
+class PolicyDryRunRequest(BaseModel):
+    metrics: Optional[Dict[str, Any]] = None
+    project_id: Optional[str] = None
+
+
+# --- Attack Path, Compliance, API Fuzzer, LLM Sec, SBOM Drift & Sandbox Models ---
+class AttackPathSimulateRequest(BaseModel):
+    finding_id: str
+
+
+class ComplianceExportRequest(BaseModel):
+    framework: Optional[str] = "all"
+
+
+class APIFuzzerScanRequest(BaseModel):
+    openapi_spec: Optional[str] = None
+    base_url: Optional[str] = "http://127.0.0.1:8000"
+
+
+class LLMProbeRequest(BaseModel):
+    system_prompt: str
+    user_test_input: Optional[str] = None
+
+
+class LLMCodeScanRequest(BaseModel):
+    file_contents: Optional[Dict[str, str]] = None
+
+
+class SBOMAttestationRequest(BaseModel):
+    project_name: Optional[str] = "sentinel-appsec"
+    commit_sha: Optional[str] = "d7a4b89c01f3e2"
+
+
+class PlaygroundRunRequest(BaseModel):
+    challenge_id: str
+    user_code: str
+    test_payload: Optional[str] = None
 

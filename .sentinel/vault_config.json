@@ -1,0 +1,105 @@
+{
+  "active_provider": "hashicorp_vault",
+  "providers": {
+    "hashicorp_vault": {
+      "enabled": true,
+      "endpoint": "http://127.0.0.1:8200",
+      "mount_point": "secret",
+      "status": "connected"
+    },
+    "aws_secrets_manager": {
+      "enabled": true,
+      "region": "us-east-1",
+      "kms_key_id": "alias/sentinel-secrets-key",
+      "status": "connected"
+    },
+    "azure_key_vault": {
+      "enabled": false,
+      "vault_name": "sentinel-prod-kv",
+      "status": "unconfigured"
+    }
+  },
+  "rotated_secrets_count": 8,
+  "audit_ledger": [
+    {
+      "rotation_id": "ROT-702D3551",
+      "finding_id": "find-secret-999",
+      "provider": "hashicorp_vault",
+      "variable_name": "AWS_SECRET_ACCESS_KEY",
+      "vault_uri": "vault://secret/data/sentinel/settings/aws_secret_access_key",
+      "file_path": "config/settings.py",
+      "rotated_at": "2026-09-25T05:20:11.113453+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-CDB7B156",
+      "finding_id": "2501dbac-dc8b-431d-8138-88723df71b0a",
+      "provider": "hashicorp_vault",
+      "variable_name": "APP_SECRET_KEY",
+      "vault_uri": "vault://secret/data/sentinel/pom/app_secret_key",
+      "file_path": "pom.xml",
+      "rotated_at": "2026-09-25T05:20:11.121236+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-01B71693",
+      "finding_id": "find-secret-999",
+      "provider": "hashicorp_vault",
+      "variable_name": "AWS_SECRET_ACCESS_KEY",
+      "vault_uri": "vault://secret/data/sentinel/settings/aws_secret_access_key",
+      "file_path": "config/settings.py",
+      "rotated_at": "2026-09-25T05:23:57.591286+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-54F7515A",
+      "finding_id": "2501dbac-dc8b-431d-8138-88723df71b0a",
+      "provider": "hashicorp_vault",
+      "variable_name": "APP_SECRET_KEY",
+      "vault_uri": "vault://secret/data/sentinel/pom/app_secret_key",
+      "file_path": "pom.xml",
+      "rotated_at": "2026-09-25T05:23:57.599741+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-2DD5FC7D",
+      "finding_id": "find-secret-999",
+      "provider": "hashicorp_vault",
+      "variable_name": "AWS_SECRET_ACCESS_KEY",
+      "vault_uri": "vault://secret/data/sentinel/settings/aws_secret_access_key",
+      "file_path": "config/settings.py",
+      "rotated_at": "2026-09-25T05:32:25.191062+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-ADC8AD4E",
+      "finding_id": "2501dbac-dc8b-431d-8138-88723df71b0a",
+      "provider": "hashicorp_vault",
+      "variable_name": "APP_SECRET_KEY",
+      "vault_uri": "vault://secret/data/sentinel/pom/app_secret_key",
+      "file_path": "pom.xml",
+      "rotated_at": "2026-09-25T05:32:25.199372+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-40F27146",
+      "finding_id": "find-secret-999",
+      "provider": "hashicorp_vault",
+      "variable_name": "AWS_SECRET_ACCESS_KEY",
+      "vault_uri": "vault://secret/data/sentinel/settings/aws_secret_access_key",
+      "file_path": "config/settings.py",
+      "rotated_at": "2026-09-25T05:35:28.543974+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-1A46D9A8",
+      "finding_id": "2501dbac-dc8b-431d-8138-88723df71b0a",
+      "provider": "hashicorp_vault",
+      "variable_name": "APP_SECRET_KEY",
+      "vault_uri": "vault://secret/data/sentinel/pom/app_secret_key",
+      "file_path": "pom.xml",
+      "rotated_at": "2026-09-25T05:35:28.554561+00:00",
+      "status": "COMPLETED"
+    }
+  ]
+}

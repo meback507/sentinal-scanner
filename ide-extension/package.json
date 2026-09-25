@@ -8,9 +8,9 @@
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Security",
     "Linters",
-    "Programming Languages"
+    "Programming Languages",
+    "Other"
   ],
   "keywords": [
     "security",
@@ -54,7 +54,8 @@
         },
         {
           "id": "sentinel.activeFlaws",
-          "name": "Active Vulnerabilities & Diagnostics"
+          "name": "Active Vulnerabilities & Diagnostics",
+          "icon": "resources/shield.svg"
         }
       ]
     },
@@ -152,7 +153,7 @@
       "properties": {
         "sentinel.serverUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:8000",
+          "default": "http://192.168.0.101:8000",
           "description": "Base URL of the Sentinel / AegisSec backend server"
         },
         "sentinel.apiToken": {

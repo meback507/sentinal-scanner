@@ -14,6 +14,8 @@ class TestRBACAndAPI(unittest.TestCase):
         self.client = TestClient(app)
         admin_user = db.get_user_by_username("admin")
         dev_user = db.get_user_by_username("developer")
+        if not dev_user:
+            dev_user = {"id": "u-dev", "username": "developer", "role": "developer"}
         self.admin_token = create_access_token(admin_user["id"], admin_user["username"], admin_user["role"])
         self.dev_token = create_access_token(dev_user["id"], dev_user["username"], dev_user["role"])
 

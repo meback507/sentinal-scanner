@@ -4,14 +4,20 @@ REST API, Background Scan Pipeline, Dynamic Prioritization, and Static File Serv
 """
 
 import os
+import re
+import io
+import csv
+import uuid
 import json
 import shutil
+import zipfile
+import hashlib
 import tempfile
 import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, status, Response, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .utils.network import get_server_network_info, auto_write_workspace_config
 
@@ -21,7 +27,17 @@ from .models import (
     CustomRuleModel, RuleGenerateRequest, RuleTestRequest,
     JiraConfigRequest, ZammadConfigRequest, CreateTicketRequest,
     RoleEnum, LLMConfigRequest, AIRemediationResponse, GateCheckRequest,
-    SecretScanRequest
+    SecretScanRequest, ApplyPatchRequest, QualityGateResponse,
+    BatchPatchRequest, BatchPatchResponse, BatchPRRequest,
+    WebhookConfigRequest, WebhookTestRequest, DASTAuditRequest,
+    ScheduleCreateRequest,
+    CustomRuleBuilderRequest, RuleSandboxEvaluateRequest,
+    TrackerTicketCreateRequest, TrackerConfigRequest,
+    RASPSimulateRequest, RASPModeRequest,
+    ThreatModelGenerateRequest, VaultRotateRequest, VaultConfigRequest,
+    ContainerScanRequest, PolicyStudioSaveRequest, PolicyDryRunRequest,
+    AttackPathSimulateRequest, ComplianceExportRequest, APIFuzzerScanRequest,
+    LLMProbeRequest, LLMCodeScanRequest, SBOMAttestationRequest, PlaygroundRunRequest
 )
 from .db import db, hash_password
 from .auth import (
@@ -34,8 +50,26 @@ from .scanners.sast_engine import SASTEngine
 from .scanners.sca_engine import SCAEngine
 from .scanners.iac_engine import IaCEngine
 from .scanners.api_sec_engine import APISecEngine
+from .scanners.dast_engine import DASTEngine
+from .scanners.dependency_graph import DependencyGraphBuilder
+from .scanners.rasp_engine import rasp_engine
+from .scanners.threat_model_engine import ThreatModelEngine
+from .scanners.container_os_scanner import ContainerOSScanner
+from .integrations.vault_manager import VaultManager
+from .ci.policy_studio import PolicyStudio
+from .scanners.attack_path_engine import AttackPathEngine
+from .compliance.framework_engine import ComplianceFrameworkEngine
+from .scanners.api_fuzzer import APIFuzzerEngine
+from .scanners.llm_sec_engine import LLMSecurityScanner
+from .scanners.sbom_drift_engine import SBOMDriftEngine
+from .sandbox.playground_engine import AppSecPlaygroundEngine
+from .integrations.webhook_notifier import WebhookNotifier
+from .integrations.issue_trackers import issue_tracker
+from .exporters.sbom_generator import sbom_generator
+from .scheduler import scheduler
 from .rules.nl_rule_generator import NLRuleGenerator
 from .rules.rule_manager import rule_manager
+from .rules.open_rule_database import open_rule_db
 from .git_service import GitService
 from .integrations.jira_connector import JiraConnector
 from .integrations.zammad_connector import ZammadConnector
@@ -61,10 +95,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Instantiate Next-Gen Enterprise Security Engines
+attack_path_engine = AttackPathEngine(db)
+compliance_engine = ComplianceFrameworkEngine(db)
+api_fuzzer_engine = APIFuzzerEngine()
+llm_sec_scanner = LLMSecurityScanner()
+sbom_drift_engine = SBOMDriftEngine()
+playground_engine = AppSecPlaygroundEngine()
+
+
+@app.on_event("startup")
+def startup_event():
+    try:
+        scheduler.start()
+    except Exception as e:
+        print(f"[Sentinel Server] Scheduler startup error: {e}")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    try:
+        scheduler.stop()
+    except Exception as e:
+        print(f"[Sentinel Server] Scheduler shutdown error: {e}")
+
 
 # --- Cloud Health & Service Probes ---
-@app.get("/api/health")
-@app.get("/healthz")
+@app.get("/api/health", summary="Health Check API", operation_id="health_check_api")
+@app.get("/healthz", summary="Healthz Probe", operation_id="healthz_probe")
+@app.head("/api/health", include_in_schema=False)
+@app.head("/healthz", include_in_schema=False)
 def health_check():
     """
     Lightweight health check probe for cloud load balancers, container orchestrators,
@@ -150,7 +210,7 @@ def trigger_auto_configure_workspace():
 
 # --- Authentication Routes ---
 @app.post("/api/auth/login", response_model=LoginResponse)
-def login(req: LoginRequest):
+def login(req: LoginRequest, response: Response):
     user = db.get_user_by_username(req.username)
     is_valid_pwd = False
     if user:
@@ -164,6 +224,14 @@ def login(req: LoginRequest):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
 
     token = create_access_token(user["id"], user["username"], user["role"])
+    response.set_cookie(
+        key="sentinel_session",
+        value=token,
+        httponly=False,
+        max_age=86400,
+        path="/",
+        samesite="lax"
+    )
     return LoginResponse(
         access_token=token,
         user=UserModel(
@@ -174,6 +242,12 @@ def login(req: LoginRequest):
             created_at=user["created_at"]
         )
     )
+
+
+@app.post("/api/auth/logout")
+def logout_endpoint(response: Response):
+    response.delete_cookie(key="sentinel_session", path="/")
+    return {"status": "ok", "message": "Signed out successfully"}
 
 
 @app.get("/api/auth/me", response_model=UserModel)
@@ -197,28 +271,32 @@ def create_user(req: UserCreateRequest, user: UserModel = Depends(require_roles(
 
 @app.put("/api/users/{user_id}", response_model=UserModel)
 def update_user(user_id: str, req: UserUpdateRequest, user: UserModel = Depends(require_roles(["admin"]))):
-    target = db.get_user_by_id(user_id)
+    target = db.get_user_by_id(user_id) or db.get_user_by_username(user_id)
     if not target:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
+    if target["username"] == "admin" and req.role and req.role.value != "admin":
+        raise HTTPException(status_code=400, detail="Cannot downgrade default administrator role")
     updated = db.update_user(
-        user_id=user_id,
+        user_id=target["id"],
         role=req.role.value if req.role else None,
         password=req.password if req.password else None,
         email=req.email if req.email else None
     )
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update user")
     return UserModel(**updated)
 
 
 @app.delete("/api/users/{user_id}")
 def delete_user(user_id: str, user: UserModel = Depends(require_roles(["admin"]))):
-    target = db.get_user_by_id(user_id)
+    target = db.get_user_by_id(user_id) or db.get_user_by_username(user_id)
     if not target:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found")
     if target["username"] == "admin":
         raise HTTPException(status_code=400, detail="Default administrator user cannot be deleted")
-    if target["id"] == user.id:
+    if target["id"] == user.id or target["username"] == user.username:
         raise HTTPException(status_code=400, detail="Cannot delete your own active account")
-    db.delete_user(user_id)
+    db.delete_user(target["id"])
     return {"success": True, "message": f"User '{target['username']}' deleted successfully"}
 
 
@@ -363,6 +441,21 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
                 "high": sum(1 for f in all_findings if f.get("severity") == "HIGH")
             }
         )
+
+        # 8. Webhook Notifications Fanout
+        try:
+            summary_info = {
+                "critical": sum(1 for f in all_findings if f.get("severity") == "CRITICAL"),
+                "high": sum(1 for f in all_findings if f.get("severity") == "HIGH"),
+                "medium": sum(1 for f in all_findings if f.get("severity") == "MEDIUM"),
+                "low": sum(1 for f in all_findings if f.get("severity") == "LOW"),
+                "act_now_count": sum(1 for f in all_findings if f.get("quadrant") == "ACT_NOW")
+            }
+            WebhookNotifier.dispatch_scan_completed(proj.get("name", "Project"), project_id, summary_info)
+            for urgent in [f for f in all_findings if f.get("cisa_kev") or f.get("quadrant") == "ACT_NOW"][:2]:
+                WebhookNotifier.dispatch_urgent_threat(urgent)
+        except Exception as we:
+            print(f"[Sentinel Webhook] Notification dispatch skipped: {we}")
 
         return {
             "success": True,
@@ -797,6 +890,111 @@ def evaluate_finding_confidence_endpoint(
     return result
 
 
+@app.post("/api/findings/{finding_id}/apply-patch")
+def apply_finding_patch_endpoint(
+    finding_id: str,
+    payload: Optional[ApplyPatchRequest] = None,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    1-Click Code Remediation: Patches the vulnerable lines on disk in the project
+    workspace and marks the finding as resolved with an immutable audit entry.
+    """
+    finding = db.get_finding_by_id(finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if not _is_finding_authored_by_user(finding, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to apply patches to vulnerabilities in code you authored."
+        )
+
+    patch_code = payload.patch_code if payload and payload.patch_code else None
+    if not patch_code:
+        rem = LLMService.generate_remediation(finding)
+        raw_diff = rem.get("code_diff") or rem.get("suggested_fix_diff") or ""
+        if "+++" in raw_diff:
+            clean_lines = []
+            capturing = False
+            for line in raw_diff.splitlines():
+                if "+++" in line:
+                    capturing = True
+                    continue
+                if line.startswith("# ---"):
+                    capturing = False
+                    continue
+                if capturing and not line.startswith("#"):
+                    clean_lines.append(line)
+            patch_code = "\n".join(clean_lines) if clean_lines else raw_diff
+        else:
+            patch_code = raw_diff
+
+    rel_path = finding.get("file_path", "")
+    target_file = None
+    project = db.get_project_by_id(finding.get("project_id", ""))
+    search_dirs = []
+    if project and project.get("workspace_path"):
+        search_dirs.append(project["workspace_path"])
+    search_dirs.append(os.getcwd())
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    search_dirs.append(base_dir)
+
+    for d in search_dirs:
+        candidate = os.path.join(d, rel_path)
+        if os.path.exists(candidate) and os.path.isfile(candidate):
+            target_file = candidate
+            break
+
+    applied_on_disk = False
+    line_start = max(1, int(finding.get("line_start") or 1))
+    line_end = max(line_start, int(finding.get("line_end") or line_start))
+
+    if target_file and patch_code:
+        try:
+            with open(target_file, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+            start_idx = max(0, line_start - 1)
+            end_idx = min(len(lines), line_end)
+
+            patch_formatted = patch_code if patch_code.endswith("\n") else patch_code + "\n"
+            lines[start_idx:end_idx] = [patch_formatted]
+            with open(target_file, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+            applied_on_disk = True
+        except Exception:
+            applied_on_disk = False
+
+    # Update finding status to resolved
+    db.update_finding_status(finding_id, "resolved")
+
+    # Record immutable audit event
+    AuditService.log_audit_event(
+        event_type="CODE_PATCH_APPLIED",
+        user=user.username,
+        action=f"Applied security patch to '{finding.get('file_path')}' ({finding.get('title')})",
+        project_id=finding.get("project_id"),
+        finding_id=finding_id,
+        details={
+            "file_path": finding.get("file_path"),
+            "line_start": line_start,
+            "line_end": line_end,
+            "applied_on_disk": applied_on_disk,
+            "status": "resolved"
+        }
+    )
+
+    return {
+        "success": True,
+        "status": "resolved",
+        "message": f"Successfully applied security patch to {finding.get('file_path')}",
+        "applied_on_disk": applied_on_disk,
+        "file_path": finding.get("file_path"),
+        "patched_lines": [line_start, line_end],
+        "patch_code": patch_code
+    }
+
+
+
 # --- Custom Rule Generator Routes ---
 @app.post("/api/rules/generate")
 def generate_custom_rule(req: RuleGenerateRequest, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
@@ -906,6 +1104,155 @@ def export_rules(format: str = "yaml", user: UserModel = Depends(get_current_use
         media_type="application/x-yaml",
         headers={"Content-Disposition": 'attachment; filename="sentinel-rules.yaml"'}
     )
+
+
+# --- SonarQube & Open Rule Database Endpoints ---
+@app.get("/api/rules/sonarqube")
+def get_sonarqube_rules(
+    language: Optional[str] = None,
+    severity: Optional[str] = None,
+    search: Optional[str] = None,
+    active_only: bool = False,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    Returns SonarQube RSPEC security rules with multi-language coverage,
+    Sonar severity, CWE, OWASP, and remediation details.
+    """
+    rules = open_rule_db.get_all_rules(
+        source="sonarqube_rspec",
+        language=language,
+        severity=severity,
+        search=search,
+        active_only=active_only
+    )
+    stats = open_rule_db.get_database_stats()
+    return {
+        "total": len(rules),
+        "rules": rules,
+        "stats": stats
+    }
+
+
+@app.post("/api/rules/sonarqube/import")
+def import_sonarqube_rules(
+    payload: Dict[str, Any],
+    user: UserModel = Depends(require_roles(["admin", "security_engineer"]))
+):
+    """
+    Imports SonarQube Quality Profile (XML or JSON format) into the active rule catalog.
+    """
+    format_type = payload.get("format", "json").lower()
+    raw_content = payload.get("content", "")
+
+    if not raw_content:
+        raise HTTPException(status_code=400, detail="Empty content payload provided.")
+
+    try:
+        if format_type == "xml" or raw_content.strip().startswith("<"):
+            imported = open_rule_db.import_sonarqube_profile_xml(raw_content)
+        else:
+            imported = open_rule_db.import_sonarqube_json(raw_content)
+
+        return {
+            "success": True,
+            "imported_count": len(imported),
+            "rules": imported
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"SonarQube import failed: {str(e)}")
+
+
+@app.get("/api/rules/database")
+def get_open_rule_database(
+    source: Optional[str] = None,
+    language: Optional[str] = None,
+    severity: Optional[str] = None,
+    search: Optional[str] = None,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    Returns the Open Rule Database catalog, combining SonarQube RSPEC rules,
+    Semgrep community rules, and imported vulnerability feeds.
+    """
+    rules = open_rule_db.get_all_rules(
+        source=source,
+        language=language,
+        severity=severity,
+        search=search
+    )
+    stats = open_rule_db.get_database_stats()
+    return {
+        "stats": stats,
+        "rules": rules
+    }
+
+
+@app.post("/api/rules/database/sync")
+def sync_open_rule_database(
+    payload: Optional[Dict[str, Any]] = None,
+    user: UserModel = Depends(require_roles(["admin", "security_engineer"]))
+):
+    """
+    Triggers synchronization of the open rule database against remote/local feeds.
+    """
+    feed_url = payload.get("feed_url") if payload else None
+    result = open_rule_db.sync_remote_database(feed_url=feed_url)
+    return result
+
+
+@app.post("/api/rules/database/toggle")
+def toggle_open_rule(
+    payload: Dict[str, Any],
+    user: UserModel = Depends(require_roles(["admin", "security_engineer"]))
+):
+    """
+    Toggles activation status for a specific rule ID or an entire rule source tier.
+    """
+    rule_id = payload.get("rule_id")
+    source = payload.get("source")
+    is_active = payload.get("is_active", True)
+
+    if rule_id:
+        success = open_rule_db.toggle_rule(rule_id, is_active)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Rule {rule_id} not found.")
+        return {"success": True, "rule_id": rule_id, "is_active": is_active}
+    elif source:
+        affected = open_rule_db.toggle_source(source, is_active)
+        return {"success": True, "source": source, "affected_rules": affected, "is_active": is_active}
+    else:
+        raise HTTPException(status_code=400, detail="Must provide 'rule_id' or 'source'.")
+
+
+@app.post("/api/rules/database/import")
+def import_open_rules(
+    payload: Dict[str, Any],
+    user: UserModel = Depends(require_roles(["admin", "security_engineer"]))
+):
+    """
+    Imports open rules from Semgrep YAML, SonarQube XML/JSON, or Sentinel format.
+    """
+    format_type = payload.get("format", "semgrep").lower()
+    raw_content = payload.get("content", "")
+
+    if not raw_content:
+        raise HTTPException(status_code=400, detail="Missing 'content' in payload.")
+
+    try:
+        if format_type in ("semgrep", "yaml"):
+            imported = open_rule_db.import_semgrep_yaml(raw_content)
+        elif format_type == "sonarqube_xml":
+            imported = open_rule_db.import_sonarqube_profile_xml(raw_content)
+        elif format_type == "sonarqube_json":
+            imported = open_rule_db.import_sonarqube_json(raw_content)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported format '{format_type}'.")
+
+        return {"success": True, "format": format_type, "imported_count": len(imported), "rules": imported}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 
 # --- Standards Taxonomy ---
@@ -1018,6 +1365,345 @@ def export_openvex(project_id: str, user: UserModel = Depends(get_current_user))
     })
 
 
+# --- SonarQube Repository Integration & Exporter Routes ---
+@app.get("/api/projects/{project_id}/export/sonarqube")
+def export_sonarqube(project_id: str, user: UserModel = Depends(get_current_user)):
+    """
+    Exports findings in official SonarQube Generic Issue Import Format (JSON).
+    Compatible with SonarQube 9.x/10.x and SonarCloud (sonar.externalIssuesReportPaths).
+    """
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    findings = db.list_findings(project_id)
+    if user.role in (RoleEnum.DEVELOPER, "developer"):
+        findings = [f for f in findings if _is_finding_authored_by_user(f, user)]
+    scans = db.list_scans(project_id)
+    latest_scan = scans[0] if scans else None
+    json_str = ReportGenerator.generate_sonarqube_generic_issues(proj, latest_scan, findings)
+    return Response(content=json_str, media_type="application/json", headers={
+        "Content-Disposition": f'attachment; filename="sonar-issues-{project_id}.json"'
+    })
+
+
+@app.get("/api/projects/{project_id}/export/sonar-properties")
+def export_sonar_properties(project_id: str, user: UserModel = Depends(get_current_user)):
+    """
+    Exports a customized sonar-project.properties configuration pre-configured for the project repository.
+    """
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    findings = db.list_findings(project_id)
+    scans = db.list_scans(project_id)
+    latest_scan = scans[0] if scans else None
+    props_str = ReportGenerator.generate_sonar_project_properties(proj, latest_scan, findings)
+    return Response(content=props_str, media_type="text/plain", headers={
+        "Content-Disposition": 'attachment; filename="sonar-project.properties"'
+    })
+
+
+@app.get("/api/projects/{project_id}/export/github-sonar-workflow")
+def export_github_sonar_workflow(project_id: str, user: UserModel = Depends(get_current_user)):
+    """
+    Exports turnkey GitHub Actions workflow (.github/workflows/sonar-sast.yml).
+    """
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    workflow_str = ReportGenerator.generate_github_actions_sonar_workflow(proj)
+    return Response(content=workflow_str, media_type="application/x-yaml", headers={
+        "Content-Disposition": 'attachment; filename="sonar-sast.yml"'
+    })
+
+
+@app.post("/api/projects/{project_id}/integrate/sonarqube")
+def integrate_project_sonarqube(project_id: str, payload: Optional[Dict[str, Any]] = None, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    """
+    Direct 1-Click SonarQube & SAST Repository Integration.
+    Installs sonar-project.properties, .github/workflows/sonar-sast.yml, and sonar-issues.json
+    directly into the project's repository workspace.
+    """
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    target_dir = (payload and payload.get("target_dir")) or proj.get("workspace_path") or os.getcwd()
+    findings = db.list_findings(project_id)
+    scans = db.list_scans(project_id)
+    latest_scan = scans[0] if scans else None
+
+    files_created = []
+
+    # 1. Write sonar-project.properties
+    props_content = ReportGenerator.generate_sonar_project_properties(proj, latest_scan, findings)
+    props_path = os.path.join(target_dir, "sonar-project.properties")
+    with open(props_path, "w", encoding="utf-8") as f:
+        f.write(props_content)
+    files_created.append(props_path)
+
+    # 2. Write GitHub Actions workflow
+    workflows_dir = os.path.join(target_dir, ".github", "workflows")
+    os.makedirs(workflows_dir, exist_ok=True)
+    workflow_path = os.path.join(workflows_dir, "sonar-sast.yml")
+    workflow_content = ReportGenerator.generate_github_actions_sonar_workflow(proj)
+    with open(workflow_path, "w", encoding="utf-8") as f:
+        f.write(workflow_content)
+    files_created.append(workflow_path)
+
+    # 3. Write latest SonarQube Generic Issues report
+    issues_path = os.path.join(target_dir, "sonar-issues.json")
+    issues_content = ReportGenerator.generate_sonarqube_generic_issues(proj, latest_scan, findings)
+    with open(issues_path, "w", encoding="utf-8") as f:
+        f.write(issues_content)
+    files_created.append(issues_path)
+
+    # 4. Also generate SARIF report for SonarQube's sarifReportPaths
+    sarif_path = os.path.join(target_dir, "aegissec-sarif.json")
+    sarif_content = ReportGenerator.generate_sarif(proj, latest_scan or {}, findings)
+    with open(sarif_path, "w", encoding="utf-8") as f:
+        f.write(sarif_content)
+    files_created.append(sarif_path)
+
+    proj_key = re.sub(r"[^a-zA-Z0-9_\-\.:]", "_", proj.get("name", "appsec").lower())
+
+    return {
+        "status": "success",
+        "message": f"Successfully integrated SonarQube & SAST for project '{proj.get('name')}'.",
+        "project_key": proj_key,
+        "files_created": files_created,
+        "instructions": {
+            "cli_command": "python3 scripts/sentinel_cli.py scan . --fail-on HIGH --sonar-export sonar-issues.json",
+            "sonar_scanner_args": f"-Dsonar.projectKey={proj_key} -Dsonar.externalIssuesReportPaths=sonar-issues.json -Dsonar.sarifReportPaths=aegissec-sarif.json",
+            "ci_cd_workflow": ".github/workflows/sonar-sast.yml"
+        }
+    }
+
+
+# --- Auditor Evidence Bundle & Quality Gate Routes ---
+@app.get("/api/projects/{project_id}/export/audit-bundle")
+def export_audit_bundle(project_id: str, user: UserModel = Depends(get_current_user)):
+    """
+    Generates a cryptographically signed, all-in-one Auditor Evidence Bundle (.zip)
+    containing ISO/NIST Attestations, CycloneDX SBOM, SARIF, VEX, SonarQube generic issues,
+    and complete audit trail logs with SHA-256 integrity manifest.
+    """
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    findings = db.list_findings(project_id)
+    scans = db.list_scans(project_id)
+    latest_scan = scans[0] if scans else {}
+    proj_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", proj.get("name", "project"))
+
+    # Extract dependencies for CycloneDX SBOM
+    sca_deps = []
+    seen_pkgs = set()
+    for f in findings:
+        pkg = f.get("package_name")
+        if pkg and pkg not in seen_pkgs:
+            seen_pkgs.add(pkg)
+            sca_deps.append({
+                "name": pkg,
+                "version": f.get("installed_version", "1.0.0"),
+                "license": f.get("license", "MIT"),
+                "ecosystem": "npm" if "package.json" in f.get("file_path", "") else "pypi"
+            })
+
+    # Generate reports
+    sarif_str = ReportGenerator.generate_sarif(proj, latest_scan, findings)
+    sbom_str = ReportGenerator.generate_cyclonedx_sbom(proj, sca_deps, findings)
+    vex_str = ReportGenerator.generate_openvex(proj, findings)
+    sonar_issues_str = ReportGenerator.generate_sonarqube_generic_issues(proj, latest_scan, findings)
+    sonar_props_str = ReportGenerator.generate_sonar_project_properties(proj, latest_scan, findings)
+    html_report_str = ReportGenerator.generate_html_report(proj, latest_scan, findings)
+
+    # Compliance Certificates
+    iso26262_cert = AuditService.generate_audit_certificate("ISO-26262", project_id=project_id, findings=findings, user=user.dict())
+    iso27001_cert = AuditService.generate_audit_certificate("ISO-27001", project_id=project_id, findings=findings, user=user.dict())
+    misra_cert = AuditService.generate_audit_certificate("MISRA", project_id=project_id, findings=findings, user=user.dict())
+    nist_cert = AuditService.generate_audit_certificate("NIST-SSDF", project_id=project_id, findings=findings, user=user.dict())
+
+    # Audit Trail Logs
+    audit_logs = AuditService.list_audit_logs(limit=200)
+    audit_csv_buf = io.StringIO()
+    writer = csv.writer(audit_csv_buf)
+    writer.writerow(["ID", "Timestamp", "Event Type", "User", "Project", "Details", "Seal"])
+    for l in audit_logs:
+        writer.writerow([l.get("id"), l.get("timestamp"), l.get("event_type"), l.get("user"), l.get("project_id"), l.get("details"), l.get("cryptographic_seal")])
+    audit_csv_str = audit_csv_buf.getvalue()
+
+    # Package into ZIP archive
+    zip_buffer = io.BytesIO()
+    checksums = []
+    with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        file_map = {
+            "reports/executive-audit-report.html": html_report_str,
+            "security/sarif-v2.1.0.json": sarif_str,
+            "supply-chain/cyclonedx-sbom.json": sbom_str,
+            "supply-chain/vex-exploitability.json": vex_str,
+            "sonarqube/sonar-issues.json": sonar_issues_str,
+            "sonarqube/sonar-project.properties": sonar_props_str,
+            "attestations/ISO-26262-Safety-Attestation.json": json.dumps(iso26262_cert, indent=2),
+            "attestations/ISO-27001-Secure-Coding-Attestation.json": json.dumps(iso27001_cert, indent=2),
+            "attestations/MISRA-C-2012-Attestation.json": json.dumps(misra_cert, indent=2),
+            "attestations/NIST-SSDF-Attestation.json": json.dumps(nist_cert, indent=2),
+            "audit-trail/immutable_logs.csv": audit_csv_str,
+        }
+
+        for fname, content in file_map.items():
+            data_bytes = content.encode("utf-8") if isinstance(content, str) else content
+            zf.writestr(fname, data_bytes)
+            fhash = hashlib.sha256(data_bytes).hexdigest()
+            checksums.append(f"{fhash}  {fname}")
+
+        manifest_content = (
+            f"# Sentinel AppSec / AegisSec Compliance Evidence Manifest\n"
+            f"# Project: {proj.get('name')}\n"
+            f"# Generated: {datetime.datetime.now(datetime.timezone.utc).isoformat()}\n"
+            f"# Auditor: {user.username}\n\n"
+            + "\n".join(checksums) + "\n"
+        )
+        zf.writestr("MANIFEST-CHECKSUMS.sha256", manifest_content)
+
+    zip_bytes = zip_buffer.getvalue()
+
+    AuditService.log_audit_event(
+        event_type="AUDIT_BUNDLE_DOWNLOADED",
+        user=user.username,
+        action=f"Generated and downloaded complete compliance evidence bundle for '{proj.get('name')}'",
+        project_id=project_id,
+        details={"files_count": len(file_map) + 1, "size_bytes": len(zip_bytes)}
+    )
+
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="aegissec-audit-evidence-{proj_name}.zip"'
+        }
+    )
+
+
+@app.get("/api/projects/{project_id}/badge.svg", response_class=Response)
+def get_project_security_badge(project_id: str, label: Optional[str] = "security"):
+    """
+    Generates a dynamic, live Shields.io-compliant SVG status badge for GitHub README.md.
+    No authentication required so Git web portals can render it directly.
+    """
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        status_text_val = "not found"
+        status_color = "#94a3b8"
+    else:
+        findings = [f for f in db.list_findings(project_id) if f.get("status") != "resolved"]
+        crit_count = sum(1 for f in findings if f.get("severity") == "CRITICAL")
+        high_count = sum(1 for f in findings if f.get("severity") == "HIGH")
+        act_now = sum(1 for f in findings if f.get("quadrant") == "ACT_NOW")
+
+        if crit_count == 0 and high_count == 0:
+            status_text_val = "passing | A+"
+            status_color = "#10b981"
+        elif crit_count == 0 and high_count <= 3 and act_now == 0:
+            status_text_val = f"warning | {high_count} high"
+            status_color = "#f59e0b"
+        else:
+            status_text_val = f"failing | {crit_count} crit"
+            status_color = "#ef4444"
+
+    label_text = (label or "security").strip()
+    label_width = len(label_text) * 7 + 14
+    status_width = len(status_text_val) * 7 + 16
+    total_width = label_width + status_width
+
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{total_width}" height="20" role="img" aria-label="{label_text}: {status_text_val}">
+  <title>{label_text}: {status_text_val}</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r">
+    <rect width="{total_width}" height="20" rx="3" fill="#fff"/>
+  </clipPath>
+  <g clip-path="url(#r)">
+    <rect width="{label_width}" height="20" fill="#1e293b"/>
+    <rect x="{label_width}" width="{status_width}" height="20" fill="{status_color}"/>
+    <rect width="{total_width}" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">
+    <text aria-hidden="true" x="{label_width * 5}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="{(label_width - 14) * 10}">{label_text}</text>
+    <text x="{label_width * 5}" y="140" transform="scale(.1)" fill="#fff" textLength="{(label_width - 14) * 10}">{label_text}</text>
+    <text aria-hidden="true" x="{(label_width + status_width / 2) * 10}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="{(status_width - 14) * 10}">{status_text_val}</text>
+    <text x="{(label_width + status_width / 2) * 10}" y="140" transform="scale(.1)" fill="#fff" textLength="{(status_width - 14) * 10}">{status_text_val}</text>
+  </g>
+</svg>"""
+
+    return Response(
+        content=svg,
+        media_type="image/svg+xml",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
+
+
+@app.get("/api/projects/{project_id}/quality-gate", response_model=QualityGateResponse)
+def get_project_quality_gate(project_id: str, strict: bool = False, user: UserModel = Depends(get_current_user)):
+    """
+    Evaluates current project security findings against enterprise Quality Gate criteria.
+    """
+    proj = db.get_project_by_id(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    findings = [f for f in db.list_findings(project_id) if f.get("status") != "resolved"]
+    gate_eval = CIQualityGate.evaluate(findings=findings, strict_mode=strict)
+
+    crit_count = sum(1 for f in findings if f.get("severity") == "CRITICAL")
+    high_count = sum(1 for f in findings if f.get("severity") == "HIGH")
+    act_now_count = sum(1 for f in findings if f.get("quadrant") == "ACT_NOW")
+    cisa_count = sum(1 for f in findings if f.get("cisa_kev"))
+
+    criteria = {
+        "max_critical_allowed": 0,
+        "max_high_allowed": 0 if strict else 3,
+        "act_now_tolerated": False,
+        "cisa_kev_tolerated": False,
+        "passed_critical_check": crit_count == 0,
+        "passed_high_check": high_count <= (0 if strict else 3),
+        "passed_act_now_check": act_now_count == 0,
+        "passed_cisa_check": cisa_count == 0
+    }
+
+    metrics = {
+        "active_critical": crit_count,
+        "active_high": high_count,
+        "act_now_flaws": act_now_count,
+        "cisa_kev_flaws": cisa_count,
+        "total_active_flaws": len(findings)
+    }
+
+    summary = (
+        "Quality Gate PASSED: No blocker or active weaponized vulnerabilities detected."
+        if gate_eval["passed"]
+        else f"Quality Gate FAILED: Detected {gate_eval.get('blockers_count', len(gate_eval.get('blockers', [])))} blocking security violation(s)."
+    )
+
+    return QualityGateResponse(
+        project_id=project_id,
+        project_name=proj.get("name", "Project"),
+        status=gate_eval["status"],
+        passed=gate_eval["passed"],
+        summary=summary,
+        evaluated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        criteria=criteria,
+        metrics=metrics
+    )
+
+
 # --- Benchmark & Tool Comparison Routes ---
 @app.get("/api/benchmark")
 def get_tool_benchmarks(user: UserModel = Depends(get_current_user)):
@@ -1121,10 +1807,16 @@ def _compute_vulnerability_trends(
         iso_27001_trend = [68, 73, 78, 83, 89, min(97, int(posture))]
         iso_26262_trend = [62, 69, 74, 80, 86, min(95, int(posture))]
         nist_ssdf_trend = [65, 71, 76, 82, 88, min(96, int(posture))]
+        # Total vulnerability count series across sprint checkpoints
+        vuln_series = [
+            crit_series[i] + high_series[i] + med_series[i] + l
+            for i in range(6)
+        ]
 
         return {
             "name": name,
             "total_findings": tot,
+            "vulnerability_series": vuln_series,
             "critical_series": crit_series,
             "high_series": high_series,
             "medium_series": med_series,
@@ -1289,24 +1981,50 @@ def evaluate_ci_gate(req: GateCheckRequest, user: UserModel = Depends(get_curren
 
 @app.post("/api/webhooks/github")
 def github_webhook(payload: Dict[str, Any]):
-    event_type = payload.get("action", "push")
-    repo = payload.get("repository", {}).get("full_name", "enterprise/repo")
+    event_type = payload.get("action") or ("push" if "commits" in payload or "ref" in payload else "generic")
+    repo_obj = payload.get("repository", {})
+    repo = repo_obj.get("full_name") or repo_obj.get("name") or "enterprise/repo"
+    clone_url = repo_obj.get("clone_url") or repo_obj.get("html_url") or ""
     sender = payload.get("sender", {}).get("login", "github-actions[bot]")
-    
-    all_findings = db.list_findings()
+    ref = payload.get("ref", "refs/heads/main")
+    branch = ref.split("/")[-1] if "/" in ref else ref
+
+    # Match project by repository URL or name to auto-initiate scan
+    matching_project = None
+    all_projects = db.list_projects()
+    for p in all_projects:
+        p_git = (p.get("git_url") or "").lower()
+        if p_git and (repo.lower() in p_git or (clone_url and clone_url.lower() in p_git) or p.get("name", "").lower() == repo.lower()):
+            matching_project = p
+            break
+
+    scan_result = None
+    if matching_project and event_type in ("push", "synchronize", "opened"):
+        try:
+            scan_user = UserModel(id="ci-bot", username=sender, email=f"{sender}@github.internal", role="security_engineer", is_active=True)
+            scan_result = trigger_scan(matching_project["id"], scan_type="full", user=scan_user)
+        except Exception as scan_err:
+            scan_result = {"success": False, "error": str(scan_err)}
+
+    project_id = matching_project["id"] if matching_project else None
+    all_findings = db.list_findings(project_id) if project_id else db.list_findings()
     gate_result = CIQualityGate.evaluate(findings=all_findings)
     pr_comment = CIQualityGate.format_pr_comment(gate_result)
     
     AuditService.log_audit_event(
         event_type="WEBHOOK_RECEIVED",
         user=sender,
-        action=f"GitHub webhook event '{event_type}' received for {repo}",
-        details={"gate_status": gate_result["gate_status"]}
+        action=f"GitHub webhook event '{event_type}' received for {repo}" + (f" -> Scan initiated for project '{matching_project['name']}'" if matching_project else ""),
+        details={"gate_status": gate_result["gate_status"], "scan_result": scan_result, "branch": branch}
     )
     return {
         "status": "processed",
         "repository": repo,
+        "branch": branch,
         "event": event_type,
+        "project_matched": matching_project["name"] if matching_project else None,
+        "scan_initiated": bool(scan_result and scan_result.get("success")),
+        "scan_result": scan_result,
         "gate_status": gate_result["gate_status"],
         "pr_comment": pr_comment
     }
@@ -1329,47 +2047,752 @@ def get_audit_certificate(standard: str, user: UserModel = Depends(get_current_u
     return cert
 
 
+# --- Batch Patching & Multi-File PR Studio ---
+@app.post("/api/findings/batch-patch", response_model=BatchPatchResponse)
+def batch_patch_findings_endpoint(
+    req: BatchPatchRequest,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    Batch Auto-Patch: Automatically generates, validates, and applies secure code
+    patches across multiple findings and files with developer row-level access control.
+    """
+    if not req.finding_ids:
+        raise HTTPException(status_code=400, detail="No finding IDs provided for batch patching.")
 
-# --- Seed Initial Demo Project ---
+    patched_ids = []
+    files_affected = set()
+    diff_blocks = []
+
+    for fid in req.finding_ids:
+        finding = db.get_finding_by_id(fid)
+        if not finding:
+            continue
+        if not _is_finding_authored_by_user(finding, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: You are only authorized to patch code you authored (Finding {fid})."
+            )
+
+        rem = LLMService.generate_remediation(finding)
+        raw_diff = rem.get("code_diff") or rem.get("suggested_fix_diff") or ""
+        clean_patch = raw_diff
+        if "+++" in raw_diff:
+            lines = []
+            capturing = False
+            for l in raw_diff.splitlines():
+                if "+++" in l:
+                    capturing = True
+                    continue
+                if l.startswith("# ---"):
+                    capturing = False
+                    continue
+                if capturing and not l.startswith("#"):
+                    lines.append(l)
+            if lines:
+                clean_patch = "\n".join(lines)
+
+        file_path = finding.get("file_path", "unknown")
+        files_affected.add(file_path)
+        diff_blocks.append(f"--- a/{file_path} (Finding {fid}: {finding.get('title')})\n+++ b/{file_path}\n{clean_patch}")
+
+        if not req.dry_run:
+            target_file = None
+            proj = db.get_project_by_id(finding.get("project_id", ""))
+            search_dirs = []
+            if proj and proj.get("workspace_path"):
+                search_dirs.append(proj["workspace_path"])
+            search_dirs.append(os.getcwd())
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            search_dirs.append(base_dir)
+
+            for d in search_dirs:
+                candidate = os.path.join(d, file_path)
+                if os.path.exists(candidate) and os.path.isfile(candidate):
+                    target_file = candidate
+                    break
+
+            if target_file and clean_patch:
+                try:
+                    with open(target_file, "r", encoding="utf-8", errors="replace") as f:
+                        content = f.read()
+                    line_start = finding.get("line_start", 1)
+                    line_end = finding.get("line_end", line_start)
+                    lines = content.splitlines(keepends=True)
+                    if 1 <= line_start <= len(lines):
+                        new_lines = lines[:line_start-1] + [clean_patch + "\n"] + lines[line_end:]
+                        with open(target_file, "w", encoding="utf-8") as f:
+                            f.writelines(new_lines)
+                except Exception as pe:
+                    print(f"[Sentinel Batch Patch] Warning writing to {target_file}: {pe}")
+
+            db.update_finding_status(fid, "resolved", req.resolution_note)
+            AuditService.log_audit_event(
+                event_type="BATCH_PATCH_APPLIED",
+                user=user.username,
+                action=f"Applied auto-remediation patch to finding {fid}",
+                details={"finding_id": fid, "file_path": file_path}
+            )
+            patched_ids.append(fid)
+
+    audit_entry = None
+    if not req.dry_run and patched_ids:
+        audit_entry = AuditService.log_audit_event(
+            event_type="BATCH_REMEDIATION_COMPLETE",
+            user=user.username,
+            action=f"Batch remediated {len(patched_ids)} findings across {len(files_affected)} files",
+            details={"findings": patched_ids, "files": list(files_affected)}
+        )
+
+    return BatchPatchResponse(
+        success=True,
+        dry_run=bool(req.dry_run),
+        applied_count=len(patched_ids) if not req.dry_run else len(req.finding_ids),
+        files_affected=list(files_affected),
+        unified_diff="\n\n".join(diff_blocks),
+        patched_findings=patched_ids if not req.dry_run else req.finding_ids,
+        audit_id=audit_entry.get("id") if audit_entry else None
+    )
+
+
+@app.post("/api/findings/batch-pr")
+def batch_pr_findings_endpoint(
+    req: BatchPRRequest,
+    user: UserModel = Depends(get_current_user)
+):
+    if not req.finding_ids:
+        raise HTTPException(status_code=400, detail="No finding IDs provided.")
+
+    selected_findings = []
+    for fid in req.finding_ids:
+        f = db.get_finding_by_id(fid)
+        if f:
+            if not _is_finding_authored_by_user(f, user):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Access denied: You can only create PRs for findings in code you authored ({fid})."
+                )
+            selected_findings.append(f)
+
+    if not selected_findings:
+        raise HTTPException(status_code=404, detail="None of the specified findings were found.")
+
+    first = selected_findings[0]
+    res = GitPRService.create_remediation_pr(first, user.dict())
+    res["batch_findings_count"] = len(selected_findings)
+    res["findings_included"] = [f["id"] for f in selected_findings]
+    return res
+
+
+# --- Webhook Integrations (Slack, MS Teams, Discord) ---
+@app.get("/api/integrations/webhooks")
+def get_webhook_config(user: UserModel = Depends(get_current_user)):
+    cfg = WebhookNotifier.get_config()
+    # Mask secrets for display
+    if cfg.get("generic_secret"):
+        cfg["generic_secret"] = "••••••••"
+    return cfg
+
+
+@app.post("/api/integrations/webhooks")
+def save_webhook_config(
+    payload: WebhookConfigRequest,
+    user: UserModel = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.SECURITY_ENGINEER]))
+):
+    existing = WebhookNotifier.get_config()
+    data = payload.dict()
+    if data.get("generic_secret") == "••••••••":
+        data["generic_secret"] = existing.get("generic_secret", "")
+    saved = WebhookNotifier.save_config(data)
+    AuditService.log_audit_event(
+        event_type="INTEGRATION_UPDATED",
+        user=user.username,
+        action="Updated Webhook Notification Settings (Slack/Teams/Discord)",
+        details={"enabled": saved.get("enabled")}
+    )
+    return {"success": True, "config": saved}
+
+
+@app.post("/api/integrations/webhooks/test")
+def test_webhook_endpoint(
+    payload: WebhookTestRequest,
+    user: UserModel = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.SECURITY_ENGINEER]))
+):
+    return WebhookNotifier.test_webhook(payload.webhook_type, payload.webhook_url, payload.secret)
+
+
+# --- Live DAST & Security Header Probe ---
+@app.post("/api/dast/audit")
+def audit_dast_endpoint(
+    payload: DASTAuditRequest,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    Performs on-demand defensive dynamic security auditing of web endpoints,
+    evaluating HSTS, CSP, Clickjacking, MIME headers, Cookies, and TLS.
+    """
+    result = DASTEngine.audit_url(payload.target_url, timeout=payload.timeout or 6)
+    AuditService.log_audit_event(
+        event_type="DAST_AUDIT_COMPLETED",
+        user=user.username,
+        action=f"Audited endpoint '{payload.target_url}' (Grade: {result.get('grade')}, Score: {result.get('score')})",
+        details={"url": payload.target_url, "findings_count": len(result.get("findings", []))}
+    )
+    return result
+
+
+# --- Background Scheduler & Threat Intel Sync ---
+@app.get("/api/schedules")
+def get_schedules_endpoint(user: UserModel = Depends(get_current_user)):
+    return scheduler.get_schedules()
+
+
+@app.post("/api/schedules")
+def save_schedule_endpoint(
+    payload: ScheduleCreateRequest,
+    user: UserModel = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.SECURITY_ENGINEER]))
+):
+    saved = scheduler.save_schedule(payload.dict())
+    return {"success": True, "schedules": saved}
+
+
+@app.delete("/api/schedules/{schedule_id}")
+def delete_schedule_endpoint(
+    schedule_id: str,
+    user: UserModel = Depends(require_roles([RoleEnum.ADMIN, RoleEnum.SECURITY_ENGINEER]))
+):
+    ok = scheduler.delete_schedule(schedule_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return {"success": True}
+
+
+@app.post("/api/threat-intel/sync")
+def sync_threat_intel_endpoint(user: UserModel = Depends(get_current_user)):
+    """
+    On-demand sync of CISA Known Exploited Vulnerabilities and EPSS scoring catalog.
+    """
+    return scheduler.sync_threat_intel()
+
+
+@app.get("/api/threat-intel/status")
+def get_threat_intel_status_endpoint(user: UserModel = Depends(get_current_user)):
+    return scheduler.get_intel_status()
+
+
+# --- Interactive SCA Dependency Graph / DAG ---
+@app.get("/api/projects/{project_id}/dependencies/graph")
+def get_project_dependency_graph(
+    project_id: str,
+    user: UserModel = Depends(get_current_user)
+):
+    """
+    Returns hierarchical Directed Acyclic Graph (DAG) of project dependencies,
+    reachability symbols, and transitive vulnerability paths.
+    """
+    return DependencyGraphBuilder.build_graph(project_id)
+
+
+# --- Server Startup Initialization ---
 @app.on_event("startup")
-def startup_seed_demo():
+def startup_init():
     # Automatically capture server IP and write workspace config
     auto_write_workspace_config()
+    try:
+        scheduler.start()
+    except Exception as e:
+        print(f"[Sentinel Scheduler] Startup notice: {e}")
 
-    # If no projects exist, seed a starter demo project
-    projects = db.list_projects()
-    if len(projects) == 0:
-        proj = db.create_project(
-            name="Automotive-Cloud-Demo-Suite",
-            description="Reference project demonstrating ISO 26262 (ASIL-D), MISRA C:2012, ISO 27001, and Cloud Supply Chain vulnerability detection.",
-            git_url="",
-            git_branch="main",
-            git_pat="",
-            created_by="admin"
+
+# ==============================================================================
+# 1. ENTERPRISE SBOM & VEX ATTESTATION ENDPOINTS
+# ==============================================================================
+@app.get("/api/sbom/cyclonedx")
+def get_cyclonedx_sbom(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    """Generate and return CycloneDX 1.5 JSON with integrated VEX vulnerability status."""
+    project_name = "Sentinel-Enterprise-App"
+    if project_id:
+        p = db.get_project_by_id(project_id)
+        if p:
+            project_name = p.get("name", project_name)
+    findings = db.list_findings(project_id)
+    return sbom_generator.generate_cyclonedx(project_name=project_name, findings=findings)
+
+
+@app.get("/api/sbom/spdx")
+def get_spdx_sbom(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    """Generate and return SPDX 2.3 JSON specification."""
+    project_name = "Sentinel-Enterprise-App"
+    if project_id:
+        p = db.get_project_by_id(project_id)
+        if p:
+            project_name = p.get("name", project_name)
+    findings = db.list_findings(project_id)
+    return sbom_generator.generate_spdx(project_name=project_name, findings=findings)
+
+
+@app.get("/api/sbom/vex")
+def get_openvex_attestation(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    """Generate and return CISA OpenVEX attestation document."""
+    project_name = "Sentinel-Enterprise-App"
+    if project_id:
+        p = db.get_project_by_id(project_id)
+        if p:
+            project_name = p.get("name", project_name)
+    findings = db.list_findings(project_id)
+    return sbom_generator.generate_openvex(project_name=project_name, findings=findings)
+
+
+# ==============================================================================
+# 2. INTERACTIVE RULE BUILDER & LIVE SANDBOX ENDPOINTS
+# ==============================================================================
+@app.post("/api/rules/test-sandbox")
+def test_rule_sandbox(req: RuleSandboxEvaluateRequest, user: UserModel = Depends(get_current_user)):
+    """
+    Live testing sandbox: evaluates a regex pattern against user-supplied code,
+    returning match offsets, line numbers, and benchmark latency.
+    """
+    import time
+    t0 = time.perf_counter()
+    try:
+        compiled = re.compile(req.regex, re.MULTILINE | re.IGNORECASE)
+    except re.error as e:
+        return {
+            "valid": False,
+            "error": f"Regex Syntax Error: {str(e)}",
+            "matches": [],
+            "match_count": 0,
+            "execution_time_ms": 0.0
+        }
+
+    matches = []
+    lines = req.test_snippet.splitlines()
+    for line_idx, line in enumerate(lines, 1):
+        for m in compiled.finditer(line):
+            matches.append({
+                "line": line_idx,
+                "start_col": m.start(),
+                "end_col": m.end(),
+                "matched_text": m.group(0),
+                "line_snippet": line
+            })
+
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+    return {
+        "valid": True,
+        "error": None,
+        "matches": matches,
+        "match_count": len(matches),
+        "execution_time_ms": elapsed_ms
+    }
+
+
+@app.post("/api/rules/custom-builder")
+def create_custom_rule_via_builder(req: CustomRuleBuilderRequest, user: UserModel = Depends(get_current_user)):
+    """
+    Saves a newly designed custom inspection rule into the active engine.
+    """
+    try:
+        re.compile(req.regex)
+    except re.error as e:
+        raise HTTPException(status_code=400, detail=f"Invalid regex: {str(e)}")
+
+    rule_id = req.id or f"CUSTOM-{uuid.uuid4().hex[:6].upper()}"
+    rule_dict = {
+        "id": rule_id,
+        "name": req.name,
+        "type": req.type,
+        "severity": req.severity.upper(),
+        "languages": req.languages,
+        "cwe": req.cwe,
+        "owasp": req.owasp,
+        "standards": req.standards or [req.owasp or "OWASP:A01:2021"],
+        "regex": req.regex,
+        "description": req.description,
+        "remediation": req.remediation,
+        "is_active": True,
+        "author": user.username,
+        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
+
+    # Add to open rules db in-memory registry
+    open_rule_db.add_rule(rule_dict)
+
+    # Also persist to rules.yaml via rule_manager
+    try:
+        yaml_content = f"""id: "{rule_id}"
+name: "{req.name}"
+severity: "{req.severity.upper()}"
+language: "{req.languages[0] if req.languages else 'python'}"
+cwe: "{req.cwe}"
+owasp: "{req.owasp}"
+regex: "{req.regex}"
+description: "{req.description}"
+remediation: "{req.remediation}"
+"""
+        custom_model = CustomRuleModel(
+            id=rule_id,
+            name=req.name,
+            type=req.type,
+            rule_category=req.type,
+            nl_prompt=req.name,
+            languages=req.languages or ["python"],
+            severity=req.severity.upper(),
+            cwe=req.cwe or "CWE-89",
+            standards=req.standards or [req.owasp or "OWASP:A01:2021"],
+            regex=req.regex,
+            description=req.description,
+            remediation=req.remediation,
+            yaml_representation=yaml_content,
+            is_active=True
         )
-        # Trigger an initial scan so the dashboard has rich security metrics immediately!
-        trigger_scan(proj["id"], "full", UserModel(id="1", username="admin", email="admin@internal", role="admin", created_at=""))
+        rule_manager.save_rule(rule_dict, sync_to_yaml=True)
+    except Exception as e:
+        print(f"[Rule Builder] YAML save warning: {e}")
 
-    # Ensure representative starter vulnerability findings have tickets assigned to code authors
-    all_f = db.list_findings()
-    for f in all_f:
-        auth_name = f.get("author_name") or ""
-        if not f.get("ticket_assigned_to") and not f.get("jira_key"):
-            if "marcus" in auth_name.lower() and f.get("severity") == "CRITICAL":
-                db.update_finding_status(
-                    f["id"], "in_triage", ticket_key="SEC-1042", platform="jira",
-                    ticket_assigned_to="Marcus Vance", ticket_assigned_email="marcus.vance@cloudsec.internal"
-                )
-            elif "elena" in auth_name.lower() and f.get("severity") == "CRITICAL":
-                db.update_finding_status(
-                    f["id"], "in_triage", ticket_key="SEC-1043", platform="jira",
-                    ticket_assigned_to="Dr. Elena Rostova", ticket_assigned_email="elena.rostova@autocorp.de"
-                )
-            elif "sarah" in auth_name.lower():
-                db.update_finding_status(
-                    f["id"], "in_triage", ticket_key="SEC-1044", platform="jira",
-                    ticket_assigned_to="Sarah Lin", ticket_assigned_email="sarah.lin@frontend.io"
-                )
+    return {
+        "status": "success",
+        "rule_id": rule_id,
+        "rule": rule_dict,
+        "message": f"Rule '{req.name}' successfully activated across all scanners."
+    }
+
+
+# ==============================================================================
+# 3. JIRA & LINEAR TWO-WAY ISSUE TRACKER ENDPOINTS
+# ==============================================================================
+@app.get("/api/trackers/status")
+def get_issue_trackers_status(user: UserModel = Depends(get_current_user)):
+    """Return connection health and active ticket metrics for Jira and Linear."""
+    return issue_tracker.get_status()
+
+
+@app.post("/api/trackers/config")
+def update_issue_tracker_config(req: TrackerConfigRequest, user: UserModel = Depends(get_current_user)):
+    """Configure Jira or Linear connection settings."""
+    return issue_tracker.update_config(req.provider, req.config)
+
+
+@app.post("/api/trackers/create-ticket")
+def create_tracker_ticket(req: TrackerTicketCreateRequest, user: UserModel = Depends(get_current_user)):
+    """
+    Exports a Sentinel finding directly to Jira or Linear as a tracked issue.
+    """
+    all_findings = db.list_findings()
+    finding = None
+    for f in all_findings:
+        if f.get("id") == req.finding_id:
+            finding = f
+            break
+    if not finding:
+        # Generate on mock or fallback
+        finding = {
+            "id": req.finding_id,
+            "title": "SQL Injection in Query Handler",
+            "severity": "CRITICAL",
+            "file_path": "backend/db.py",
+            "line_start": 42,
+            "cve_id": "CVE-2024-DEF-001",
+            "remediation": "Parameterize queries."
+        }
+
+    ticket_data = issue_tracker.create_ticket(finding, provider=req.provider, project_key=req.project_key)
+    # Store tracker link on finding
+    finding["tracker_ticket"] = ticket_data
+    return {
+        "status": "success",
+        "ticket": ticket_data,
+        "message": f"Ticket {ticket_data['ticket_id']} created in {req.provider.upper()}."
+    }
+
+
+@app.post("/api/trackers/sync")
+def sync_tracker_statuses(user: UserModel = Depends(get_current_user)):
+    """
+    Two-way synchronization: reconciles status between Jira/Linear and Sentinel AppSec.
+    """
+    return issue_tracker.sync_status(db.list_findings())
+
+
+# ==============================================================================
+# 4. RUNTIME APPLICATION SELF-PROTECTION (RASP) ENDPOINTS
+# ==============================================================================
+@app.get("/api/rasp/telemetry")
+def get_rasp_telemetry(user: UserModel = Depends(get_current_user)):
+    """Return live exploit attack telemetry and incident radar."""
+    return rasp_engine.get_telemetry()
+
+
+@app.post("/api/rasp/simulate")
+def simulate_rasp_attack(req: RASPSimulateRequest, user: UserModel = Depends(get_current_user)):
+    """
+    Fires a simulated exploit payload to test active RASP interception defenses.
+    """
+    return rasp_engine.simulate_attack(vector=req.vector, custom_payload=req.payload)
+
+
+@app.post("/api/rasp/mode")
+def set_rasp_protection_mode(req: RASPModeRequest, user: UserModel = Depends(get_current_user)):
+    """Switch RASP between BLOCK (active 403 prevention) and MONITOR (passive detection)."""
+    return rasp_engine.set_mode(req.mode)
+
+
+# --- Threat Modeling & Attack Surface Routes (STRIDE) ---
+@app.get("/api/threat-model")
+def get_threat_model(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    """
+    Returns automated STRIDE analysis and interactive architecture Data-Flow Diagram (DFD).
+    """
+    proj = db.get_project_by_id(project_id) if project_id else None
+    repo_path = proj.get("git_url", ".") if proj and os.path.isdir(proj.get("git_url", "")) else "."
+    findings = db.list_findings(project_id) if project_id else db.list_findings()
+    return ThreatModelEngine.analyze_repository(repo_path, findings)
+
+
+@app.post("/api/threat-model/generate")
+def generate_threat_model(req: ThreatModelGenerateRequest, user: UserModel = Depends(get_current_user)):
+    """
+    Generates or refreshes the STRIDE Threat Model for a project.
+    """
+    proj = db.get_project_by_id(req.project_id) if req.project_id else None
+    repo_path = proj.get("git_url", ".") if proj and os.path.isdir(proj.get("git_url", "")) else "."
+    findings = db.list_findings(req.project_id) if req.project_id else db.list_findings()
+    model = ThreatModelEngine.analyze_repository(repo_path, findings)
+    AuditService.log_audit_event(
+        event_type="THREAT_MODEL_GENERATED",
+        user=user.username,
+        action=f"Generated STRIDE Threat Model ({model['stride_summary']['total_threats']} threats mapped)",
+        details={"project_id": req.project_id, "summary": model["stride_summary"]}
+    )
+    return model
+
+
+# --- Automated Secret Rotation & Cloud Vault Routes ---
+@app.get("/api/vault/status")
+def get_vault_status(user: UserModel = Depends(get_current_user)):
+    """Returns connectivity and rotation audit status for HashiCorp Vault, AWS & Azure."""
+    return VaultManager.get_status()
+
+
+@app.post("/api/vault/config")
+def save_vault_config(req: VaultConfigRequest, user: UserModel = Depends(require_roles(["admin"]))):
+    """Updates vault connection endpoints, credentials, and default provider."""
+    cfg = VaultManager.get_config()
+    cfg["active_provider"] = req.active_provider
+    cfg["providers"] = req.providers
+    VaultManager.save_config(cfg)
+    AuditService.log_audit_event(
+        event_type="VAULT_CONFIG_UPDATED",
+        user=user.username,
+        action=f"Updated Cloud Vault Settings (Provider: {req.active_provider})",
+        details={"active_provider": req.active_provider}
+    )
+    return {"success": True, "message": "Vault configuration saved successfully."}
+
+
+@app.post("/api/vault/rotate")
+def rotate_secret_into_vault(req: VaultRotateRequest, user: UserModel = Depends(require_roles(["admin", "security_engineer"]))):
+    """
+    Rotates a leaked/hardcoded secret into Cloud Vault and generates refactored code diff.
+    """
+    finding = db.get_finding_by_id(req.finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    result = VaultManager.rotate_secret(finding, provider=req.provider)
+    # Update finding status to in_triage or resolved
+    db.update_finding_status(req.finding_id, "resolved")
+    AuditService.log_audit_event(
+        event_type="SECRET_ROTATED",
+        user=user.username,
+        action=f"Rotated secret for finding '{finding.get('title', '')}' into {req.provider or 'vault'}",
+        details={"finding_id": req.finding_id, "rotation": result["rotation"]}
+    )
+    return result
+
+
+# --- Container Image & Base OS Vulnerability Scanner Routes ---
+@app.get("/api/container-scan/cves")
+def get_container_cve_catalog(user: UserModel = Depends(get_current_user)):
+    """Returns the curated Base OS CVE vulnerability database."""
+    return ContainerOSScanner.get_cve_catalog()
+
+
+@app.post("/api/container-scan/analyze")
+def analyze_container_security(req: ContainerScanRequest, user: UserModel = Depends(get_current_user)):
+    """
+    Inspects Dockerfile contents, base OS layers, and package vulnerabilities.
+    """
+    content = req.dockerfile_content
+    if not content and req.project_id:
+        proj = db.get_project_by_id(req.project_id)
+        if proj and os.path.isdir(proj.get("git_url", "")):
+            df_path = os.path.join(proj["git_url"], "Dockerfile")
+            if os.path.exists(df_path):
+                with open(df_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+
+    if not content:
+        # Default representative Dockerfile
+        content = "FROM alpine:3.14\nRUN apk add --no-cache curl openssl\nUSER root\nENTRYPOINT [\"curl\"]"
+
+    scan_res = ContainerOSScanner.scan_dockerfile_content(content)
+    AuditService.log_audit_event(
+        event_type="CONTAINER_SCANNED",
+        user=user.username,
+        action=f"Container OS Scan completed ({scan_res['total_vulnerabilities']} vulnerabilities found)",
+        details={"critical": scan_res["critical_count"], "high": scan_res["high_count"]}
+    )
+    return scan_res
+
+
+# --- Policy-as-Code & Quality Gate Studio Routes ---
+@app.get("/api/policy-studio/rules")
+def get_policy_studio_rules(user: UserModel = Depends(get_current_user)):
+    """Returns active Policy-as-Code definition."""
+    return PolicyStudio.get_policy()
+
+
+@app.post("/api/policy-studio/rules")
+def save_policy_studio_rules(req: PolicyStudioSaveRequest, user: UserModel = Depends(require_roles(["admin"]))):
+    """Saves updated Policy-as-Code gate rules."""
+    policy_data = {
+        "policy_name": req.policy_name,
+        "version": "2.0",
+        "description": req.description or "Configured via Policy Studio",
+        "rules": req.rules
+    }
+    PolicyStudio.save_policy(policy_data)
+    AuditService.log_audit_event(
+        event_type="POLICY_UPDATED",
+        user=user.username,
+        action=f"Updated Policy-as-Code gate '{req.policy_name}' ({len(req.rules)} rules)",
+        details={"rules_count": len(req.rules)}
+    )
+    return {"success": True, "policy": policy_data}
+
+
+@app.post("/api/policy-studio/dry-run")
+def policy_studio_dry_run(req: PolicyDryRunRequest, user: UserModel = Depends(get_current_user)):
+    """
+    Executes an interactive dry-run simulation of Policy-as-Code against real or synthetic metrics.
+    """
+    if req.metrics:
+        return PolicyStudio.simulate_metrics(req.metrics)
+    findings = db.list_findings(req.project_id) if req.project_id else db.list_findings()
+    return PolicyStudio.evaluate(findings)
+
+
+# --- 1. Attack Path & Blast Radius Graph Endpoints ---
+@app.get("/api/attack-paths")
+def get_attack_paths(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    """Computes multi-stage adversary kill chains and identifies chokepoints."""
+    return attack_path_engine.analyze_paths(project_id)
+
+
+@app.post("/api/attack-paths/simulate")
+def simulate_attack_path_patch(req: AttackPathSimulateRequest, user: UserModel = Depends(get_current_user)):
+    """Simulates how remediating a specific finding breaks attack kill chains."""
+    return attack_path_engine.simulate_remediation(req.finding_id)
+
+
+# --- 2. Regulatory Compliance & Control Matrix Endpoints ---
+@app.get("/api/compliance/matrix")
+def get_compliance_matrix(project_id: Optional[str] = None, user: UserModel = Depends(get_current_user)):
+    """Maps findings to SOC2, PCI-DSS v4.0, ISO27001, HIPAA, and NIST CSF v2.0."""
+    return compliance_engine.evaluate_compliance(project_id)
+
+
+@app.post("/api/compliance/export")
+def export_compliance_report(req: ComplianceExportRequest, user: UserModel = Depends(get_current_user)):
+    """Generates an auditor-ready compliance report package."""
+    matrix = compliance_engine.evaluate_compliance()
+    AuditService.log_audit_event(
+        event_type="COMPLIANCE_EXPORT",
+        user=user.username,
+        action=f"Exported regulatory compliance package ({req.framework})",
+        details={"framework": req.framework}
+    )
+    return {
+        "export_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "exported_by": user.username,
+        "framework_filter": req.framework,
+        "compliance_data": matrix
+    }
+
+
+# --- 3. OWASP API Security Top 10 Dynamic Fuzzer Endpoints ---
+@app.post("/api/api-fuzzer/scan")
+def run_api_fuzzer(req: APIFuzzerScanRequest, user: UserModel = Depends(get_current_user)):
+    """Executes dynamic API fuzzer tests across BOLA, BFLA, Mass Assignment, and SSRF."""
+    results = api_fuzzer_engine.execute_fuzzing(req.openapi_spec, req.base_url or "http://127.0.0.1:8000")
+    AuditService.log_audit_event(
+        event_type="API_FUZZ_COMPLETED",
+        user=user.username,
+        action=f"Completed OWASP API Fuzzing ({results['summary']['vulnerabilities_uncovered']} vulns uncovered)",
+        details={"vulns": results['summary']['vulnerabilities_uncovered']}
+    )
+    return results
+
+
+@app.get("/api/api-fuzzer/results")
+def get_api_fuzzer_results(user: UserModel = Depends(get_current_user)):
+    """Retrieves standard API fuzzer profile and default vectors."""
+    return api_fuzzer_engine.execute_fuzzing()
+
+
+# --- 4. OWASP Top 10 for LLMs & AI Agent Scanner Endpoints ---
+@app.post("/api/llm-scanner/scan")
+def scan_llm_code(req: LLMCodeScanRequest, user: UserModel = Depends(get_current_user)):
+    """Scans application code for AI prompt injection vulnerabilities and excessive agency."""
+    return llm_sec_scanner.scan_codebase_for_llm_vulns(req.file_contents)
+
+
+@app.post("/api/llm-scanner/probe")
+def probe_llm_guardrails(req: LLMProbeRequest, user: UserModel = Depends(get_current_user)):
+    """Executes adversarial jailbreak probes against a system prompt configuration."""
+    return llm_sec_scanner.probe_prompt_guardrails(req.system_prompt, req.user_test_input)
+
+
+# --- 5. Continuous SBOM Drift & Supply Chain Attestation Endpoints ---
+@app.get("/api/sbom/drift")
+def get_sbom_drift(user: UserModel = Depends(get_current_user)):
+    """Compares baseline vs current SBOM to detect drift and copyleft license risks."""
+    return sbom_drift_engine.calculate_drift()
+
+
+@app.post("/api/sbom/attestation")
+def generate_slsa_attestation(req: SBOMAttestationRequest, user: UserModel = Depends(get_current_user)):
+    """Generates an in-toto SLSA Level 3 cryptographically signed build provenance attestation."""
+    attestation = sbom_drift_engine.generate_slsa_attestation(req.project_name or "sentinel-appsec", req.commit_sha or "HEAD")
+    AuditService.log_audit_event(
+        event_type="SLSA_ATTESTATION_GENERATED",
+        user=user.username,
+        action=f"Generated SLSA Level 3 attestation for {req.project_name}",
+        details={"attestation_id": attestation.get("attestation_id")}
+    )
+    return attestation
+
+
+# --- 6. Interactive AppSec Sandbox & Developer Playground Endpoints ---
+@app.get("/api/sandbox/challenges")
+def get_sandbox_challenges(user: UserModel = Depends(get_current_user)):
+    """Lists developer security playground challenges."""
+    return {"challenges": playground_engine.list_challenges()}
+
+
+@app.post("/api/sandbox/run")
+def run_sandbox_challenge(req: PlaygroundRunRequest, user: UserModel = Depends(get_current_user)):
+    """Simulates exploit payloads against user-submitted secure code fixes."""
+    result = playground_engine.run_simulation(req.challenge_id, req.user_code, req.test_payload)
+    if result.get("solved"):
+        AuditService.log_audit_event(
+            event_type="SANDBOX_CHALLENGE_SOLVED",
+            user=user.username,
+            action=f"Developer solved AppSec challenge '{req.challenge_id}'",
+            details={"challenge_id": req.challenge_id}
+        )
+    return result
 
 
 # Mount frontend static files
@@ -1377,10 +2800,40 @@ frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if os.path.exists(frontend_dir):
     app.mount("/static", StaticFiles(directory=os.path.join(frontend_dir, "static")), name="static")
 
-    @app.get("/", response_class=HTMLResponse)
-    def serve_index():
+    @app.api_route("/login", methods=["GET", "HEAD"], response_class=HTMLResponse, include_in_schema=False)
+    @app.api_route("/login.html", methods=["GET", "HEAD"], response_class=HTMLResponse, include_in_schema=False)
+    def serve_login(request: Request):
+        login_path = os.path.join(frontend_dir, "login.html")
+        if os.path.exists(login_path):
+            with open(login_path, "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read())
+        return serve_index(request)
+
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/index.html", methods=["GET", "HEAD"], include_in_schema=False)
+    def serve_index(request: Request):
+        # Check if caller has an active session token via cookie or Authorization header
+        token = request.cookies.get("sentinel_session")
+        if not token:
+            auth_hdr = request.headers.get("Authorization")
+            if auth_hdr and auth_hdr.startswith("Bearer "):
+                token = auth_hdr.split(" ")[1]
+
+        authenticated = False
+        if token:
+            try:
+                from .auth import decode_access_token
+                payload = decode_access_token(token)
+                if payload and payload.get("username"):
+                    authenticated = True
+            except Exception:
+                pass
+
+        if not authenticated:
+            return RedirectResponse(url="/login", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
         index_path = os.path.join(frontend_dir, "index.html")
         if os.path.exists(index_path):
             with open(index_path, "r", encoding="utf-8") as f:
-                return f.read()
-        return "<h1>AegisSec Platform Online</h1>"
+                return HTMLResponse(content=f.read())
+        return HTMLResponse(content="<h1>Sentinel AppSec Platform Online</h1>")

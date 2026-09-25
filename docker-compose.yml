@@ -3,9 +3,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin}"
     image: sentinel-appsec:latest
     container_name: sentinel-platform
     restart: unless-stopped
+    user: "root"
     ports:
       - "${SENTINEL_PORT:-8000}:8000"
     environment:
@@ -14,7 +17,14 @@ services:
       - PORT=8000
       - SENTINEL_DB_PATH=/app/data/sentinel.db
       - WORKERS=2
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
     volumes:
+      # Live workspace bind mounts for instant hot reloading without rebuilds
+      - ./frontend:/app/frontend
+      - ./backend:/app/backend
+      - ./.sentinel:/app/.sentinel
+      - ./docker-entrypoint.sh:/app/docker-entrypoint.sh
       # Persistent storage for SQLite database and generated audit reports
       - sentinel_data:/app/data
       - sentinel_reports:/app/reports

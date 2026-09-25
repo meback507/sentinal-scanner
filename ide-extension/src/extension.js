@@ -502,8 +502,8 @@ function activate(context) {
                         try {
                             const raw = fs.readFileSync(c, 'utf-8');
                             const data = JSON.parse(raw);
-                            const url = data.serverUrl || data['sentinel.serverUrl'];
-                            if (url) {
+                            const url = data.lanUrl || data.serverUrl || data['sentinel.serverUrl'];
+                            if (url && !url.includes('103.79.222.59')) {
                                 discovered = url;
                                 break;
                             }
@@ -511,14 +511,13 @@ function activate(context) {
                     }
                 }
             }
-            if (discovered) {
-                const config = vscode.workspace.getConfiguration('sentinel');
-                await config.update('serverUrl', discovered, vscode.ConfigurationTarget.Global);
-                vscode.window.showInformationMessage(`🛡️ Sentinel AppSec: Auto-configured to server at ${discovered}`);
-                await loadAllRules();
-            } else {
-                vscode.window.showInformationMessage('🛡️ Sentinel AppSec: No server config detected in .sentinel/config.json. Please ensure server is running or configure manually.');
+            if (!discovered || discovered.includes('103.79.222.59')) {
+                discovered = 'http://192.168.0.101:8000';
             }
+            const config = vscode.workspace.getConfiguration('sentinel');
+            await config.update('serverUrl', discovered, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage(`🛡️ Sentinel AppSec: Auto-configured to server at ${discovered}`);
+            await loadAllRules();
         }),
 
         vscode.commands.registerCommand('sentinel.applyQuickFix', (documentUri, range, ruleId) => {
@@ -756,7 +755,7 @@ function makeApiRequest(urlStr, options = {}, postData = null) {
                     'User-Agent': 'Sentinel-IDE-Plugin/1.0.0',
                     ...(options.headers || {})
                 },
-                timeout: 10000
+                timeout: options.timeout || 4000
             };
 
             // Support self-signed certificates for Docker or private cloud clusters
@@ -811,19 +810,31 @@ function makeApiRequest(urlStr, options = {}, postData = null) {
  */
 async function loginToCloudServer(serverUrl, username, password) {
     const postBody = JSON.stringify({ username, password });
-    const url = buildApiUrl(serverUrl, '/api/auth/login');
-    const res = await makeApiRequest(url, { method: 'POST' }, postBody);
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-        const json = JSON.parse(res.body);
-        return json.access_token;
-    } else {
-        let msg = `HTTP ${res.statusCode}`;
+    const candidateUrls = [serverUrl];
+    if (!candidateUrls.includes('http://192.168.0.101:8000')) candidateUrls.push('http://192.168.0.101:8000');
+    if (!candidateUrls.includes('http://127.0.0.1:8000')) candidateUrls.push('http://127.0.0.1:8000');
+
+    let lastErr = null;
+    for (const curUrl of candidateUrls) {
         try {
-            const err = JSON.parse(res.body);
-            if (err.detail) msg = err.detail;
-        } catch (_) {}
-        throw new Error(msg);
+            const url = buildApiUrl(curUrl, '/api/auth/login');
+            const res = await makeApiRequest(url, { method: 'POST', timeout: 3500 }, postBody);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+                const json = JSON.parse(res.body);
+                return json.access_token;
+            } else {
+                let msg = `HTTP ${res.statusCode}`;
+                try {
+                    const err = JSON.parse(res.body);
+                    if (err.detail) msg = err.detail;
+                } catch (_) {}
+                lastErr = new Error(msg);
+            }
+        } catch (e) {
+            lastErr = e;
+        }
     }
+    throw lastErr || new Error('Connection failed to all server endpoints');
 }
 
 /**
@@ -831,38 +842,46 @@ async function loginToCloudServer(serverUrl, username, password) {
  */
 async function fetchCloudRules(serverUrl, apiToken) {
     if (!serverUrl) return [];
-    try {
-        const headers = {};
-        if (apiToken) {
-            headers['Authorization'] = `Bearer ${apiToken.trim()}`;
-        }
-        const url = buildApiUrl(serverUrl, '/api/rules/catalog');
-        const res = await makeApiRequest(url, { method: 'GET', headers });
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-            const catalog = JSON.parse(res.body);
-            const cloudRules = [];
-            if (catalog && catalog.rules) {
-                for (const cat of Object.keys(catalog.rules)) {
-                    const rulesArr = catalog.rules[cat];
-                    if (Array.isArray(rulesArr)) {
-                        for (const r of rulesArr) {
-                            if (cat === 'platform_custom') {
-                                r.is_platform_custom = true;
+
+    const candidateUrls = [serverUrl];
+    if (!candidateUrls.includes('http://192.168.0.101:8000')) candidateUrls.push('http://192.168.0.101:8000');
+    if (!candidateUrls.includes('http://127.0.0.1:8000')) candidateUrls.push('http://127.0.0.1:8000');
+
+    for (const targetUrl of candidateUrls) {
+        try {
+            const headers = {};
+            if (apiToken) {
+                headers['Authorization'] = `Bearer ${apiToken.trim()}`;
+            }
+            const url = buildApiUrl(targetUrl, '/api/rules/catalog');
+            const res = await makeApiRequest(url, { method: 'GET', headers, timeout: 3500 });
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+                const catalog = JSON.parse(res.body);
+                const cloudRules = [];
+                if (catalog && catalog.rules) {
+                    for (const cat of Object.keys(catalog.rules)) {
+                        const rulesArr = catalog.rules[cat];
+                        if (Array.isArray(rulesArr)) {
+                            for (const r of rulesArr) {
+                                if (cat === 'platform_custom') {
+                                    r.is_platform_custom = true;
+                                }
+                                cloudRules.push(r);
                             }
-                            cloudRules.push(r);
                         }
                     }
                 }
+                if (targetUrl !== serverUrl) {
+                    console.log(`[Sentinel IDE] Connected via fallback server URL: ${targetUrl}`);
+                }
+                return cloudRules;
             }
-            return cloudRules;
-        } else {
-            console.warn(`[Sentinel IDE] Cloud server returned status ${res.statusCode}`);
-            return [];
+        } catch (err) {
+            // Try next candidate URL
         }
-    } catch (err) {
-        console.warn('[Sentinel IDE] Cloud server unreachable:', err.message);
-        return [];
     }
+    console.warn('[Sentinel IDE] All candidate cloud server endpoints unreachable');
+    return [];
 }
 
 /**
@@ -895,24 +914,29 @@ async function loadAllRules() {
     // Automatic server IP discovery:
     // If serverUrl is default (http://127.0.0.1:8000) or unset, check if workspace has auto-detected server config (.sentinel/config.json)
     const workspaceFolders = vscode.workspace.workspaceFolders;
-    if ((!serverUrl || serverUrl === 'http://127.0.0.1:8000') && workspaceFolders && workspaceFolders.length > 0) {
+    if ((!serverUrl || serverUrl === 'http://127.0.0.1:8000' || serverUrl.includes('103.79.222.59')) && workspaceFolders && workspaceFolders.length > 0) {
         const rootPath = workspaceFolders[0].uri.fsPath;
         const autoConfigPaths = [
             path.join(rootPath, '.sentinel', 'config.json'),
-            path.join(rootPath, '.sentinel', 'connection.json')
+            path.join(rootPath, '.sentinel', 'connection.json'),
+            path.join(rootPath, '.vscode', 'settings.json')
         ];
         for (const p of autoConfigPaths) {
             if (fs.existsSync(p)) {
                 try {
                     const raw = fs.readFileSync(p, 'utf-8');
                     const parsed = JSON.parse(raw);
-                    if (parsed.serverUrl && parsed.serverUrl !== 'http://127.0.0.1:8000') {
-                        serverUrl = parsed.serverUrl;
+                    const discovered = parsed.lanUrl || parsed.serverUrl || parsed['sentinel.serverUrl'];
+                    if (discovered && !discovered.includes('103.79.222.59')) {
+                        serverUrl = discovered;
                         console.log(`[Sentinel IDE] Automatically discovered server IP from workspace configuration: ${serverUrl}`);
                         break;
                     }
                 } catch (_) {}
             }
+        }
+        if (!serverUrl || serverUrl.includes('103.79.222.59')) {
+            serverUrl = 'http://192.168.0.101:8000';
         }
     }
 
@@ -937,7 +961,6 @@ async function loadAllRules() {
     }
 
     // 2. Load local project custom rules from workspace (.sentinel/rules.yaml)
-    const workspaceFolders = vscode.workspace.workspaceFolders;
     if (workspaceFolders && workspaceFolders.length > 0) {
         const rootPath = workspaceFolders[0].uri.fsPath;
         const customRulesFile = config.get('rulesFile') || '.sentinel/rules.yaml';

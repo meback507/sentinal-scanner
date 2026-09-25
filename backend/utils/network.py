@@ -69,10 +69,12 @@ def get_server_network_info(client_host: str = None) -> dict:
     custom_host = os.environ.get("SENTINEL_HOST")
     if custom_host:
         best_host = custom_host.strip()
+    elif lan_ip and lan_ip != "127.0.0.1":
+        best_host = lan_ip
     elif public_ip and public_ip != "127.0.0.1":
         best_host = public_ip
     else:
-        best_host = lan_ip
+        best_host = "127.0.0.1"
 
     server_url = f"http://{best_host}:{port}"
 

@@ -6,8 +6,9 @@ Generates Executive HTML/PDF-ready reports, SARIF v2.1.0, CycloneDX SBOM, and CS
 import json
 import csv
 import io
+import re
 import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 class ReportGenerator:
@@ -536,4 +537,157 @@ class ReportGenerator:
             "statements": statements
         }
         return json.dumps(vex_doc, indent=2)
+
+    @classmethod
+    def generate_sonarqube_generic_issues(cls, project: Dict[str, Any], scan: Optional[Dict[str, Any]], findings: List[Dict[str, Any]]) -> str:
+        """
+        Generates official SonarQube Generic Issue Import Format JSON (sonar.externalIssuesReportPaths).
+        Compatible with SonarQube Server 9.x/10.x and SonarCloud.
+        """
+        issues = []
+        severity_map = {
+            "CRITICAL": "BLOCKER",
+            "HIGH": "CRITICAL",
+            "MEDIUM": "MAJOR",
+            "LOW": "MINOR"
+        }
+        effort_map = {
+            "CRITICAL": 60,
+            "HIGH": 30,
+            "MEDIUM": 15,
+            "LOW": 5
+        }
+
+        for f in findings:
+            sonar_sev = f.get("sonar_severity") or severity_map.get(f.get("severity", "MEDIUM").upper(), "MAJOR")
+            raw_type = f.get("sonar_type") or ("SECURITY_HOTSPOT" if "HOTSPOT" in str(f.get("sonar_type", "")).upper() else "VULNERABILITY")
+            rule_id = f.get("sonar_key") or f.get("rule_id") or f.get("cwe_id") or "GENERIC-SAST"
+
+            file_path = f.get("file_path", "")
+            if file_path.startswith("/") or file_path.startswith("\\"):
+                file_path = file_path.lstrip("/\\")
+
+            line_start = max(1, int(f.get("line_start") or 1))
+            line_end = max(line_start, int(f.get("line_end") or line_start))
+
+            issue = {
+                "engineId": "sentinel-sast",
+                "ruleId": rule_id,
+                "severity": sonar_sev,
+                "type": raw_type,
+                "primaryLocation": {
+                    "message": f.get("title") or f.get("description") or "Security vulnerability detected",
+                    "filePath": file_path,
+                    "textRange": {
+                        "startLine": line_start,
+                        "endLine": line_end
+                    }
+                },
+                "effortMinutes": effort_map.get(f.get("severity", "MEDIUM").upper(), 15)
+            }
+            issues.append(issue)
+
+        doc = {"issues": issues}
+        return json.dumps(doc, indent=2)
+
+    @classmethod
+    def generate_sonar_project_properties(cls, project: Dict[str, Any], scan: Optional[Dict[str, Any]] = None, findings: Optional[List[Dict[str, Any]]] = None) -> str:
+        """
+        Generates standard sonar-project.properties for repository integration.
+        """
+        proj_name = project.get("name", "appsec-project")
+        proj_key = re.sub(r"[^a-zA-Z0-9_\-\.:]", "_", proj_name.lower())
+        branch = project.get("git_branch", "main")
+
+        properties = f"""# =========================================================================
+# SonarQube Scanner Configuration - AegisSec / Sentinel SAST Integration
+# =========================================================================
+
+# Unique project key and metadata
+sonar.projectKey={proj_key}
+sonar.projectName={proj_name}
+sonar.projectVersion=1.0.0
+sonar.sourceEncoding=UTF-8
+
+# Source directories and exclusion filters
+sonar.sources=.
+sonar.exclusions=**/.git/**,**/node_modules/**,**/.venv/**,**/dist/**,**/build/**,**/.sentinel/**,**/tests/**,**/test/**
+
+# Ingest Sentinel SAST & SCA Findings
+# 1. Native SonarQube Generic Issue Import (sonar-issues.json)
+sonar.externalIssuesReportPaths=sonar-issues.json
+
+# 2. OASIS SARIF v2.1.0 Report (aegissec-sarif.json)
+sonar.sarifReportPaths=aegissec-sarif.json
+
+# Default Branch
+sonar.branch.name={branch}
+"""
+        return properties
+
+    @classmethod
+    def generate_github_actions_sonar_workflow(cls, project: Dict[str, Any]) -> str:
+        """
+        Generates turnkey .github/workflows/sonar-sast.yml for repository CI/CD integration.
+        """
+        proj_name = project.get("name", "appsec-project")
+        proj_key = re.sub(r"[^a-zA-Z0-9_\-\.:]", "_", proj_name.lower())
+        branch = project.get("git_branch", "main")
+
+        workflow = f"""name: "AegisSec SAST & SonarQube Code Security"
+
+on:
+  push:
+    branches: [ "{branch}", "main", "master", "develop" ]
+  pull_request:
+    branches: [ "{branch}", "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  sast-and-sonar:
+    name: "Sentinel SAST & SonarQube Quality Gate"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Scanner Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run Sentinel SAST Scan with SonarQube Export
+        run: |
+          python3 scripts/sentinel_cli.py scan . --fail-on HIGH --sonar-export sonar-issues.json
+
+      - name: Upload SonarQube Generic Issues Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-issues-report
+          path: sonar-issues.json
+          if-no-files-found: ignore
+
+      - name: SonarQube / SonarCloud Analysis
+        uses: SonarSource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{{{ secrets.SONAR_TOKEN }}}}
+          SONAR_HOST_URL: ${{{{ secrets.SONAR_HOST_URL }}}}
+        with:
+          args: >
+            -Dsonar.projectKey={proj_key}
+            -Dsonar.externalIssuesReportPaths=sonar-issues.json
+"""
+        return workflow
 
