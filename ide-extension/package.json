@@ -117,6 +117,12 @@
         "title": "Sentinel: Sync Server Findings into IDE Problems",
         "category": "Sentinel AppSec",
         "icon": "$(sync)"
+      },
+      {
+        "command": "sentinel.clearStoredResults",
+        "title": "Sentinel: Clear Stored Findings & Diagnostics",
+        "category": "Sentinel AppSec",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -144,7 +150,12 @@
         {
           "command": "sentinel.scanWorkspace",
           "when": "view == sentinel.activeFlaws",
-          "group": "navigation"
+          "group": "navigation@0"
+        },
+        {
+          "command": "sentinel.clearStoredResults",
+          "when": "view == sentinel.activeFlaws",
+          "group": "navigation@1"
         }
       ],
       "editor/context": [
@@ -176,6 +187,16 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically run security and custom rules audit on document save"
+        },
+        "sentinel.clearStoredResultsOnScan": {
+          "type": "boolean",
+          "default": true,
+          "description": "Purge all previously stored/cached findings and diagnostics before running a scan"
+        },
+        "sentinel.mergeServerFindings": {
+          "type": "boolean",
+          "default": false,
+          "description": "Merge historical server findings into local editor scans (set to false to report only fresh scan findings)"
         },
         "sentinel.failOnSeverity": {
           "type": "string",

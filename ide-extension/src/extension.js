@@ -496,6 +496,14 @@ function activate(context) {
         vscode.commands.registerCommand('sentinel.scanCurrentFile', () => {
             const editor = vscode.window.activeTextEditor;
             if (editor) {
+                const config = vscode.workspace.getConfiguration('sentinel');
+                if (config.get('clearStoredResultsOnScan') !== false) {
+                    const docPathNorm = path.normalize(editor.document.fileName);
+                    serverFindingsByFile.delete(docPathNorm);
+                    if (diagnosticCollection) {
+                        diagnosticCollection.delete(editor.document.uri);
+                    }
+                }
                 scanDocument(editor.document);
                 vscode.window.showInformationMessage(`🛡️ Sentinel: Scanned ${path.basename(editor.document.fileName)}`);
             }
@@ -503,6 +511,11 @@ function activate(context) {
 
         vscode.commands.registerCommand('sentinel.scanWorkspace', () => {
             scanWorkspace();
+        }),
+
+        vscode.commands.registerCommand('sentinel.clearStoredResults', () => {
+            clearStoredResults();
+            vscode.window.showInformationMessage('🛡️ Sentinel: Cleared all stored findings and diagnostics.');
         }),
 
         vscode.commands.registerCommand('sentinel.refreshRules', async () => {
@@ -1536,61 +1549,91 @@ function scanDocument(document) {
         }
     }
 
-    // Merge server-synced findings for this file
-    const merged = [...diagnostics];
+    // If clearStoredResultsOnScan is enabled, purge stored/cached findings for this file
+    const config = vscode.workspace.getConfiguration('sentinel');
+    const clearStored = config.get('clearStoredResultsOnScan') !== false;
+    const mergeServer = config.get('mergeServerFindings') === true;
+
     const docPathNorm = path.normalize(document.fileName);
-    let serverDiagsForFile = serverFindingsByFile.get(docPathNorm);
-    if (!serverDiagsForFile) {
-        // Try fuzzy relative match (match filename and relative path suffix)
+    if (clearStored) {
+        serverFindingsByFile.delete(docPathNorm);
         const baseName = path.basename(docPathNorm);
-        for (const [keyPath, diags] of serverFindingsByFile.entries()) {
+        for (const keyPath of Array.from(serverFindingsByFile.keys())) {
             if (path.basename(keyPath) === baseName) {
-                if (docPathNorm.endsWith(keyPath) || keyPath.endsWith(docPathNorm) || 
-                    docPathNorm.includes(path.normalize(keyPath).replace(/^.*?([/\\](?:frontend|backend|src|tests|scripts|config)[/\\])/, '$1'))) {
-                    serverDiagsForFile = diags;
-                    break;
-                }
+                serverFindingsByFile.delete(keyPath);
             }
         }
     }
 
-    if (serverDiagsForFile && serverDiagsForFile.length > 0) {
-        for (const sd of serverDiagsForFile) {
-            const targetLineIdx = sd.range.start.line;
-            const lineText = lines[targetLineIdx] || '';
+    const merged = [...diagnostics];
 
-            // 1. Skip if suppressed via inline comment
-            if (lineText.includes('sentinel-ignore') || lineText.includes('pragma: allowlist secret')) {
-                continue;
-            }
-
-            // 2. If matching rule is known and its regex no longer matches the line, the flaw was remediated
-            const matchingRule = activeRules.find(r =>
-                r.id === sd.code ||
-                r.sonar_key === sd.code ||
-                r.cwe === sd.code ||
-                (sd.code && String(sd.code).includes(r.id))
-            );
-            if (matchingRule && matchingRule.regex) {
-                const rx = compileRegex(matchingRule.regex);
-                if (rx && !rx.test(lineText)) {
-                    // Remediated in code
-                    continue;
+    // Only merge historical server findings if explicitly configured and clearStored is disabled
+    if (mergeServer && !clearStored) {
+        let serverDiagsForFile = serverFindingsByFile.get(docPathNorm);
+        if (!serverDiagsForFile) {
+            // Try fuzzy relative match (match filename and relative path suffix)
+            const baseName = path.basename(docPathNorm);
+            for (const [keyPath, diags] of serverFindingsByFile.entries()) {
+                if (path.basename(keyPath) === baseName) {
+                    if (docPathNorm.endsWith(keyPath) || keyPath.endsWith(docPathNorm) || 
+                        docPathNorm.includes(path.normalize(keyPath).replace(/^.*?([/\\](?:frontend|backend|src|tests|scripts|config)[/\\])/, '$1'))) {
+                        serverDiagsForFile = diags;
+                        break;
+                    }
                 }
             }
+        }
 
-            // 3. Avoid duplicates if local rule hit on the exact line with same code
-            const duplicate = diagnostics.some(ld =>
-                ld.range.start.line === targetLineIdx &&
-                (ld.code === sd.code || (typeof ld.code === 'string' && typeof sd.code === 'string' && (ld.code.includes(sd.code) || sd.code.includes(ld.code))))
-            );
-            if (!duplicate) {
-                merged.push(sd);
+        if (serverDiagsForFile && serverDiagsForFile.length > 0) {
+            for (const sd of serverDiagsForFile) {
+                const targetLineIdx = sd.range.start.line;
+                const lineText = lines[targetLineIdx] || '';
+
+                // 1. Skip if suppressed via inline comment
+                if (lineText.includes('sentinel-ignore') || lineText.includes('pragma: allowlist secret')) {
+                    continue;
+                }
+
+                // 2. If matching rule is known and its regex no longer matches the line, the flaw was remediated
+                const matchingRule = activeRules.find(r =>
+                    r.id === sd.code ||
+                    r.sonar_key === sd.code ||
+                    r.cwe === sd.code ||
+                    (sd.code && String(sd.code).includes(r.id))
+                );
+                if (matchingRule && matchingRule.regex) {
+                    const rx = compileRegex(matchingRule.regex);
+                    if (rx && !rx.test(lineText)) {
+                        // Remediated in code
+                        continue;
+                    }
+                }
+
+                // 3. Avoid duplicates if local rule hit on the exact line with same code
+                const duplicate = diagnostics.some(ld =>
+                    ld.range.start.line === targetLineIdx &&
+                    (ld.code === sd.code || (typeof ld.code === 'string' && typeof sd.code === 'string' && (ld.code.includes(sd.code) || sd.code.includes(ld.code))))
+                );
+                if (!duplicate) {
+                    merged.push(sd);
+                }
             }
         }
     }
 
     diagnosticCollection.set(document.uri, merged);
+    updateStatusBar();
+}
+
+/**
+ * Completely clears all stored diagnostics and cached server findings
+ */
+function clearStoredResults() {
+    if (diagnosticCollection) {
+        diagnosticCollection.clear();
+    }
+    serverFindingsByFile.clear();
+    serverFindingsRaw = [];
     updateStatusBar();
 }
 
@@ -1603,6 +1646,12 @@ function scanWorkspace() {
         title: '🛡️ Sentinel AppSec: Auditing Workspace...',
         cancellable: false
     }, async () => {
+        const config = vscode.workspace.getConfiguration('sentinel');
+        const clearStored = config.get('clearStoredResultsOnScan') !== false;
+        if (clearStored) {
+            clearStoredResults();
+        }
+
         const files = await vscode.workspace.findFiles('**/*', '{**/node_modules/**,**/tests/**,**/test/**,**/__tests__/**,**/.venv/**,**/dist/**,**/build/**}', 300);
         for (const file of files) {
             try {
