@@ -1744,4 +1744,127 @@ pre.code-view {
   background: rgba(30, 41, 59, 0.9);
 }
 
+/* --- DevSecOps Full Scan Status Pipeline --- */
+.pipeline-flow-container {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 8px 4px 14px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 189, 248, 0.3) rgba(15, 23, 42, 0.5);
+}
+
+.pipeline-flow-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.pipeline-flow-container::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 4px;
+}
+
+.pipeline-stage-node {
+  flex: 1;
+  min-width: 140px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.pipeline-stage-node:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 12px rgba(56, 189, 248, 0.2);
+}
+
+.pipeline-stage-node.active-stage {
+  border-color: #38bdf8;
+  background: rgba(30, 41, 59, 0.95);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
+}
+
+.pipeline-stage-node.stage-passed {
+  border-top: 3px solid #10b981;
+}
+
+.pipeline-stage-node.stage-warning {
+  border-top: 3px solid #f59e0b;
+}
+
+.pipeline-stage-node.stage-failed {
+  border-top: 3px solid #ef4444;
+}
+
+.pipeline-stage-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  user-select: none;
+  opacity: 0.6;
+}
+
+.pipeline-badge-passed {
+  background: rgba(16, 185, 129, 0.18);
+  color: #86efac;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.pipeline-badge-warning {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fde047;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.pipeline-badge-failed {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.pipeline-mini-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #cbd5e1;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.pipeline-mini-pill:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.pipeline-mini-pill.pill-passed {
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #86efac;
+}
+
+.pipeline-mini-pill.pill-warning {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fde047;
+}
+
+.pipeline-mini-pill.pill-failed {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
 

@@ -190,6 +190,7 @@ class Database:
                 average_epss REAL DEFAULT 0.0,
                 composite_risk_score REAL DEFAULT 0.0,
                 error_message TEXT,
+                pipeline_details TEXT,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
 
@@ -337,6 +338,11 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_pm_project ON project_members(project_id);
                 CREATE INDEX IF NOT EXISTS idx_pm_user ON project_members(user_id);
                 """)
+
+                # Migration for scans pipeline_details
+                scan_cols = [c[1] for c in conn.execute("PRAGMA table_info(scans)").fetchall()]
+                if "pipeline_details" not in scan_cols:
+                    conn.execute("ALTER TABLE scans ADD COLUMN pipeline_details TEXT")
             except Exception:
                 pass
 
@@ -702,7 +708,14 @@ class Database:
             )
         return scan_id
 
-    def update_scan_results(self, scan_id: str, project_id: str, findings: List[Dict[str, Any]], error_msg: Optional[str] = None):
+    def update_scan_results(
+        self,
+        scan_id: str,
+        project_id: str,
+        findings: List[Dict[str, Any]],
+        error_msg: Optional[str] = None,
+        pipeline_details: Optional[Dict[str, Any]] = None
+    ):
         now = datetime.datetime.now().isoformat()
         status = "failed" if error_msg else "completed"
 
@@ -963,6 +976,7 @@ class Database:
             avg_epss = round(sum(r["epss_score"] for r in active_rows) / total, 4) if total > 0 else 0.0
             comp_risk = round(sum(r["composite_risk_score"] for r in active_rows) / total, 1) if total > 0 else 0.0
 
+            pipeline_json = json.dumps(pipeline_details) if pipeline_details else None
             conn.execute("""
             UPDATE scans SET
                 status = ?,
@@ -975,9 +989,10 @@ class Database:
                 average_cvss = ?,
                 average_epss = ?,
                 composite_risk_score = ?,
-                error_message = ?
+                error_message = ?,
+                pipeline_details = COALESCE(?, pipeline_details)
             WHERE id = ?
-            """, (status, now, total, crit, high, med, low, avg_cvss, avg_epss, comp_risk, error_msg, scan_id))
+            """, (status, now, total, crit, high, med, low, avg_cvss, avg_epss, comp_risk, error_msg, pipeline_json, scan_id))
 
             # Update project risk and last scanned
             conn.execute(
@@ -991,7 +1006,42 @@ class Database:
                 rows = conn.execute("SELECT * FROM scans WHERE project_id = ? ORDER BY started_at DESC", (project_id,)).fetchall()
             else:
                 rows = conn.execute("SELECT * FROM scans ORDER BY started_at DESC").fetchall()
-            return [dict(r) for r in rows]
+            res = []
+            for r in rows:
+                item = dict(r)
+                if item.get("pipeline_details"):
+                    try:
+                        item["pipeline_details"] = json.loads(item["pipeline_details"])
+                    except Exception:
+                        pass
+                res.append(item)
+            return res
+
+    def get_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT * FROM scans WHERE id = ?", (scan_id,)).fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            if item.get("pipeline_details"):
+                try:
+                    item["pipeline_details"] = json.loads(item["pipeline_details"])
+                except Exception:
+                    pass
+            return item
+
+    def get_latest_scan(self, project_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT * FROM scans WHERE project_id = ? ORDER BY started_at DESC LIMIT 1", (project_id,)).fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            if item.get("pipeline_details"):
+                try:
+                    item["pipeline_details"] = json.loads(item["pipeline_details"])
+                except Exception:
+                    pass
+            return item
 
     def create_finding(self, f: Dict[str, Any]) -> Dict[str, Any]:
         with self._get_conn() as conn:
