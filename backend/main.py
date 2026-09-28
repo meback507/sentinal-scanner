@@ -3613,7 +3613,14 @@ if os.path.exists(frontend_dir):
         login_path = os.path.join(frontend_dir, "login.html")
         if os.path.exists(login_path):
             with open(login_path, "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
+                return HTMLResponse(
+                    content=f.read(),
+                    headers={
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0"
+                    }
+                )
         return serve_index(request)
 
     @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)

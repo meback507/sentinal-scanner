@@ -147,6 +147,18 @@ async function checkAuth() {
     const savedToken = localStorage.getItem("aegis_token");
     if (savedToken) {
         state.currentUser.token = savedToken;
+        const savedUserStr = localStorage.getItem("aegis_user");
+        if (savedUserStr) {
+            try {
+                const cachedUser = JSON.parse(savedUserStr);
+                state.currentUser = { ...cachedUser, token: savedToken };
+                hideLoginView();
+                updateUserDisplay();
+            } catch (e) {}
+        } else {
+            hideLoginView();
+        }
+
         try {
             const resp = await _originalFetch("/api/auth/me", {
                 headers: { "Authorization": `Bearer ${savedToken}` }
@@ -154,23 +166,28 @@ async function checkAuth() {
             if (resp.ok) {
                 const u = await resp.json();
                 state.currentUser = { ...u, token: savedToken };
+                localStorage.setItem("aegis_user", JSON.stringify(u));
                 hideLoginView();
                 updateUserDisplay();
                 return true;
-            } else {
+            } else if (resp.status === 401 || resp.status === 403) {
                 localStorage.removeItem("aegis_token");
                 localStorage.removeItem("aegis_user");
                 state.currentUser.token = "";
-                window.location.replace("/login");
+                showLoginView();
                 return false;
             }
+            return true;
         } catch (e) {
-            console.error("Auth verification failed:", e);
+            console.warn("Auth verification network error, preserving session:", e);
+            hideLoginView();
+            updateUserDisplay();
+            return true;
         }
     }
 
-    // Unauthenticated: redirect directly to dedicated login page
-    window.location.replace("/login");
+    // Unauthenticated: show login view cleanly
+    showLoginView();
     return false;
 }
 

@@ -439,9 +439,6 @@
     </div>
 
     <script>
-        // Ensure stale tokens are cleared when landing on login page to avoid redirect loops
-        localStorage.removeItem("aegis_token");
-        localStorage.removeItem("aegis_user");
 
         function togglePassword() {
             const pw = document.getElementById("password");
