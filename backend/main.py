@@ -3637,5 +3637,12 @@ if os.path.exists(frontend_dir):
         index_path = os.path.join(frontend_dir, "index.html")
         if os.path.exists(index_path):
             with open(index_path, "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
+                return HTMLResponse(
+                    content=f.read(),
+                    headers={
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0"
+                    }
+                )
         return HTMLResponse(content="<h1>Sentinel AppSec Platform Online</h1>")

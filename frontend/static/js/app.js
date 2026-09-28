@@ -990,11 +990,11 @@ function interpolateHexColor(color1, color2, factor) {
 
 function getRadiantColor(ratio) {
     const stops = [
-        { t: 0.00, hex: "#06b6d4" }, // Cold Cyan (0 flaws)
-        { t: 0.20, hex: "#10b981" }, // Cool Emerald (low flaws)
-        { t: 0.45, hex: "#f59e0b" }, // Tepid Amber (moderate flaws)
-        { t: 0.70, hex: "#f97316" }, // Warm Sunset Orange (elevated flaws)
-        { t: 1.00, hex: "#ef4444" }  // Hot Fire Red (critical flaws)
+        { t: 0.00, hex: "#06b6d4" }, // Ice Cyan (clean / baseline)
+        { t: 0.18, hex: "#10b981" }, // Emerald Green (low flaws)
+        { t: 0.40, hex: "#f59e0b" }, // Golden Amber (moderate flaws)
+        { t: 0.65, hex: "#f97316" }, // Sunset Orange (elevated flaws)
+        { t: 1.00, hex: "#ef4444" }  // Fire Crimson Red (highest flaws)
     ];
     if (ratio <= 0) return stops[0].hex;
     if (ratio >= 1) return stops[stops.length - 1].hex;
@@ -1007,19 +1007,19 @@ function getRadiantColor(ratio) {
     return stops[stops.length - 1].hex;
 }
 
-function getVulnerabilityTemperature(val, maxVal) {
+function getVulnerabilityTemperature(val, maxVal, minVal = 0) {
     const v = Math.max(0, Number(val) || 0);
+    const min = Math.max(0, Number(minVal) || 0);
     const max = Math.max(v, Number(maxVal) || 20);
+    const range = Math.max(1, max - min);
 
-    // Dynamic blend: relative positioning within project scope + absolute baseline
-    const relRatio = max > 0 ? (v / max) : 0;
-    const absRatio = Math.min(1.0, v / 80.0);
-    const ratio = (v === 0) ? 0 : Math.min(1.0, (relRatio * 0.70) + (absRatio * 0.30));
+    // Full dynamic contrast: normalize strictly across visible trajectory range
+    const relRatio = (v - min) / range;
+    const absRatio = Math.min(1.0, v / 160.0);
+    const ratio = (v === 0) ? 0 : Math.min(1.0, (relRatio * 0.85) + (absRatio * 0.15));
 
-    // Dynamic continuous radiant color
     const dynamicColor = getRadiantColor(ratio);
 
-    // Qualitative categorization & readable label colors
     if (ratio >= 0.70 || v >= 100) {
         return {
             color: dynamicColor,
@@ -1038,7 +1038,7 @@ function getVulnerabilityTemperature(val, maxVal) {
             zone: "warm",
             ratio
         };
-    } else if (ratio >= 0.22 || v >= 20) {
+    } else if (ratio >= 0.20 || v >= 20) {
         return {
             color: dynamicColor,
             lightColor: "#fde68a",
@@ -1133,7 +1133,9 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
     const plotW = width - padL - padR;
     const plotH = height - padT - padB;
 
-    const maxVuln = Math.max(5, Math.ceil(Math.max(...vulnSeries) * 1.25));
+    const minVuln = Math.min(...vulnSeries);
+    const maxVulnInSeries = Math.max(...vulnSeries);
+    const maxVuln = Math.max(5, Math.ceil(maxVulnInSeries * 1.25));
     const n = labels.length || 1;
     const getX = (i) => padL + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
     const getY = (val) => padT + plotH - (val / maxVuln) * plotH;
@@ -1142,13 +1144,35 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
     const vulnPoints = vulnSeries.map((v, i) => `${getX(i)},${getY(v)}`);
     const vulnArea = `${getX(0)},${padT + plotH} ` + vulnPoints.join(" ") + ` ${getX(n - 1)},${padT + plotH}`;
 
-    // Temperature stops along the timeline (horizontal gradient)
-    let tempLineStops = "";
+    // 1. Line segments with explicit userSpaceOnUse gradients between consecutive points
+    let segGradientsSvg = "";
+    let lineSegmentsSvg = "";
+    for (let i = 0; i < n - 1; i++) {
+        const x1 = getX(i);
+        const y1 = getY(vulnSeries[i]);
+        const x2 = getX(i + 1);
+        const y2 = getY(vulnSeries[i + 1]);
+        const c1 = getVulnerabilityTemperature(vulnSeries[i], maxVulnInSeries, minVuln).color;
+        const c2 = getVulnerabilityTemperature(vulnSeries[i + 1], maxVulnInSeries, minVuln).color;
+        const segId = `dashSegGrad_${i}`;
+
+        segGradientsSvg += `
+            <linearGradient id="${segId}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="${c1}" />
+                <stop offset="100%" stop-color="${c2}" />
+            </linearGradient>
+        `;
+
+        lineSegmentsSvg += `
+            <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="url(#${segId})" stroke-width="4" stroke-linecap="round" />
+        `;
+    }
+
+    // 2. Temperature stops along timeline for area gradient
     let tempAreaStops = "";
     vulnSeries.forEach((v, i) => {
         const pct = Math.round((n > 1 ? (i / (n - 1)) : 0.5) * 100);
-        const info = getVulnerabilityTemperature(v, maxVuln);
-        tempLineStops += `<stop offset="${pct}%" stop-color="${info.color}"/>`;
+        const info = getVulnerabilityTemperature(v, maxVulnInSeries, minVuln);
         tempAreaStops += `<stop offset="${pct}%" stop-color="${info.color}" stop-opacity="0.32"/>`;
     });
 
@@ -1157,7 +1181,7 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
     for (let g = 0; g <= 4; g++) {
         const yPos = padT + (g / 4) * plotH;
         const countVal = Math.round(maxVuln * (1 - g / 4));
-        const gridInfo = getVulnerabilityTemperature(countVal, maxVuln);
+        const gridInfo = getVulnerabilityTemperature(countVal, maxVulnInSeries, minVuln);
         gridLinesSvg += `
             <line x1="${padL}" y1="${yPos}" x2="${width - padR}" y2="${yPos}" stroke="rgba(255,255,255,0.07)" stroke-dasharray="3,3" />
             <text x="${padL - 10}" y="${yPos + 4}" fill="${gridInfo.color}" font-size="11" font-weight="600" text-anchor="end" font-family="var(--font-mono)">${countVal}</text>
@@ -1175,26 +1199,25 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
         `;
     });
 
-    // Milestone circles with temperature glowing drop-shadow and count badges
+    // Milestone circles with radiant halo aura ring, core dot, and count badges
     let nodesSvg = "";
     vulnSeries.forEach((v, i) => {
         const cx = getX(i);
         const cy = getY(v);
-        const info = getVulnerabilityTemperature(v, maxVuln);
+        const info = getVulnerabilityTemperature(v, maxVulnInSeries, minVuln);
         nodesSvg += `
-            <circle cx="${cx}" cy="${cy}" r="5.5" fill="${info.color}" stroke="#0f172a" stroke-width="2.5" style="filter: drop-shadow(0 0 6px ${info.color}); cursor: pointer;">
-                <title>${labels[i]}: ${v} Vulnerabilities &bull; Thermal Status: ${info.label}</title>
+            <circle cx="${cx}" cy="${cy}" r="9" fill="${info.color}" opacity="0.3" />
+            <circle cx="${cx}" cy="${cy}" r="5" fill="${info.color}" stroke="#0f172a" stroke-width="2.5" style="filter: drop-shadow(0 0 6px ${info.color}); cursor: pointer;">
+                <title>${labels[i]}: ${v} Active Vulnerabilities &bull; Status: ${info.label}</title>
             </circle>
-            <text x="${cx}" y="${cy - 10}" fill="${info.lightColor}" font-size="11" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${v}</text>
+            <text x="${cx}" y="${cy - 12}" fill="${info.lightColor}" font-size="11" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${v}</text>
         `;
     });
 
     const svgHtml = `
         <svg viewBox="0 0 ${width} ${height}" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
             <defs>
-                <linearGradient id="vulnTempLineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    ${tempLineStops}
-                </linearGradient>
+                ${segGradientsSvg}
                 <linearGradient id="vulnTempAreaGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                     ${tempAreaStops}
                 </linearGradient>
@@ -1206,18 +1229,6 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
                 <mask id="dashAreaMask">
                     <rect x="0" y="0" width="${width}" height="${height}" fill="url(#dashVerticalFade)" />
                 </mask>
-                <filter id="glow-temp" x="-30%" y="-30%" width="160%" height="160%">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
-                    <feColorMatrix in="blur" type="matrix" values="
-                        1 0 0 0 0
-                        0 1 0 0 0
-                        0 0 1 0 0
-                        0 0 0 1.5 0" result="boostBlur" />
-                    <feMerge>
-                        <feMergeNode in="boostBlur" />
-                        <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                </filter>
             </defs>
 
             ${gridLinesSvg}
@@ -1226,8 +1237,11 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
             <!-- Vulnerability Area Gradient Fill with Thermal Spectrum and Vertical Fade -->
             <polygon points="${vulnArea}" fill="url(#vulnTempAreaGrad)" mask="url(#dashAreaMask)" />
 
-            <!-- Single Vulnerability Count Trend Line with Dynamic Thermal Spectrum -->
-            <polyline points="${vulnPoints.join(" ")}" fill="none" stroke="url(#vulnTempLineGrad)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-temp)" />
+            <!-- Ambient Glow Line -->
+            <polyline points="${vulnPoints.join(" ")}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" />
+
+            <!-- Explicit Multi-Stop Radiant Gradient Line Segments -->
+            ${lineSegmentsSvg}
 
             ${nodesSvg}
         </svg>
@@ -4007,13 +4021,70 @@ function renderAuditTrendChart(trendsData) {
     const pts = vulnSeries.map((v, i) => `${getX(i)},${getY(v)}`);
     const areaPts = `${getX(0)},${padT + plotH} ` + pts.join(" ") + ` ${getX(n - 1)},${padT + plotH}`;
 
+    const minVuln = Math.min(...vulnSeries);
+    const maxVulnInSeries = Math.max(...vulnSeries);
+    const maxVuln = Math.max(5, Math.ceil(maxVulnInSeries * 1.25));
+    const n = labels.length || 1;
+    const getX = (i) => padL + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
+    const getY = (val) => padT + plotH - (val / maxVuln) * plotH;
+
+    let gridLinesSvg = "";
+    for (let g = 0; g <= 4; g++) {
+        const yPos = padT + (g / 4) * plotH;
+        const countVal = Math.round(maxVuln * (1 - g / 4));
+        const gridInfo = getVulnerabilityTemperature(countVal, maxVulnInSeries, minVuln);
+        gridLinesSvg += `
+            <line x1="${padL}" y1="${yPos}" x2="${width - padR}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" />
+            <text x="${padL - 10}" y="${yPos + 4}" fill="${gridInfo.color}" font-size="11" text-anchor="end" font-family="var(--font-mono)">${countVal}</text>
+        `;
+    }
+
+    let xLabelsSvg = "";
+    labels.forEach((lbl, i) => {
+        const xPos = getX(i);
+        const parts = lbl.split(" ");
+        const shortLbl = parts.length > 1 && parts[0] === "Push" ? `${parts[0]} ${parts[1]}` : parts[0];
+        
+        // Skip some labels if there are too many to prevent overlapping
+        if (n > 10 && i % Math.ceil(n / 10) !== 0 && i !== n - 1) return;
+        
+        xLabelsSvg += `
+            <text x="${xPos}" y="${height - 8}" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="600">${escapeHtml(shortLbl)}</text>
+        `;
+    });
+
+    const pts = vulnSeries.map((v, i) => `${getX(i)},${getY(v)}`);
+    const areaPts = `${getX(0)},${padT + plotH} ` + pts.join(" ") + ` ${getX(n - 1)},${padT + plotH}`;
+
+    // Line segments with explicit userSpaceOnUse gradients
+    let segGradientsSvg = "";
+    let lineSegmentsSvg = "";
+    for (let i = 0; i < n - 1; i++) {
+        const x1 = getX(i);
+        const y1 = getY(vulnSeries[i]);
+        const x2 = getX(i + 1);
+        const y2 = getY(vulnSeries[i + 1]);
+        const c1 = getVulnerabilityTemperature(vulnSeries[i], maxVulnInSeries, minVuln).color;
+        const c2 = getVulnerabilityTemperature(vulnSeries[i + 1], maxVulnInSeries, minVuln).color;
+        const segId = `auditSegGrad_${i}`;
+
+        segGradientsSvg += `
+            <linearGradient id="${segId}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="${c1}" />
+                <stop offset="100%" stop-color="${c2}" />
+            </linearGradient>
+        `;
+
+        lineSegmentsSvg += `
+            <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="url(#${segId})" stroke-width="4" stroke-linecap="round" />
+        `;
+    }
+
     // Temperature stops along the timeline
-    let tempLineStops = "";
     let tempAreaStops = "";
     vulnSeries.forEach((v, i) => {
         const pct = Math.round((n > 1 ? (i / (n - 1)) : 0.5) * 100);
-        const info = getVulnerabilityTemperature(v, maxVuln);
-        tempLineStops += `<stop offset="${pct}%" stop-color="${info.color}"/>`;
+        const info = getVulnerabilityTemperature(v, maxVulnInSeries, minVuln);
         tempAreaStops += `<stop offset="${pct}%" stop-color="${info.color}" stop-opacity="0.32"/>`;
     });
 
@@ -4021,21 +4092,20 @@ function renderAuditTrendChart(trendsData) {
     vulnSeries.forEach((v, i) => {
         const cx = getX(i);
         const cy = getY(v);
-        const info = getVulnerabilityTemperature(v, maxVuln);
+        const info = getVulnerabilityTemperature(v, maxVulnInSeries, minVuln);
         nodesSvg += `
+            <circle cx="${cx}" cy="${cy}" r="9" fill="${info.color}" opacity="0.3" />
             <circle cx="${cx}" cy="${cy}" r="5" fill="${info.color}" stroke="#0f172a" stroke-width="2" style="filter: drop-shadow(0 0 5px ${info.color}); cursor: pointer;">
                 <title>${labels[i]}: ${v} Audited Vulnerabilities [${info.label}]</title>
             </circle>
-            <text x="${cx}" y="${cy - 9}" fill="${info.lightColor}" font-size="11" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${v}</text>
+            <text x="${cx}" y="${cy - 12}" fill="${info.lightColor}" font-size="11" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${v}</text>
         `;
     });
 
     container["innerHTML"] = `
         <svg viewBox="0 0 ${width} ${height}" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
             <defs>
-                <linearGradient id="auditTempLineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    ${tempLineStops}
-                </linearGradient>
+                ${segGradientsSvg}
                 <linearGradient id="auditTempAreaGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                     ${tempAreaStops}
                 </linearGradient>
@@ -4047,18 +4117,6 @@ function renderAuditTrendChart(trendsData) {
                 <mask id="auditAreaMask">
                     <rect x="0" y="0" width="${width}" height="${height}" fill="url(#auditVerticalFade)" />
                 </mask>
-                <filter id="glow-audit-temp" x="-30%" y="-30%" width="160%" height="160%">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
-                    <feColorMatrix in="blur" type="matrix" values="
-                        1 0 0 0 0
-                        0 1 0 0 0
-                        0 0 1 0 0
-                        0 0 0 1.4 0" result="boostBlur" />
-                    <feMerge>
-                        <feMergeNode in="boostBlur" />
-                        <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                </filter>
             </defs>
 
             ${gridLinesSvg}
@@ -4067,8 +4125,11 @@ function renderAuditTrendChart(trendsData) {
             <!-- Audited Vulnerabilities Area Gradient with Temperature Spectrum and Vertical Fade -->
             <polygon points="${areaPts}" fill="url(#auditTempAreaGrad)" mask="url(#auditAreaMask)" />
 
-            <!-- Single Audited Vulnerabilities Count Trend Line with Dynamic Temperature Color -->
-            <polyline points="${pts.join(" ")}" fill="none" stroke="url(#auditTempLineGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-audit-temp)" />
+            <!-- Ambient Glow Line -->
+            <polyline points="${pts.join(" ")}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" />
+
+            <!-- Explicit Multi-Stop Radiant Gradient Line Segments -->
+            ${lineSegmentsSvg}
 
             ${nodesSvg}
         </svg>
