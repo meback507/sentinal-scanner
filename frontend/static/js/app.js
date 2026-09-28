@@ -3930,9 +3930,9 @@ function renderAuditTrendChart(trendsData) {
     const plotW = width - padL - padR;
     const plotH = height - padT - padB;
 
-    const n = labels.length;
-    const maxVuln = Math.max(5, Math.ceil(Math.max(...vulnSeries) * 1.25));
-    const getX = (i) => padL + (i / (n - 1)) * plotW;
+    const n = labels.length || 1;
+    const maxVuln = Math.max(5, Math.ceil(Math.max(...(vulnSeries.length ? vulnSeries : [0])) * 1.25));
+    const getX = (i) => padL + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
     const getY = (val) => padT + plotH - (val / maxVuln) * plotH;
 
     let gridLinesSvg = "";
@@ -3948,7 +3948,12 @@ function renderAuditTrendChart(trendsData) {
     let xLabelsSvg = "";
     labels.forEach((lbl, i) => {
         const xPos = getX(i);
-        const shortLbl = lbl.split(" ")[0];
+        const parts = lbl.split(" ");
+        const shortLbl = parts.length > 1 && parts[0] === "Push" ? `${parts[0]} ${parts[1]}` : parts[0];
+        
+        // Skip some labels if there are too many to prevent overlapping
+        if (n > 10 && i % Math.ceil(n / 10) !== 0 && i !== n - 1) return;
+        
         xLabelsSvg += `
             <text x="${xPos}" y="${height - 8}" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="600">${escapeHtml(shortLbl)}</text>
         `;

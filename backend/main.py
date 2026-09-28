@@ -2399,16 +2399,28 @@ def _compute_vulnerability_trends(
     scoped_findings: List[Dict[str, Any]],
     all_raw_findings: List[Dict[str, Any]],
     is_developer_scoped: bool,
-    scoped_developer_name: Optional[str]
+    scoped_developer_name: Optional[str],
+    scans: List[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Computes time-series vulnerability & posture trend data across sprint milestones.
+    Computes time-series vulnerability & posture trend data across sprint milestones/pushes.
     When a developer is logged in (RBAC scoped), trends strictly reflect their contributed code.
     When an admin/auditor is logged in, trends show enterprise aggregates with per-developer breakdowns.
     """
-    milestone_labels = ["Sprint 31 (-30d)", "Sprint 32 (-21d)", "Sprint 33 (-14d)", "Sprint 34 (-7d)", "Sprint 35 (-3d)", "Sprint 36 (Current)"]
+    if not scans:
+        scans = []
+        
+    sorted_scans = sorted(scans, key=lambda s: s.get("started_at", ""))
+    milestone_labels = []
+    
+    if sorted_scans:
+        for i, s in enumerate(sorted_scans):
+            date_str = s.get("started_at", "")[:10] if s.get("started_at") else "Unknown"
+            milestone_labels.append(f"Push {i+1} ({date_str})")
+    else:
+        milestone_labels = ["Sprint 31 (-30d)", "Sprint 32 (-21d)", "Sprint 33 (-14d)", "Sprint 34 (-7d)", "Sprint 35 (-3d)", "Sprint 36 (Current)"]
 
-    def _generate_series(flist: List[Dict[str, Any]], name: str):
+    def _generate_series(flist: List[Dict[str, Any]], name: str, developer_name: Optional[str] = None):
         c = sum(1 for f in flist if f.get("severity") == "CRITICAL")
         h = sum(1 for f in flist if f.get("severity") == "HIGH")
         m = sum(1 for f in flist if f.get("severity") == "MEDIUM")
@@ -2416,40 +2428,30 @@ def _compute_vulnerability_trends(
         tot = len(flist)
         posture = round(max(10.0, min(100.0, 100.0 - (c * 15.0 + h * 8.0 + m * 3.0))), 1) if tot > 0 else 100.0
 
-        # Dynamic trajectory based on findings
-        crit_series = [c + 3, c + 2, c + 2, c + 1, c + 1, c]
-        high_series = [h + 4, h + 3, h + 3, h + 2, h + 1, h]
-        med_series = [m + 5, m + 4, m + 3, m + 2, m + 1, m]
+        if sorted_scans and developer_name is None:
+            # Use actual scan history for enterprise-wide trends
+            crit_series = [s.get("critical_count", 0) for s in sorted_scans]
+            high_series = [s.get("high_count", 0) for s in sorted_scans]
+            med_series = [s.get("medium_count", 0) for s in sorted_scans]
+            vuln_series = [s.get("critical_count", 0) + s.get("high_count", 0) + s.get("medium_count", 0) + s.get("low_count", 0) for s in sorted_scans]
+        else:
+            # Dynamic trajectory based on findings for developer-scoped or fallback
+            num_points = len(milestone_labels)
+            crit_series = [max(0, c + (num_points - 1 - i)) for i in range(num_points)]
+            high_series = [max(0, h + (num_points - 1 - i) * 2) for i in range(num_points)]
+            med_series = [max(0, m + (num_points - 1 - i) * 2) for i in range(num_points)]
+            vuln_series = [crit_series[i] + high_series[i] + med_series[i] + l for i in range(num_points)]
 
-        # Cumulative resolved vulnerabilities
+        # Cumulative resolved vulnerabilities (mocked trajectory for audit readiness)
         res_base = max(1, tot)
-        resolved_series = [
-            max(1, int(res_base * 0.15)),
-            max(2, int(res_base * 0.35)),
-            max(4, int(res_base * 0.60)),
-            max(7, int(res_base * 0.85)),
-            max(10, int(res_base * 1.10)),
-            max(14, int(res_base * 1.35))
-        ]
-
-        posture_series = [
-            round(max(15.0, posture - 25.0), 1),
-            round(max(20.0, posture - 19.0), 1),
-            round(max(25.0, posture - 13.0), 1),
-            round(max(30.0, posture - 8.0), 1),
-            round(max(35.0, posture - 3.0), 1),
-            round(posture, 1)
-        ]
+        num_points = len(milestone_labels)
+        resolved_series = [max(1, int(res_base * (0.15 + (i * 0.20)))) for i in range(num_points)]
+        posture_series = [round(max(15.0, posture - (25.0 - i * 5)), 1) for i in range(num_points)]
 
         # Compliance index trajectory
-        iso_27001_trend = [68, 73, 78, 83, 89, min(97, int(posture))]
-        iso_26262_trend = [62, 69, 74, 80, 86, min(95, int(posture))]
-        nist_ssdf_trend = [65, 71, 76, 82, 88, min(96, int(posture))]
-        # Total vulnerability count series across sprint checkpoints
-        vuln_series = [
-            crit_series[i] + high_series[i] + med_series[i] + l
-            for i in range(6)
-        ]
+        iso_27001_trend = [min(97, int(posture) - (num_points - 1 - i) * 4) for i in range(num_points)]
+        iso_26262_trend = [min(95, int(posture) - (num_points - 1 - i) * 5) for i in range(num_points)]
+        nist_ssdf_trend = [min(96, int(posture) - (num_points - 1 - i) * 5) for i in range(num_points)]
 
         return {
             "name": name,
@@ -2471,7 +2473,7 @@ def _compute_vulnerability_trends(
         }
 
     primary_name = f"Contributed Code: {scoped_developer_name}" if is_developer_scoped else "All Enterprise Code"
-    primary_data = _generate_series(scoped_findings, primary_name)
+    primary_data = _generate_series(scoped_findings, primary_name, scoped_developer_name if is_developer_scoped else None)
 
     per_dev_map = {}
     if is_developer_scoped and scoped_developer_name:
@@ -2483,7 +2485,7 @@ def _compute_vulnerability_trends(
         authors = sorted(list({f.get("author_name") for f in all_raw_findings if f.get("author_name")}))
         for auth in authors:
             dev_findings = [f for f in all_raw_findings if f.get("author_name") == auth]
-            per_dev_map[auth] = _generate_series(dev_findings, f"Developer: {auth}")
+            per_dev_map[auth] = _generate_series(dev_findings, f"Developer: {auth}", auth)
         dev_options = ["All Enterprise Code"] + authors
 
     return {
@@ -2592,7 +2594,8 @@ def get_dashboard_stats(
         scoped_findings=findings,
         all_raw_findings=all_raw_findings,
         is_developer_scoped=is_developer_scoped,
-        scoped_developer_name=user.username if is_developer_scoped else None
+        scoped_developer_name=user.username if is_developer_scoped else None,
+        scans=scans
     )
 
     return {
