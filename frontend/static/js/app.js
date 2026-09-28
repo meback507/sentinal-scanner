@@ -4006,37 +4006,6 @@ function renderAuditTrendChart(trendsData) {
     const plotW = width - padL - padR;
     const plotH = height - padT - padB;
 
-    const n = labels.length || 1;
-    const maxVuln = Math.max(5, Math.ceil(Math.max(...(vulnSeries.length ? vulnSeries : [0])) * 1.25));
-    const getX = (i) => padL + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
-    const getY = (val) => padT + plotH - (val / maxVuln) * plotH;
-
-    let gridLinesSvg = "";
-    for (let g = 0; g <= 4; g++) {
-        const yPos = padT + (g / 4) * plotH;
-        const countVal = Math.round(maxVuln * (1 - g / 4));
-        gridLinesSvg += `
-            <line x1="${padL}" y1="${yPos}" x2="${width - padR}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3" />
-            <text x="${padL - 10}" y="${yPos + 4}" fill="#64748b" font-size="11" text-anchor="end" font-family="var(--font-mono)">${countVal}</text>
-        `;
-    }
-
-    let xLabelsSvg = "";
-    labels.forEach((lbl, i) => {
-        const xPos = getX(i);
-        const parts = lbl.split(" ");
-        const shortLbl = parts.length > 1 && parts[0] === "Push" ? `${parts[0]} ${parts[1]}` : parts[0];
-        
-        // Skip some labels if there are too many to prevent overlapping
-        if (n > 10 && i % Math.ceil(n / 10) !== 0 && i !== n - 1) return;
-        
-        xLabelsSvg += `
-            <text x="${xPos}" y="${height - 8}" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="600">${escapeHtml(shortLbl)}</text>
-        `;
-    });
-
-    const pts = vulnSeries.map((v, i) => `${getX(i)},${getY(v)}`);
-    const areaPts = `${getX(0)},${padT + plotH} ` + pts.join(" ") + ` ${getX(n - 1)},${padT + plotH}`;
 
     const minVuln = Math.min(...vulnSeries);
     const maxVulnInSeries = Math.max(...vulnSeries);
