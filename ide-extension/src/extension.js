@@ -736,8 +736,14 @@ function activate(context) {
         })
     );
 
-    // 8. Auto-scan on Document Open and Save
+    // 8. Auto-scan on Document Open, Save, and Active Tab Switch
     context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(editor => {
+            if (editor && editor.document && editor.document.uri.scheme === 'file') {
+                scanDocument(editor.document);
+            }
+        }),
+
         vscode.workspace.onDidOpenTextDocument(doc => {
             if (doc.uri.scheme === 'file') scanDocument(doc);
         }),
