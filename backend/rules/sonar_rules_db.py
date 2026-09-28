@@ -669,7 +669,7 @@ SONARQUBE_SAST_RULES: List[Dict[str, Any]] = [
         "cwe": "CWE-319",
         "owasp": "OWASP:A02:2021",
         "standards": ["OWASP:A02:2021", "ISO-27001:A.8.24", "PCI-DSS:Req-4.1", "CWE-319"],
-        "regex": r"""(?i)['"](?:http://|ftp://|telnet://)(?!localhost|127\.0\.0\.1|0\.0\.0\.0|example\.com|schemas\.|www\.w3\.org)[a-zA-Z0-9_\-\.]+(?:/[^'"]*)?['"]""",
+        "regex": r"""(?i)['"](?:http://|ftp://|telnet://)(?!localhost|127\.0\.0\.1|0\.0\.0\.0|(?:[a-zA-Z0-9_\-\.]+\.)?example\.(?:com|org|net)|schemas\.|www\.w3\.org)[a-zA-Z0-9_\-\.]+(?:/[^'"]*)?['"]""",
         "description": "Transmitting data or communicating with services over cleartext protocols (HTTP, FTP, Telnet) exposes authentication credentials and confidential payloads to network eavesdropping and tampering (SonarQube S5332).",
         "remediation": "Upgrade to encrypted protocols such as HTTPS, SFTP, and SSH with verified certificates.",
         "is_active": True

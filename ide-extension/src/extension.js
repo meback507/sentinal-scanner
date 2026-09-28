@@ -1447,12 +1447,15 @@ function isDummySecret(val) {
  * Scans an individual text document against active rules
  */
 function scanDocument(document) {
-    if (!document || !document.getText) return;
+    const fsPath = (document.fileName || (document.uri && document.uri.fsPath) || (document.uri && document.uri.path) || '').replace(/\\/g, '/');
+    const uriStr = document.uri ? document.uri.toString() : '';
 
-    const normalizedFsPath = (document.fileName || (document.uri && document.uri.fsPath) || '').replace(/\\/g, '/');
-    if (/(?:^|\/)(?:tests?|__tests__|fixtures?|mocks?|\.pytest_cache|\.venv|venv|node_modules|dist|build)\//i.test(normalizedFsPath) ||
-        /(?:^|\/)(?:test_[^/]+\.py|[^/]+_test\.(?:py|js|ts|go))$/i.test(normalizedFsPath)) {
+    // Strictly ignore virtual environments, third-party libraries, build output, and test code
+    if (/(?:^|\/)(?:\.venv|venv|site-packages|dist-packages|node_modules|vendor|dist|build|\.pytest_cache|tests?|__tests__|fixtures?|mocks?)(?:\/|$)/i.test(fsPath) ||
+        /(?:\.venv|venv|site-packages|node_modules)/i.test(uriStr) ||
+        /(?:^|\/)(?:test_[^/]+\.py|[^/]+_test\.(?:py|js|ts|go))$/i.test(fsPath)) {
         if (diagnosticCollection && document.uri) {
+            diagnosticCollection.delete(document.uri);
             diagnosticCollection.set(document.uri, []);
         }
         return;

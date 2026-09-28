@@ -686,7 +686,7 @@ rules:
   - ISO-27001:A.8.24
   - PCI-DSS:Req-4.1
   - CWE-319
-  regex: (?i)['"](?:http://|ftp://|telnet://)(?!localhost|127\.0\.0\.1|0\.0\.0\.0|example\.com|schemas\.|www\.w3\.org)[a-zA-Z0-9_\-\.]+(?:/[^'"]*)?['"]
+  regex: (?i)['"](?:http://|ftp://|telnet://)(?!localhost|127\.0\.0\.1|0\.0\.0\.0|(?:[a-zA-Z0-9_\-\.]+\.)?example\.(?:com|org|net)|schemas\.|www\.w3\.org)[a-zA-Z0-9_\-\.]+(?:/[^'"]*)?['"]
   description: Transmitting data or communicating with services over cleartext protocols
     (HTTP, FTP, Telnet) exposes authentication credentials and confidential payloads
     to network eavesdropping and tampering (SonarQube S5332).
