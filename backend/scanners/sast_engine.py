@@ -257,7 +257,10 @@ class SASTEngine:
                     # Compute line number
                     start_char = match.start()
                     line_start = content.count("\n", 0, start_char) + 1
-                    line_end = line_start + match.group(0).count("\n")
+                    # Skip findings if suppressed via inline comment
+                    matched_lines = lines[max(0, line_start - 1):line_end]
+                    if any("sentinel-ignore" in l or "pragma: allowlist secret" in l for l in matched_lines):
+                        continue
 
                     snippet = self._extract_snippet(lines, line_start, line_end)
                     standards = map_finding_to_standards(rule.get("cwe"), rule.get("name"))
