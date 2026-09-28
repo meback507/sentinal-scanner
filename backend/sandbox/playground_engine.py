@@ -49,7 +49,7 @@ class AppSecPlaygroundEngine:
     # VULNERABLE: Direct request to arbitrary URL
     import requests
     return requests.get(target_url, timeout=3).text""",
-            "exploit_payload": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+            "exploit_payload": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",  # sentinel-ignore: S5332
             "solution_hint": "Parse url with urllib.parse, resolve hostname, and check against ipaddress.is_private or is_link_local."
         },
         {

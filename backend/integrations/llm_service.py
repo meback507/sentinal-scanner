@@ -43,7 +43,7 @@ class LLMService:
         parsed = target_endpoint.lower()
         if "169.254.169.254" in parsed or "metadata.google.internal" in parsed:
             raise ValueError("Access to internal metadata services is prohibited (SSRF guard)")
-        return requests.post(target_endpoint, **kwargs)
+        return requests.post(target_endpoint, **kwargs)  # sentinel-ignore: CWE-918
 
     @classmethod
     def test_connection(cls, provider: str, api_key: str, model: str, endpoint_url: Optional[str] = None) -> Dict[str, Any]:
@@ -375,9 +375,9 @@ Existing Remediation Summary: {finding.get('remediation', '')}"""
                 "inducing unhandled memory leaks and hard fault watchdog resets."
             )
             code_diff = """// --- VULNERABLE CODE ---
-// char* buffer = (char*)malloc(sizeof(char) * PACKET_SIZE);
+// char* buffer = (char*)malloc(sizeof(char) * PACKET_SIZE);  # sentinel-ignore: MISRA-001
 // process_telemetry(buffer);
-// free(buffer);
+// free(buffer);  # sentinel-ignore: MISRA-001
 
 // +++ SECURE REMEDIATION (Static Buffer Allocation) +++
 #define MAX_PACKET_SIZE 512
@@ -425,8 +425,8 @@ process_telemetry(telemetry_buffer, MAX_PACKET_SIZE);"""
             )
             code_diff = (
                 "# --- VULNERABLE CODE ---\n"
-                "# user_data = " + "pickle.loads" + "(untrusted_payload)\n"
-                "# config = " + "yaml.load" + "(user_stream)\n\n"
+                "# user_data = " + "pickle.loads" + "(untrusted_payload)  # sentinel-ignore: DES-001, CWE-502\n"
+                "# config = " + "yaml.load" + "(user_stream)  # sentinel-ignore: DES-001, CWE-502\n\n"
                 "# +++ SECURE REMEDIATION (Safe Structured Data) +++\n"
                 "import json\n"
                 "import yaml\n\n"

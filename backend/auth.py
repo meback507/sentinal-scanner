@@ -9,13 +9,14 @@ import json
 import base64
 import hmac
 import hashlib
+import secrets
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException, Security, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .db import db, hash_password
 from .models import UserModel, RoleEnum
 
-JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SENTINEL_JWT_SECRET") or ("aegissec_" + "jwt_super_secret_signing_key_2026")  # sentinel-ignore
+JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SENTINEL_JWT_SECRET") or secrets.token_hex(32)  # sentinel-ignore: CWE-798, S2068
 JWT_ALGORITHM = "HS256"
 security_bearer = HTTPBearer(auto_error=False)
 

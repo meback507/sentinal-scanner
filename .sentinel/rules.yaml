@@ -1833,3 +1833,63 @@ rules:
   remediation: Do not hardcode internal Alpha tokens.
   project_id: 43a3653b-b7cb-4a30-a8d9-355cd43ddf4e
   project_name: Project Alpha
+- id: CUSTOM-18CC1B
+  name: Disallow Insecure Deserialization Pickle
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-502
+  cvss: 7.5
+  standards:
+  - OWASP:A08:2021
+  regex: (?i)pickle\.(?:loads|load)\s*\(
+  description: Unpickling untrusted data allows arbitrary remote code execution.
+  remediation: Use safe JSON serialization or HMAC signature verification.
+  project_id: null
+  project_name: null
+- id: CUSTOM-79EA56
+  name: Disallow Alpha Internal Token
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-798
+  cvss: 7.5
+  standards:
+  - OWASP:A07:2021
+  regex: ALPHA_SECRET_TOKEN_[A-Z0-9]+
+  description: Detect proprietary Alpha tokens.
+  remediation: Do not hardcode internal Alpha tokens.
+  project_id: 7d3a5ce5-e45e-4392-bccf-73114012e777
+  project_name: Project Alpha
+- id: CUSTOM-58B143
+  name: Disallow Insecure Deserialization Pickle
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-502
+  cvss: 7.5
+  standards:
+  - OWASP:A08:2021
+  regex: (?i)pickle\.(?:loads|load)\s*\(
+  description: Unpickling untrusted data allows arbitrary remote code execution.
+  remediation: Use safe JSON serialization or HMAC signature verification.
+  project_id: null
+  project_name: null
+- id: CUSTOM-C5FAFF
+  name: Disallow Alpha Internal Token
+  type: sast
+  severity: CRITICAL
+  languages:
+  - python
+  cwe: CWE-798
+  cvss: 7.5
+  standards:
+  - OWASP:A07:2021
+  regex: ALPHA_SECRET_TOKEN_[A-Z0-9]+
+  description: Detect proprietary Alpha tokens.
+  remediation: Do not hardcode internal Alpha tokens.
+  project_id: 698834c8-6d0c-466b-998c-063723b503ec
+  project_name: Project Alpha

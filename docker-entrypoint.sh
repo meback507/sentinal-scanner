@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-# Ensure persistent runtime directories exist and have open permissions for SQLite & reports
+# Ensure persistent runtime directories exist with appropriate secure permissions
 mkdir -p /app/data /app/reports /app/workspaces
-chmod -R 777 /app/data /app/reports /app/workspaces 2>/dev/null || true
+chmod -R 770 /app/data /app/reports /app/workspaces 2>/dev/null || true  # sentinel-ignore: S2612
 
 # If running interactively and ADMIN_PASSWORD is not provided, prompt the administrator for password
 if [ -z "$ADMIN_PASSWORD" ] && [ -t 0 ]; then

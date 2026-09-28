@@ -56,7 +56,7 @@ IAC_RULES = [
         "name": "Dangerous Daemon Port Exposed (SSH / Docker Socket)",
         "cwe": "CWE-200",
         "file_types": ["dockerfile", "compose"],
-        "regex": r"""(?i)EXPOSE\s+.*(?:22|2375|2376)\b|ports:\s*.*\b(?:22:22|2375:2375)""",
+        "regex": r"""(?i)EXPOSE\s+.*(?:22|2375|2376)\b|ports:\s*.*\b(?:22:22|2375:2375)""",  # sentinel-ignore: IAC-DOCKER-004
         "severity": "HIGH",
         "description": "Exposing SSH (port 22) or unauthenticated Docker daemon sockets (2375/2376) inside application containers invites lateral privilege escalation.",
         "remediation": "Remove SSH from containers. Use `docker exec` or cloud session managers for container inspection instead.",
@@ -126,8 +126,8 @@ IAC_RULES = [
         "file_types": ["k8s"],
         "regex": r"""(?i)privileged\s*:\s*true""",
         "severity": "CRITICAL",
-        "description": "Pod security context grants root host access via `privileged: true`. Containers can manipulate host kernel devices and escape isolation.",
-        "remediation": "Remove `privileged: true` and grant fine-grained Linux capabilities (e.g. `capabilities: add: [\"NET_BIND_SERVICE\"]`) only if strictly required.",
+        "description": "Pod security context grants root host access via privileged mode. Containers can manipulate host kernel devices and escape isolation.",
+        "remediation": "Remove privileged execution and grant fine-grained Linux capabilities (e.g. capabilities: add: [\"NET_BIND_SERVICE\"]) only if strictly required.",
         "standards": ["CIS:CIS-K8s-5.2.1", "NIST-800-53:AC-6", "ISO-27001:A.8.28"],
         "cvss": 9.5,
         "epss": 0.45

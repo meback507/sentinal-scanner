@@ -99,9 +99,9 @@ class APIFuzzerEngine:
                     "severity": "CRITICAL",
                     "endpoint": f"{method} {path}",
                     "tampered_url": path,
-                    "payload_description": "Injected internal cloud metadata URL: 'http://169.254.169.254/latest/meta-data/'",
+                    "payload_description": "Injected internal cloud metadata URL: 'http://169.254.169.254/latest/meta-data/'",  # sentinel-ignore: S5332
                     "evidence": "Server followed redirect and attempted outbound HTTP request to link-local IP range.",
-                    "reproduction_curl": f"curl -X {method} '{base_url}{path}' -H 'Content-Type: application/json' -d '{{\"callback_url\": \"http://169.254.169.254/latest/meta-data/\"}}'",
+                    "reproduction_curl": f"curl -X {method} '{base_url}{path}' -H 'Content-Type: application/json' -d '{{\"callback_url\": \"http://169.254.169.254/latest/meta-data/\"}}'",  # sentinel-ignore: S5332
                     "remediation": "Enforce strict DNS resolution checking, reject private/loopback/cloud metadata IP blocks (RFC1918 & 169.254.0.0/16)."
                 })
 

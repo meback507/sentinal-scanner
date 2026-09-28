@@ -1279,6 +1279,9 @@ async function syncWorkspaceFindingsFromServer() {
         }
         const cleanRelPath = f.file_path.replace(/^\/+/, '');
         const candidateAbs = path.isAbsolute(f.file_path) ? f.file_path : path.join(rootPath, cleanRelPath);
+        if (!fs.existsSync(candidateAbs)) {
+            continue;
+        }
 
         const sevStr = (f.severity || 'HIGH').toUpperCase();
         let severity = vscode.DiagnosticSeverity.Warning;

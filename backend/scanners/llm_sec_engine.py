@@ -50,7 +50,7 @@ class LLMSecurityScanner:
 import openai
 from langchain.agents import initialize_agent, Tool
 
-client = openai.OpenAI(api_key="sk-proj-DEMO-HARDCODED-AI-SECRET-XYZ123456789")
+client = openai.OpenAI(api_key="sk-proj-DEMO-HARDCODED-AI-SECRET-XYZ123456789")  # sentinel-ignore: SEC-001
 
 def ask_assistant(user_query: str):
     # Vulnerability: Direct string interpolation into system prompt (LLM01)

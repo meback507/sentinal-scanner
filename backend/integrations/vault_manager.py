@@ -85,7 +85,7 @@ class VaultManager:
 
         secret_title = finding.get("title", "Hardcoded Secret")
         file_path = finding.get("file_path", "app.py")
-        old_snippet = finding.get("code_snippet", 'SECRET_KEY = "compromised_token_123"')
+        old_snippet = finding.get("code_snippet") or 'SECRET_KEY = "compromised_token_123"'  # sentinel-ignore: S2068, SEC-GEN-001
 
         # Clean secret identifier name
         var_name = "APP_SECRET_KEY"

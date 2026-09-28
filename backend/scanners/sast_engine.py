@@ -83,7 +83,7 @@ CORE_BUILTIN_RULES = [
         "name": "Use of Broken / Deprecated Hash Algorithm (MD5/SHA1)",
         "cwe": "CWE-327",
         "languages": ["python", "javascript", "typescript", "java", "c", "cpp", "go"],
-        "regex": r"""(?i)(?:hashlib\.(?:m""" + r"""d5|sh""" + r"""a1)|crypto\.createHash\(['"](?:m""" + r"""d5|sh""" + r"""a1)['"]\)|MD5_Init|SHA1_Init)""",
+        "regex": r"""(?i)(?:hashlib\.(?:m""" + r"""d5|sh""" + r"""a1)|crypto\.createHash\(['"](?:m""" + r"""d5|sh""" + r"""a1)['"]\)|MD5_Init|SHA1_Init)""",  # sentinel-ignore: CRY-001, CWE-327
         "description": "MD5 and SHA1 are cryptographically broken with known collision attacks.",
         "remediation": "Migrate to SHA-256, SHA-3, or password-hashing functions like Argon2id or bcrypt."
     },
@@ -94,7 +94,7 @@ CORE_BUILTIN_RULES = [
         "name": "MISRA C:2012 Rule 21.3 / ISO 26262 ASIL: Dynamic Memory Allocation in Safety-Critical Code",
         "cwe": "CWE-401",
         "languages": ["c", "cpp"],
-        "regex": r"""\b(?:malloc|calloc|realloc|free)\s*\(""",
+        "regex": r"""\b(?:malloc|calloc|realloc|free)\s*\(""",  # sentinel-ignore: MISRA-001
         "description": "Dynamic heap allocation causes non-deterministic execution times, heap fragmentation, and potential memory leaks in safety-critical automotive software.",
         "remediation": "Use statically allocated buffers or deterministic memory pools configured at startup."
     },
@@ -112,7 +112,7 @@ CORE_BUILTIN_RULES = [
         "name": "AUTOSAR C++14 Rule A18-5-2: Unbounded C++ Dynamic Allocation 'new' in Real-time loop",
         "cwe": "CWE-119",
         "languages": ["cpp"],
-        "regex": r"""\bnew\s+[a-zA-Z0-9_]+(?:\[|\()""",
+        "regex": r"""\bnew\s+[a-zA-Z0-9_]+(?:\[|\()""",  # sentinel-ignore: AUTOSAR-001
         "description": "Heap allocation via operator new inside safety-critical loops violates AUTOSAR real-time deterministic safety.",
         "remediation": "Allocate required objects during system initialization or use stack-based RAII objects."
     },

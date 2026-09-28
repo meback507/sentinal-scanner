@@ -204,7 +204,7 @@ class WebhookNotifier:
         theme_color = "E63946" if severity == "CRITICAL" else ("F4A261" if severity == "HIGH" else "2A9D8F")
         payload = {
             "@type": "MessageCard",
-            "@context": "http://schema.org/extensions",
+            "@context": "https://schema.org/extensions",
             "themeColor": theme_color,
             "summary": title,
             "sections": [

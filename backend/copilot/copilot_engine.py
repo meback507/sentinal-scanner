@@ -155,7 +155,7 @@ When addressing **Injection & Unsanitized Input Vulnerabilities** (CWE-89, CWE-7
 #### 1. Python Parameterized Execution
 ```python
 # ❌ VULNERABLE: Direct string interpolation allows attacker SQL bypass
-cursor.execute(f"SELECT * FROM users WHERE email = '{{user_input}}'")
+cursor.execute(f"SELECT * FROM users WHERE email = '{{user_input}}'")  # sentinel-ignore: S2077, INJ-001
 
 # ✅ SECURE: Database driver parameterized query (escapes literals)
 cursor.execute("SELECT * FROM users WHERE email = %s", (user_input,))

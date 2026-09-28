@@ -63,7 +63,7 @@ NEW_SONAR_RULES = [
         "languages": ["python", "javascript", "typescript", "java", "go"],
         "cwe": "CWE-295",
         "standards": ["OWASP:A07:2021", "ISO-27001:A.8.28", "CWE-295"],
-        "regex": r"(?i)(?:verify\s*=\s*False|rejectUnauthorized\s*:\s*false|InsecureRequestWarning|TrustAllStrategy|CheckServerIdentity\s*:\s*\(\)\s*=>\s*true)",
+        "regex": r"(?i)(?:verify\s*=\s*False|rejectUnauthorized\s*:\s*false|InsecureRequestWarning|TrustAllStrategy|CheckServerIdentity\s*:\s*\(\)\s*=>\s*true)",  # sentinel-ignore: S5328, CWE-295
         "description": "Disabling TLS certificate or hostname verification enables Man-in-the-Middle (MitM) attacks allowing adversaries to eavesdrop on or alter network traffic (SonarQube S5328).",
         "remediation": "Keep certificate validation enabled (verify=True, rejectUnauthorized: true) and use valid public or internal CA certificates.",
         "sonar_type": "VULNERABILITY",
@@ -303,7 +303,7 @@ NEW_SONAR_RULES = [
         "languages": ["python", "javascript", "typescript", "java"],
         "cwe": "CWE-780",
         "standards": ["OWASP:A02:2021", "NIST-SSDF:PW.7", "CWE-780"],
-        "regex": r"(?i)(?:Cipher\.getInstance\s*\(\s*['\"]RSA/ECB/PKCS1Padding['\"]\)|PKCS1_v1_5\.new\s*\(|constants\.RSA_PKCS1_PADDING)",
+        "regex": r"(?i)(?:Cipher\.getInstance\s*\(\s*['\"]RSA/ECB/PKCS1Padding['\"]\)|PKCS1_v1_5\.new\s*\(|constants\.RSA_PKCS1_PADDING)",  # sentinel-ignore: S2277, CWE-780
         "description": "RSA PKCS#1 v1.5 padding is vulnerable to padding oracle attacks (Bleichenbacher attack), allowing ciphertext decryption without the private key (SonarQube S5655).",
         "remediation": "Use RSA with Optimal Asymmetric Encryption Padding (RSA-OAEP) with SHA-256 (e.g. OAEP.new(key, SHA256)).",
         "sonar_type": "VULNERABILITY",
@@ -318,7 +318,7 @@ NEW_SONAR_RULES = [
         "languages": ["python", "javascript", "typescript", "java"],
         "cwe": "CWE-352",
         "standards": ["OWASP:A01:2021", "ISO-27001:A.8.28", "CWE-352"],
-        "regex": r"(?i)(?:@csrf_exempt|\.csrf\s*\(\s*\)\s*\.disable\s*\(\)|csrf\s*:\s*false|CSRFProtect\s*=\s*False)",
+        "regex": r"(?i)(?:@csrf_exempt|\.csrf\s*\(\s*\)\s*\.disable\s*\(\)|csrf\s*:\s*false|CSRFProtect\s*=\s*False)",  # sentinel-ignore: S4502, S4524, CWE-352
         "description": "Explicitly disabling CSRF protection on state-changing endpoints allows malicious websites to forge unauthorized actions on behalf of authenticated users (SonarQube S4524).",
         "remediation": "Enable CSRF tokens on all state-changing HTTP methods (POST, PUT, DELETE, PATCH) or enforce SameSite=Strict cookies.",
         "sonar_type": "SECURITY_HOTSPOT",

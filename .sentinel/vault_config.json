@@ -19,7 +19,7 @@
       "status": "unconfigured"
     }
   },
-  "rotated_secrets_count": 8,
+  "rotated_secrets_count": 12,
   "audit_ledger": [
     {
       "rotation_id": "ROT-702D3551",
@@ -99,6 +99,46 @@
       "vault_uri": "vault://secret/data/sentinel/pom/app_secret_key",
       "file_path": "pom.xml",
       "rotated_at": "2026-09-25T05:35:28.554561+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-C5D3CABB",
+      "finding_id": "find-secret-999",
+      "provider": "hashicorp_vault",
+      "variable_name": "AWS_SECRET_ACCESS_KEY",
+      "vault_uri": "vault://secret/data/sentinel/settings/aws_secret_access_key",
+      "file_path": "config/settings.py",
+      "rotated_at": "2026-09-28T04:40:11.349772+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-6C3AA5FB",
+      "finding_id": "cbfaebf0-3d7e-492a-a683-f6181282e5e9",
+      "provider": "hashicorp_vault",
+      "variable_name": "APP_SECRET_KEY",
+      "vault_uri": "vault://secret/data/sentinel/app/app_secret_key",
+      "file_path": "app.py",
+      "rotated_at": "2026-09-28T04:40:11.363094+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-6F8577CD",
+      "finding_id": "find-secret-999",
+      "provider": "hashicorp_vault",
+      "variable_name": "AWS_SECRET_ACCESS_KEY",
+      "vault_uri": "vault://secret/data/sentinel/settings/aws_secret_access_key",
+      "file_path": "config/settings.py",
+      "rotated_at": "2026-09-28T04:45:13.562761+00:00",
+      "status": "COMPLETED"
+    },
+    {
+      "rotation_id": "ROT-37E5085D",
+      "finding_id": "test-finding-for-vault",
+      "provider": "hashicorp_vault",
+      "variable_name": "STRIPE_API_KEY",
+      "vault_uri": "vault://secret/data/sentinel/billing/stripe_api_key",
+      "file_path": "billing.py",
+      "rotated_at": "2026-09-28T04:45:13.657290+00:00",
       "status": "COMPLETED"
     }
   ]

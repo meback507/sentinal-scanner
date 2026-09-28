@@ -103,7 +103,7 @@ class SBOMDriftEngine:
         """
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         materials_hash = hashlib.sha256(f"{project_name}:{commit_sha}:{timestamp}".encode()).hexdigest()
-        attestation_id = f"urn:uuid:{hashlib.md5(materials_hash.encode()).hexdigest()}"
+        attestation_id = f"urn:uuid:{hashlib.sha256(materials_hash.encode()).hexdigest()[:32]}"
 
         in_toto_statement = {
             "_type": "https://in-toto.io/Statement/v1",

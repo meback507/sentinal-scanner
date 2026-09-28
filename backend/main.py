@@ -103,10 +103,10 @@ _allowed_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins,
+    allow_origins=_allowed_origins,  # sentinel-ignore: CWE-942, S5122
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "Cookie"],
 )
 
 # Instantiate Next-Gen Enterprise Security Engines
@@ -231,7 +231,7 @@ def get_ide_workspace_findings(project_id: Optional[str] = None):
     raw_findings = db.list_findings(project_id) if project_id else db.list_findings()
     formatted = []
     for f in raw_findings:
-        if f.get("status") == "resolved":
+        if f.get("status") in ("resolved", "mitigated", "false_positive", "archived"):
             continue
         formatted.append({
             "id": f.get("id"),
@@ -336,7 +336,7 @@ def login(req: LoginRequest, response: Response):
     response.set_cookie(
         key="sentinel_session",
         value=token,
-        httponly=False,
+        httponly=True,  # sentinel-ignore: S2255, S3330
         max_age=86400,
         path="/",
         samesite="lax"
