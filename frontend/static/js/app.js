@@ -978,56 +978,92 @@ function onTrendDeveloperFilterChange(devName) {
     }
 }
 
-function getVulnerabilityTemperature(val, maxVal) {
-    const v = Number(val) || 0;
-    const max = Number(maxVal) || 20;
-    const ratio = max > 0 ? (v / max) : 0;
+function interpolateHexColor(color1, color2, factor) {
+    const f = Math.max(0, Math.min(1, factor));
+    const r1 = parseInt(color1.slice(1, 3), 16), g1 = parseInt(color1.slice(3, 5), 16), b1 = parseInt(color1.slice(5, 7), 16);
+    const r2 = parseInt(color2.slice(1, 3), 16), g2 = parseInt(color2.slice(3, 5), 16), b2 = parseInt(color2.slice(5, 7), 16);
+    const r = Math.round(r1 + f * (r2 - r1));
+    const g = Math.round(g1 + f * (g2 - g1));
+    const b = Math.round(b1 + f * (b2 - b1));
+    return "#" + [r, g, b].map(x => x.toString(16).padStart(2, "0")).join("");
+}
 
-    // Thermal Temperature Color Spectrum:
-    // High / Critical (Hot): Fire Red (#ef4444)
-    // Elevated (Warm): Sunset Orange (#f97316)
-    // Moderate (Tepid): Golden Amber (#f59e0b)
-    // Low / Secure (Cool): Emerald Green (#10b981)
-    // Zero Flaws (Cold): Ice Cyan (#06b6d4)
-    if (v >= 15 || ratio >= 0.70) {
+function getRadiantColor(ratio) {
+    const stops = [
+        { t: 0.00, hex: "#06b6d4" }, // Cold Cyan (0 flaws)
+        { t: 0.20, hex: "#10b981" }, // Cool Emerald (low flaws)
+        { t: 0.45, hex: "#f59e0b" }, // Tepid Amber (moderate flaws)
+        { t: 0.70, hex: "#f97316" }, // Warm Sunset Orange (elevated flaws)
+        { t: 1.00, hex: "#ef4444" }  // Hot Fire Red (critical flaws)
+    ];
+    if (ratio <= 0) return stops[0].hex;
+    if (ratio >= 1) return stops[stops.length - 1].hex;
+    for (let i = 0; i < stops.length - 1; i++) {
+        if (ratio >= stops[i].t && ratio <= stops[i + 1].t) {
+            const factor = (ratio - stops[i].t) / (stops[i + 1].t - stops[i].t);
+            return interpolateHexColor(stops[i].hex, stops[i + 1].hex, factor);
+        }
+    }
+    return stops[stops.length - 1].hex;
+}
+
+function getVulnerabilityTemperature(val, maxVal) {
+    const v = Math.max(0, Number(val) || 0);
+    const max = Math.max(v, Number(maxVal) || 20);
+
+    // Dynamic blend: relative positioning within project scope + absolute baseline
+    const relRatio = max > 0 ? (v / max) : 0;
+    const absRatio = Math.min(1.0, v / 80.0);
+    const ratio = (v === 0) ? 0 : Math.min(1.0, (relRatio * 0.70) + (absRatio * 0.30));
+
+    // Dynamic continuous radiant color
+    const dynamicColor = getRadiantColor(ratio);
+
+    // Qualitative categorization & readable label colors
+    if (ratio >= 0.70 || v >= 100) {
         return {
-            color: "#ef4444",
+            color: dynamicColor,
             lightColor: "#fca5a5",
-            bg: "rgba(239, 68, 68, 0.22)",
+            bg: "rgba(239, 68, 68, 0.25)",
             label: "Critical (Hot)",
-            zone: "hot"
+            zone: "hot",
+            ratio
         };
-    } else if (v >= 10 || ratio >= 0.50) {
+    } else if (ratio >= 0.45 || v >= 50) {
         return {
-            color: "#f97316",
+            color: dynamicColor,
             lightColor: "#fdba74",
-            bg: "rgba(249, 115, 22, 0.22)",
+            bg: "rgba(249, 115, 22, 0.25)",
             label: "Elevated (Warm)",
-            zone: "warm"
+            zone: "warm",
+            ratio
         };
-    } else if (v >= 5 || ratio >= 0.28) {
+    } else if (ratio >= 0.22 || v >= 20) {
         return {
-            color: "#f59e0b",
+            color: dynamicColor,
             lightColor: "#fde68a",
-            bg: "rgba(245, 158, 11, 0.20)",
+            bg: "rgba(245, 158, 11, 0.22)",
             label: "Moderate (Tepid)",
-            zone: "tepid"
+            zone: "tepid",
+            ratio
         };
     } else if (v > 0) {
         return {
-            color: "#10b981",
+            color: dynamicColor,
             lightColor: "#6ee7b7",
-            bg: "rgba(16, 185, 129, 0.20)",
-            label: "Low (Cool)",
-            zone: "cool"
+            bg: "rgba(16, 185, 129, 0.22)",
+            label: "Low / Secure (Cool)",
+            zone: "cool",
+            ratio
         };
     } else {
         return {
-            color: "#06b6d4",
+            color: dynamicColor,
             lightColor: "#67e8f9",
-            bg: "rgba(6, 182, 212, 0.20)",
+            bg: "rgba(6, 182, 212, 0.22)",
             label: "Zero Flaws (Cold)",
-            zone: "cold"
+            zone: "cold",
+            ratio: 0
         };
     }
 }
@@ -1098,8 +1134,8 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
     const plotH = height - padT - padB;
 
     const maxVuln = Math.max(5, Math.ceil(Math.max(...vulnSeries) * 1.25));
-    const n = labels.length;
-    const getX = (i) => padL + (i / (n - 1)) * plotW;
+    const n = labels.length || 1;
+    const getX = (i) => padL + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
     const getY = (val) => padT + plotH - (val / maxVuln) * plotH;
 
     // Build SVG path points
@@ -1110,7 +1146,7 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
     let tempLineStops = "";
     let tempAreaStops = "";
     vulnSeries.forEach((v, i) => {
-        const pct = Math.round((i / (n - 1)) * 100);
+        const pct = Math.round((n > 1 ? (i / (n - 1)) : 0.5) * 100);
         const info = getVulnerabilityTemperature(v, maxVuln);
         tempLineStops += `<stop offset="${pct}%" stop-color="${info.color}"/>`;
         tempAreaStops += `<stop offset="${pct}%" stop-color="${info.color}" stop-opacity="0.32"/>`;
@@ -1170,8 +1206,17 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
                 <mask id="dashAreaMask">
                     <rect x="0" y="0" width="${width}" height="${height}" fill="url(#dashVerticalFade)" />
                 </mask>
-                <filter id="glow-temp" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="3.5" flood-color="#f97316" flood-opacity="0.4"/>
+                <filter id="glow-temp" x="-30%" y="-30%" width="160%" height="160%">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+                    <feColorMatrix in="blur" type="matrix" values="
+                        1 0 0 0 0
+                        0 1 0 0 0
+                        0 0 1 0 0
+                        0 0 0 1.5 0" result="boostBlur" />
+                    <feMerge>
+                        <feMergeNode in="boostBlur" />
+                        <feMergeNode in="SourceGraphic" />
+                    </feMerge>
                 </filter>
             </defs>
 
@@ -3966,7 +4011,7 @@ function renderAuditTrendChart(trendsData) {
     let tempLineStops = "";
     let tempAreaStops = "";
     vulnSeries.forEach((v, i) => {
-        const pct = Math.round((i / (n - 1)) * 100);
+        const pct = Math.round((n > 1 ? (i / (n - 1)) : 0.5) * 100);
         const info = getVulnerabilityTemperature(v, maxVuln);
         tempLineStops += `<stop offset="${pct}%" stop-color="${info.color}"/>`;
         tempAreaStops += `<stop offset="${pct}%" stop-color="${info.color}" stop-opacity="0.32"/>`;
@@ -4002,8 +4047,17 @@ function renderAuditTrendChart(trendsData) {
                 <mask id="auditAreaMask">
                     <rect x="0" y="0" width="${width}" height="${height}" fill="url(#auditVerticalFade)" />
                 </mask>
-                <filter id="glow-audit-temp" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#f97316" flood-opacity="0.4"/>
+                <filter id="glow-audit-temp" x="-30%" y="-30%" width="160%" height="160%">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+                    <feColorMatrix in="blur" type="matrix" values="
+                        1 0 0 0 0
+                        0 1 0 0 0
+                        0 0 1 0 0
+                        0 0 0 1.4 0" result="boostBlur" />
+                    <feMerge>
+                        <feMergeNode in="boostBlur" />
+                        <feMergeNode in="SourceGraphic" />
+                    </feMerge>
                 </filter>
             </defs>
 
