@@ -407,7 +407,7 @@
                 <span id="login-error-text">Invalid username or password.</span>
             </div>
 
-            <form id="login-form" onsubmit="handleLogin(event)">
+            <form id="login-form" action="javascript:void(0);" onsubmit="event.preventDefault(); handleLogin(event); return false;">
                 <div class="form-group">
                     <label class="form-label" for="username">Username</label>
                     <div class="input-wrapper">
@@ -425,7 +425,7 @@
                     </div>
                 </div>
 
-                <button type="submit" id="btn-submit" class="btn-submit">
+                <button type="button" id="btn-submit" class="btn-submit" onclick="handleLogin(event)">
                     <span id="btn-text">Authenticate & Sign In</span>
                     <div id="btn-spinner" class="spinner"></div>
                 </button>
@@ -456,7 +456,10 @@
         }
 
         async function handleLogin(e) {
-            e.preventDefault();
+            if (e) {
+                e.preventDefault();
+                if (typeof e.stopPropagation === "function") e.stopPropagation();
+            }
             const u = document.getElementById("username").value.trim();
             const p = document.getElementById("password").value;
             const errAlert = document.getElementById("login-error-alert");
@@ -482,8 +485,9 @@
                     localStorage.setItem("aegis_token", data.access_token);
                     localStorage.setItem("aegis_user", JSON.stringify(data.user));
                     sessionStorage.removeItem("aegis_logged_out");
-                    // Redirect directly to dashboard
-                    window.location.href = "/";
+                    // Cleanly redirect to dashboard root without trailing query params
+                    window.location.replace("/");
+                    return false;
                 } else {
                     const err = await res.json().catch(() => ({ detail: "Invalid username or password" }));
                     errText.textContent = err.detail || "Authentication failed. Please verify credentials.";
