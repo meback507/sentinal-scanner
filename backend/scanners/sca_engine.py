@@ -196,7 +196,11 @@ class SCAEngine:
             ("Cargo.toml", self._parse_cargo_toml)
         ]
 
-        for root, _, files in os.walk(target_dir):
+        for root, dirs, files in os.walk(target_dir):
+            dirs[:] = [d for d in dirs if d not in [
+                ".git", "node_modules", "vendor", "__pycache__", ".venv", "venv", "dist", "build",
+                "tests", "test", "__tests__", "testing", "fixtures"
+            ]]
             for filename in files:
                 rel_path = os.path.relpath(os.path.join(root, filename), target_dir)
                 for pattern, parser_func in manifest_parsers:
@@ -343,7 +347,11 @@ class SCAEngine:
         call_pattern = re.compile(rf"""\b{pkg_clean}\.[a-zA-Z0-9_]+\s*\(""", re.IGNORECASE)
 
         try:
-            for root, _, files in os.walk(target_dir):
+            for root, dirs, files in os.walk(target_dir):
+                dirs[:] = [d for d in dirs if d not in [
+                    ".git", "node_modules", "vendor", "__pycache__", ".venv", "venv", "dist", "build",
+                    "tests", "test", "__tests__", "testing", "fixtures"
+                ]]
                 for file in files:
                     if file.endswith((".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".c", ".cpp")):
                         fpath = os.path.join(root, file)

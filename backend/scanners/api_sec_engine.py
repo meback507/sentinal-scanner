@@ -22,7 +22,9 @@ class APISecEngine:
             return findings
 
         for root, dirs, files in os.walk(target_dir):
-            dirs[:] = [d for d in dirs if d not in [".git", "node_modules", "vendor", ".venv", "__pycache__"]]
+            dirs[:] = [d for d in dirs if d not in [
+                ".git", "node_modules", "vendor", ".venv", "__pycache__", "tests", "test", "__tests__", "testing", "fixtures"
+            ]]
 
             for fname in files:
                 low_name = fname.lower()

@@ -191,9 +191,10 @@ class SASTEngine:
         files_scanned = 0
 
         for root, dirs, files in os.walk(target_dir):
-            # Skip noise directories
+            # Skip noise directories and test suites
             dirs[:] = [d for d in dirs if d not in [
-                ".git", "node_modules", "vendor", "__pycache__", ".venv", "venv", "dist", "build"
+                ".git", "node_modules", "vendor", "__pycache__", ".venv", "venv", "dist", "build",
+                "tests", "test", "__tests__", "testing", "fixtures", "mock", "mocks"
             ]]
 
             for file in files:
@@ -215,6 +216,14 @@ class SASTEngine:
         return findings
 
     def scan_file(self, full_path: str, rel_path: str, language: str) -> List[Dict[str, Any]]:
+        # Exclude test files and fixtures to prevent test mocks from triggering SAST findings
+        norm_path = rel_path.replace("\\", "/").lower()
+        path_segments = norm_path.split("/")
+        if any(seg in ("tests", "test", "__tests__", "testing", "fixtures", "mocks") for seg in path_segments):
+            return []
+        if any(norm_path.endswith(sfx) for sfx in ("_test.py", "_test.js", "_test.ts", "_test.go", "test.py")):
+            return []
+
         try:
             with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()

@@ -1435,6 +1435,16 @@ function isDummySecret(val) {
  */
 function scanDocument(document) {
     if (!document || !document.getText) return;
+
+    const normalizedFsPath = (document.fileName || (document.uri && document.uri.fsPath) || '').replace(/\\/g, '/');
+    if (/(?:^|\/)(?:tests?|__tests__|fixtures?|mocks?|\.pytest_cache|\.venv|venv|node_modules|dist|build)\//i.test(normalizedFsPath) ||
+        /(?:^|\/)(?:test_[^/]+\.py|[^/]+_test\.(?:py|js|ts|go))$/i.test(normalizedFsPath)) {
+        if (diagnosticCollection && document.uri) {
+            diagnosticCollection.set(document.uri, []);
+        }
+        return;
+    }
+
     const text = document.getText();
     const fileName = document.fileName.toLowerCase();
     const diagnostics = [];
@@ -1593,7 +1603,7 @@ function scanWorkspace() {
         title: '🛡️ Sentinel AppSec: Auditing Workspace...',
         cancellable: false
     }, async () => {
-        const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 200);
+        const files = await vscode.workspace.findFiles('**/*', '{**/node_modules/**,**/tests/**,**/test/**,**/__tests__/**,**/.venv/**,**/dist/**,**/build/**}', 300);
         for (const file of files) {
             try {
                 const doc = await vscode.workspace.openTextDocument(file);

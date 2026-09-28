@@ -202,8 +202,10 @@ class IaCEngine:
             return findings
 
         for root, dirs, files in os.walk(target_dir):
-            # Exclude vendor and hidden directories
-            dirs[:] = [d for d in dirs if d not in [".git", "node_modules", "vendor", ".venv", "__pycache__"]]
+            # Exclude vendor, test, and hidden directories
+            dirs[:] = [d for d in dirs if d not in [
+                ".git", "node_modules", "vendor", ".venv", "__pycache__", "tests", "test", "__tests__", "testing", "fixtures"
+            ]]
 
             for fname in files:
                 fpath = os.path.join(root, fname)

@@ -68,7 +68,11 @@ class ThreatModelEngine:
         has_auth = False
         has_external_api = False
 
-        for root, _, files in os.walk(repo_path):
+        for root, dirs, files in os.walk(repo_path):
+            dirs[:] = [d for d in dirs if d not in [
+                ".git", "node_modules", "vendor", "__pycache__", ".venv", "venv", "dist", "build",
+                "tests", "test", "__tests__", "testing", "fixtures"
+            ]]
             for file in files:
                 ext = os.path.splitext(file)[1].lower()
                 if ext in (".py", ".js", ".ts", ".go", ".java"):

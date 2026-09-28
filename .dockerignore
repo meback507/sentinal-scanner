@@ -10,6 +10,11 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Tests & Test Fixtures
+tests/
+test/
+__tests__/
+
 # Version Control
 .git/
 .github/

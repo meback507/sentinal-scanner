@@ -325,7 +325,8 @@ class SecretScanner:
 
         SKIP_DIRS = {
             ".git", "node_modules", "vendor", "dist", "build", ".venv", "venv",
-            "__pycache__", ".idea", ".vscode", "coverage", ".pytest_cache"
+            "__pycache__", ".idea", ".vscode", "coverage", ".pytest_cache",
+            "tests", "test", "__tests__", "testing", "fixtures", "spec", "mocks", "mock"
         }
         SCANNABLE_EXTS = {
             ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".c", ".cpp",
@@ -355,6 +356,13 @@ class SecretScanner:
                     continue
 
                 rel_path = os.path.relpath(full_path, target_dir)
+                norm_path = rel_path.replace("\\", "/").lower()
+                path_parts = norm_path.split("/")
+                if any(p in ("tests", "test", "__tests__", "testing", "fixtures", "spec", "mocks", "mock") for p in path_parts):
+                    continue
+                if any(norm_path.endswith(sfx) for sfx in ("_test.py", "_test.js", "_test.ts", "_test.go", "test.py")):
+                    continue
+
                 try:
                     with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
