@@ -432,16 +432,17 @@
             </form>
 
             <div class="login-footer-info">
-                Default superuser: <code>admin</code><br>
-                Password configured via <code>ADMIN_PASSWORD</code> in Docker / environment
+                Default administrator: <code>admin</code> &bull; Password: <code>admin</code> or <code>Admin@123!</code><br>
+                Configurable via <code>ADMIN_PASSWORD</code> in Docker / environment
             </div>
         </div>
     </div>
 
     <script>
-        // Clear any previous session tokens when accessing login page directly
-        localStorage.removeItem("aegis_token");
-        localStorage.removeItem("aegis_user");
+        // If already authenticated and not explicitly logged out, redirect straight to dashboard
+        if (localStorage.getItem("aegis_token") && !sessionStorage.getItem("aegis_logged_out")) {
+            window.location.replace("/");
+        }
 
         function togglePassword() {
             const pw = document.getElementById("password");

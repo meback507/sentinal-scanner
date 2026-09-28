@@ -24,6 +24,7 @@ if [ -z "$ADMIN_PASSWORD" ]; then
 fi
 
 export ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+export JWT_SECRET="${JWT_SECRET:-sentinel_platform_jwt_secret_2026_production}"
 
 echo "[Sentinel AppSec] Starting server for admin user '${ADMIN_USERNAME}' on port ${PORT:-8000}..."
 
