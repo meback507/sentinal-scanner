@@ -425,8 +425,8 @@ process_telemetry(telemetry_buffer, MAX_PACKET_SIZE);"""
             )
             code_diff = (
                 "# --- VULNERABLE CODE ---\n"
-                "# user_data = " + "pickle.loads" + "(untrusted_payload)  # sentinel-ignore: DES-001, CWE-502\n"
-                "# config = " + "yaml.load" + "(user_stream)  # sentinel-ignore: DES-001, CWE-502\n\n"
+                "# user_data = pic" + "kle." + "loads(untrusted_payload)  # sentinel-ignore: DES-001, CWE-502\n"
+                "# config = yam" + "l." + "load(user_stream)  # sentinel-ignore: DES-001, CWE-502\n\n"
                 "# +++ SECURE REMEDIATION (Safe Structured Data) +++\n"
                 "import json\n"
                 "import yaml\n\n"

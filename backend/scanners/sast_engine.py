@@ -265,7 +265,9 @@ class SASTEngine:
                 for match in re.finditer(pattern_str, content):
                     # Compute line number
                     start_char = match.start()
+                    end_char = match.end()
                     line_start = content.count("\n", 0, start_char) + 1
+                    line_end = max(line_start, content.count("\n", 0, end_char) + 1)
                     # Skip findings if suppressed via inline comment
                     matched_lines = lines[max(0, line_start - 1):line_end]
                     if any("sentinel-ignore" in l or "pragma: allowlist secret" in l for l in matched_lines):
