@@ -223,15 +223,23 @@ def trigger_auto_configure_workspace():
 
 # --- IDE Extension Integration Routes (Direct Shift-Left Feedback) ---
 @app.get("/api/ide/workspace-findings")
-def get_ide_workspace_findings(project_id: Optional[str] = None):
+def get_ide_workspace_findings(
+    project_id: Optional[str] = None,
+    user: UserModel = Depends(get_current_user)
+):
     """
     Returns active findings formatted for immediate ingestion by VS Code / Antigravity IDE diagnostics.
     Enables developer IDE to display known project vulnerabilities in the Problems tab upon opening.
     """
     raw_findings = db.list_findings(project_id) if project_id else db.list_findings()
+    is_developer_scoped = (user.role in (RoleEnum.DEVELOPER, "developer"))
+    
     formatted = []
     for f in raw_findings:
         if f.get("status") in ("resolved", "mitigated", "false_positive", "archived"):
+            continue
+            
+        if is_developer_scoped and not _is_finding_authored_by_user(f, user):
             continue
         formatted.append({
             "id": f.get("id"),
