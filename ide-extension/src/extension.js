@@ -1274,6 +1274,9 @@ async function syncWorkspaceFindingsFromServer() {
 
     for (const f of findings) {
         if (!f.file_path) continue;
+        if (f.status && f.status.toLowerCase() !== 'open' && f.status.toLowerCase() !== 'in_triage') {
+            continue;
+        }
         const cleanRelPath = f.file_path.replace(/^\/+/, '');
         const candidateAbs = path.isAbsolute(f.file_path) ? f.file_path : path.join(rootPath, cleanRelPath);
 

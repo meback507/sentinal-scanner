@@ -1134,6 +1134,84 @@ class Database:
             """, (score, label, rationale, finding_id))
             return cur.rowcount > 0
 
+    def delete_finding(self, finding_id: str) -> bool:
+        """Deletes a finding record from the active findings table."""
+        with self._get_conn() as conn:
+            cur = conn.execute("DELETE FROM findings WHERE id = ?", (finding_id,))
+            return cur.rowcount > 0
+
+    def archive_resolved_findings(self, project_id: Optional[str] = None, user_name: str = "system") -> int:
+        """
+        Transfers all resolved vulnerabilities into the audit trail (audit_logs)
+        with SHA-256 cryptographic seals, then removes them from the active findings table.
+        """
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with self._get_conn() as conn:
+            # Ensure audit_logs table exists
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id TEXT PRIMARY KEY,
+                    event_type TEXT NOT NULL,
+                    finding_id TEXT,
+                    project_id TEXT,
+                    user TEXT NOT NULL,
+                    details TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    cryptographic_seal TEXT NOT NULL
+                )
+            """)
+            if project_id:
+                rows = conn.execute("SELECT * FROM findings WHERE status = 'resolved' AND project_id = ?", (project_id,)).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM findings WHERE status = 'resolved'").fetchall()
+
+            archived_count = 0
+            for r in rows:
+                item = dict(r)
+                fid = item.get("id")
+                pid = item.get("project_id") or ""
+                log_id = f"AUD-{uuid.uuid4().hex[:8].upper()}"
+                detail_text = f"Archived solved vulnerability: {item.get('title')} in {item.get('file_path')}:{item.get('line_start')}"
+                detail_json = json.dumps({
+                    "finding_id": fid,
+                    "title": item.get("title"),
+                    "file_path": item.get("file_path"),
+                    "line_start": item.get("line_start"),
+                    "cwe_id": item.get("cwe_id"),
+                    "cve_id": item.get("cve_id"),
+                    "severity": item.get("severity"),
+                    "remediation": item.get("remediation"),
+                    "author_name": item.get("author_name"),
+                    "author_email": item.get("author_email"),
+                    "archived_by": user_name,
+                    "status": "resolved"
+                })
+                seal = hashlib.sha256(f"{log_id}:VULNERABILITY_RESOLVED:{user_name}:{now}:{detail_json}".encode()).hexdigest()
+
+                conn.execute("""
+                    INSERT INTO audit_logs (id, event_type, finding_id, project_id, user, details, timestamp, cryptographic_seal)
+                    VALUES (?, 'VULNERABILITY_RESOLVED', ?, ?, ?, ?, ?, ?)
+                """, (log_id, fid, pid, user_name, detail_text, now, seal))
+                archived_count += 1
+
+            if project_id:
+                conn.execute("DELETE FROM findings WHERE status = 'resolved' AND project_id = ?", (project_id,))
+            else:
+                conn.execute("DELETE FROM findings WHERE status = 'resolved'")
+
+            # Recalculate project risk score based on remaining active findings
+            pids = set(dict(r).get("project_id") for r in rows if dict(r).get("project_id"))
+            for p in pids:
+                crit = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ? AND severity = 'CRITICAL'", (p,)).fetchone()["c"]
+                high = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ? AND severity = 'HIGH'", (p,)).fetchone()["c"]
+                med = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ? AND severity = 'MEDIUM'", (p,)).fetchone()["c"]
+                low = conn.execute("SELECT COUNT(*) as c FROM findings WHERE project_id = ? AND severity = 'LOW'", (p,)).fetchone()["c"]
+                total = crit + high + med + low
+                new_risk = round(min(100.0, (crit * 30.0 + high * 15.0 + med * 5.0 + low * 1.0) / max(1, total) * (min(total, 10) / 10.0)), 1) if total > 0 else 0.0
+                conn.execute("UPDATE projects SET risk_score = ? WHERE id = ?", (new_risk, p))
+
+            return archived_count
+
     # --- Custom Rules ---
     def list_rules(self, project_id: Optional[str] = None, include_global: bool = True) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:

@@ -1245,6 +1245,10 @@ function applyFilters() {
     syncEnginePills(type);
 
     state.filteredFindings = state.findings.filter(f => {
+        // Solved/resolved vulnerabilities are kept in audit only, not in active findings
+        if (f.status && ['resolved', 'closed', 'false_positive'].includes(f.status.toLowerCase())) {
+            return false;
+        }
         if (q && !f.title.toLowerCase().includes(q) && !f.file_path.toLowerCase().includes(q) && !(f.cve_id && f.cve_id.toLowerCase().includes(q))) {
             return false;
         }
@@ -1353,10 +1357,10 @@ async function openFindingDetail(findingId) {
         : (state.findings || []).find(item => item.id === findingId) || (state.auditFindings || []).find(item => item.id === findingId);
     if (!f && typeof findingId === 'string') {
         try {
-            const resp = await fetch("/api/findings");
+            const resp = await fetch("/api/findings?include_resolved=true");
             if (resp.ok) {
-                state.findings = await resp.json();
-                f = state.findings.find(item => item.id === findingId);
+                const allF = await resp.json();
+                f = allF.find(item => item.id === findingId);
             }
         } catch (e) {
             console.error("Error fetching finding detail:", e);
@@ -1706,8 +1710,9 @@ function renderDashboardFindingsFeed() {
     const filter = state.dashboardFindingFilter || 'ALL';
     const searchQuery = (state.dashboardFindingSearch || '').toLowerCase().trim();
 
-    // Filter findings
+    // Filter findings (solved vulnerabilities are kept in audit only)
     const filtered = findings.filter(f => {
+        if (f.status && ['resolved', 'closed', 'false_positive'].includes(f.status.toLowerCase())) return false;
         if (filter === 'ACT_NOW' && f.quadrant !== 'ACT_NOW') return false;
         if (filter === 'CRITICAL' && f.severity !== 'CRITICAL') return false;
         if (filter === 'TICKETED' && !(f.jira_key || f.zammad_id || f.ticket_assigned_to)) return false;
@@ -1819,11 +1824,44 @@ async function changeFindingStatus(newStatus) {
         });
         if (resp.ok) {
             state.activeFinding.status = newStatus;
-            showToast(`Finding status updated to: ${newStatus}`, "success");
+            if (['resolved', 'closed', 'false_positive'].includes(newStatus.toLowerCase())) {
+                showToast(`🛡️ Vulnerability marked ${newStatus} & archived to Compliance Audit Trail!`, "success");
+                state.findings = (state.findings || []).filter(f => f.id !== state.activeFinding.id);
+                const modal = document.getElementById("finding-detail-modal");
+                if (modal && modal.style.display !== "none") {
+                    closeFindingDetail();
+                }
+            } else {
+                showToast(`Finding status updated to: ${newStatus}`, "success");
+            }
             await loadFindings();
+            await loadDashboardStats();
+            if (state.activeTab === "audit") {
+                await loadAuditData();
+            }
         }
     } catch (e) {
         showToast("Error updating status", "error");
+    }
+}
+
+async function archiveAllSolvedFindings() {
+    try {
+        const url = state.activeProjectId ? `/api/findings/archive-resolved?project_id=${state.activeProjectId}` : '/api/findings/archive-resolved';
+        const resp = await fetch(url, { method: 'POST' });
+        const res = await resp.json();
+        if (resp.ok && res.success) {
+            showToast(`🗄️ ${res.message || 'Archived solved vulnerabilities into Compliance Audit Trail!'}`, "success");
+            await loadFindings();
+            await loadDashboardStats();
+            if (state.activeTab === "audit") {
+                await loadAuditData();
+            }
+        } else {
+            showToast(res.detail || "Failed to archive solved findings.", "error");
+        }
+    } catch (e) {
+        showToast("Error archiving solved findings.", "error");
     }
 }
 
@@ -3760,16 +3798,16 @@ let auditLedgerSearch = "";
 
 async function loadAuditData() {
     try {
-        // Fetch findings
-        const findingsResp = await fetch("/api/findings");
+        // Fetch findings including archived/resolved flaws for audit compliance records
+        const findingsResp = await fetch("/api/findings?include_resolved=true");
         if (findingsResp.ok) {
             state.auditFindings = await findingsResp.json();
         } else {
             state.auditFindings = [];
         }
 
-        // Fetch audit logs
-        const logsResp = await fetch("/api/audit/logs?limit=50");
+        // Fetch immutable audit logs
+        const logsResp = await fetch("/api/audit/logs?limit=100");
         if (logsResp.ok) {
             state.auditLogs = await logsResp.json();
         } else {

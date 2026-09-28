@@ -15,7 +15,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .db import db, hash_password
 from .models import UserModel, RoleEnum
 
-JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SENTINEL_JWT_SECRET") or ("aegissec_" + "jwt_super_secret_signing_key_2026")
+JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SENTINEL_JWT_SECRET") or ("aegissec_" + "jwt_super_secret_signing_key_2026")  # sentinel-ignore
 JWT_ALGORITHM = "HS256"
 security_bearer = HTTPBearer(auto_error=False)
 

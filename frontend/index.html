@@ -446,6 +446,9 @@
                     <button class="btn btn-primary btn-sm" onclick="autoDispatchProjectTickets()" style="background: linear-gradient(135deg, #7c3aed, #6d28d9); border-color: #6d28d9; font-weight: 700;">
                         ⚡ Auto-Assign Tickets to Authors
                     </button>
+                    <button class="btn btn-secondary btn-sm" onclick="archiveAllSolvedFindings()" style="color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); display: inline-flex; align-items: center; gap: 4px;" title="Transfer all solved vulnerabilities into the Compliance Audit Trail and remove them from active findings">
+                        <span>🗄️ Archive Solved to Audit</span>
+                    </button>
                     <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('html')">Export HTML Report</button>
                     <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('sarif')">Export SARIF 2.1</button>
                     <button class="btn btn-secondary btn-sm" onclick="exportCurrentReport('cyclonedx')">Export SBOM</button>

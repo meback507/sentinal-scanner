@@ -786,6 +786,8 @@ def _is_finding_authored_by_user(finding: Dict[str, Any], user: UserModel) -> bo
 def list_findings(
     project_id: Optional[str] = None,
     scan_id: Optional[str] = None,
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    include_resolved: bool = False,
     user: UserModel = Depends(get_current_user)
 ):
     role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
@@ -801,6 +803,13 @@ def list_findings(
         if role_str != "admin":
             allowed_ids = set(get_user_allowed_project_ids(user))
             findings = [f for f in findings if f.get("project_id") in allowed_ids]
+
+    if status_filter:
+        findings = [f for f in findings if (f.get("status") or "open").lower() == status_filter.lower()]
+    elif not include_resolved:
+        # Default: Remove solved/resolved vulnerabilities from the active findings list;
+        # solved vulnerabilities are archived and kept in the compliance audit trail only.
+        findings = [f for f in findings if (f.get("status") or "open").lower() not in ("resolved", "closed", "false_positive")]
 
     if role_str == "developer":
         return [f for f in findings if _is_finding_authored_by_user(f, user)]
@@ -854,7 +863,51 @@ def update_finding_status(
             detail="Access denied: You are only authorized to update findings in code you authored."
         )
     db.update_finding_status(finding_id, target_status)
-    return {"success": True, "status": target_status}
+
+    # When a vulnerability is solved/resolved, record it into the Compliance Audit Trail
+    if target_status in ("resolved", "false_positive"):
+        AuditService.log_audit_event(
+            event_type="VULNERABILITY_RESOLVED" if target_status == "resolved" else "VULNERABILITY_FALSE_POSITIVE",
+            user=user.username,
+            action=f"Resolved vulnerability '{finding.get('title')}' in {finding.get('file_path')}:{finding.get('line_start')} (Archived to Compliance Audit Trail)",
+            details={
+                "finding_id": finding_id,
+                "project_id": finding.get("project_id"),
+                "title": finding.get("title"),
+                "file_path": finding.get("file_path"),
+                "line_start": finding.get("line_start"),
+                "severity": finding.get("severity"),
+                "cwe_id": finding.get("cwe_id"),
+                "cve_id": finding.get("cve_id"),
+                "author_name": finding.get("author_name"),
+                "author_email": finding.get("author_email"),
+                "remediation": finding.get("remediation"),
+                "resolution_status": target_status.upper(),
+                "resolved_by": user.username
+            },
+            finding_id=finding_id,
+            project_id=finding.get("project_id")
+        )
+
+    return {"success": True, "status": target_status, "archived_to_audit": target_status in ("resolved", "false_positive")}
+
+
+@app.post("/api/findings/archive-resolved")
+@app.delete("/api/findings/resolved")
+def archive_and_purge_resolved_findings(
+    project_id: Optional[str] = None,
+    user: UserModel = Depends(require_roles(["admin", "security_engineer"]))
+):
+    """
+    Transfers all solved/resolved vulnerabilities into the immutable Compliance Audit Trail
+    and removes them from the active findings table.
+    """
+    archived_count = db.archive_resolved_findings(project_id=project_id, user_name=user.username)
+    return {
+        "success": True,
+        "archived_count": archived_count,
+        "message": f"Successfully archived {archived_count} solved vulnerabilities to Compliance Audit Trail and cleared them from active findings."
+    }
 
 
 @app.post("/api/findings/{finding_id}/ticket")
