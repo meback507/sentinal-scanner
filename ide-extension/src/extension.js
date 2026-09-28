@@ -1117,15 +1117,11 @@ async function loadAllRules() {
         }
     }
 
-    // Purge stale diagnostics so deleted rules immediately stop reflecting in open code
-    if (diagnosticCollection) {
-        diagnosticCollection.clear();
-        // Re-populate server findings across workspace files
-        for (const [filePath, diags] of serverFindingsByFile.entries()) {
-            try {
-                diagnosticCollection.set(vscode.Uri.file(filePath), diags);
-            } catch (_) {}
-        }
+    // Synchronize server findings and purge stale entries across workspace files
+    try {
+        await syncWorkspaceFindingsFromServer();
+    } catch (err) {
+        console.warn('[Sentinel IDE] Error syncing server findings in loadAllRules:', err.message);
     }
 
     // Re-evaluate all currently open/visible documents with updated rules
