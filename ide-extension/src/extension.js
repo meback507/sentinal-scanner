@@ -1479,10 +1479,10 @@ function scanDocument(document) {
     const fsPath = (document.fileName || (document.uri && document.uri.fsPath) || (document.uri && document.uri.path) || '').replace(/\\/g, '/');
     const uriStr = document.uri ? document.uri.toString() : '';
 
-    // Strictly ignore virtual environments, third-party libraries, build output, and test code
-    if (/(?:^|\/)(?:\.venv|venv|site-packages|dist-packages|node_modules|vendor|dist|build|\.pytest_cache|tests?|__tests__|fixtures?|mocks?)(?:\/|$)/i.test(fsPath) ||
+    // Strictly ignore virtual environments, third-party libraries, build output, rule definitions, and test code
+    if (/(?:^|\/)(?:\.venv|venv|site-packages|dist-packages|node_modules|vendor|dist|build|\.pytest_cache|tests?|__tests__|fixtures?|mocks?|backend\/rules)(?:\/|$)/i.test(fsPath) ||
         /(?:\.venv|venv|site-packages|node_modules)/i.test(uriStr) ||
-        /(?:^|\/)(?:test_[^/]+\.py|[^/]+_test\.(?:py|js|ts|go))$/i.test(fsPath)) {
+        /(?:^|\/)(?:test_[^/]+\.py|[^/]+_test\.(?:py|js|ts|go)|sonar_rules_db\.py)$/i.test(fsPath)) {
         if (diagnosticCollection && document.uri) {
             diagnosticCollection.delete(document.uri);
             diagnosticCollection.set(document.uri, []);

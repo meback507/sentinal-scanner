@@ -216,10 +216,12 @@ class SASTEngine:
         return findings
 
     def scan_file(self, full_path: str, rel_path: str, language: str) -> List[Dict[str, Any]]:
-        # Exclude test files and fixtures to prevent test mocks from triggering SAST findings
+        # Exclude test files, fixtures, and internal rule definitions to prevent false positives
         norm_path = rel_path.replace("\\", "/").lower()
         path_segments = norm_path.split("/")
         if any(seg in ("tests", "test", "__tests__", "testing", "fixtures", "mocks") for seg in path_segments):
+            return []
+        if "backend/rules" in norm_path or norm_path.endswith("sonar_rules_db.py"):
             return []
         if any(norm_path.endswith(sfx) for sfx in ("_test.py", "_test.js", "_test.ts", "_test.go", "test.py")):
             return []
