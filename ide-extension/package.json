@@ -193,6 +193,11 @@
           "default": true,
           "description": "Purge all previously stored/cached findings and diagnostics before running a scan"
         },
+        "sentinel.autoSyncServerFindings": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically poll and mirror remote backend server findings into the local Problems tab (disabled by default so local Problems reflect only your real-time code changes)"
+        },
         "sentinel.mergeServerFindings": {
           "type": "boolean",
           "default": false,

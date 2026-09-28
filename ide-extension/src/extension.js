@@ -478,18 +478,25 @@ function activate(context) {
     rulesTreeProvider = new SentinelRulesTreeProvider();
     vscode.window.registerTreeDataProvider('sentinel.rulesExplorer', rulesTreeProvider);
 
-    // 4. Load Project Custom Rules from workspace and synchronize findings
+    // 4. Load Project Custom Rules from workspace and scan open editors
     loadAllRules().then(() => {
-        syncWorkspaceFindingsFromServer().catch(err => {
-            console.warn('[Sentinel IDE] Initial workspace findings sync warning:', err.message);
-        });
+        if (vscode.window.visibleTextEditors) {
+            for (const editor of vscode.window.visibleTextEditors) {
+                if (editor.document && editor.document.uri && editor.document.uri.scheme === 'file') {
+                    scanDocument(editor.document);
+                }
+            }
+        }
     });
 
-    // 4b. Periodic background sync with server to keep IDE Problems up to date (every 25s)
-    const serverSyncInterval = setInterval(() => {
-        syncWorkspaceFindingsFromServer().catch(() => {});
-    }, 25000);
-    context.subscriptions.push({ dispose: () => clearInterval(serverSyncInterval) });
+    // 4b. Optional background sync with server (disabled by default so local Problems reflect only actual code)
+    const initialConfig = vscode.workspace.getConfiguration('sentinel');
+    if (initialConfig.get('autoSyncServerFindings') === true) {
+        const serverSyncInterval = setInterval(() => {
+            syncWorkspaceFindingsFromServer().catch(() => {});
+        }, 30000);
+        context.subscriptions.push({ dispose: () => clearInterval(serverSyncInterval) });
+    }
 
     // 5. Register Extension Commands
     context.subscriptions.push(
@@ -752,7 +759,6 @@ function activate(context) {
             const config = vscode.workspace.getConfiguration('sentinel');
             if (config.get('scanOnSave') && doc.uri.scheme === 'file') {
                 scanDocument(doc);
-                syncWorkspaceFindingsFromServer().catch(() => {});
             }
         }),
 
@@ -760,6 +766,21 @@ function activate(context) {
             diagnosticCollection.delete(doc.uri);
         })
     );
+
+    // 8b. Real-time file system watcher on source code modifications across workspace
+    const sourceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{py,js,jsx,ts,tsx,java,go,c,cpp,h,hpp,php,rb,sh,tf,yaml,yml}');
+    sourceWatcher.onDidChange(async uri => {
+        try {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            scanDocument(doc);
+        } catch (_) {}
+    });
+    sourceWatcher.onDidDelete(uri => {
+        if (diagnosticCollection) {
+            diagnosticCollection.delete(uri);
+        }
+    });
+    context.subscriptions.push(sourceWatcher);
 
     // 9. Real-time File System Watcher on project rules (.sentinel/rules.yaml)
     const rulesWatcher = vscode.workspace.createFileSystemWatcher('**/.sentinel/rules.*');
@@ -1136,11 +1157,13 @@ async function loadAllRules() {
         }
     }
 
-    // Synchronize server findings and purge stale entries across workspace files
-    try {
-        await syncWorkspaceFindingsFromServer();
-    } catch (err) {
-        console.warn('[Sentinel IDE] Error syncing server findings in loadAllRules:', err.message);
+    // Optionally synchronize server findings if configured
+    if (config.get('autoSyncServerFindings') === true) {
+        try {
+            await syncWorkspaceFindingsFromServer();
+        } catch (err) {
+            console.warn('[Sentinel IDE] Error syncing server findings in loadAllRules:', err.message);
+        }
     }
 
     // Re-evaluate all currently open/visible documents with updated rules
