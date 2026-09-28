@@ -485,6 +485,12 @@ function activate(context) {
         });
     });
 
+    // 4b. Periodic background sync with server to keep IDE Problems up to date (every 25s)
+    const serverSyncInterval = setInterval(() => {
+        syncWorkspaceFindingsFromServer().catch(() => {});
+    }, 25000);
+    context.subscriptions.push({ dispose: () => clearInterval(serverSyncInterval) });
+
     // 5. Register Extension Commands
     context.subscriptions.push(
         vscode.commands.registerCommand('sentinel.scanCurrentFile', () => {
@@ -723,10 +729,11 @@ function activate(context) {
             if (doc.uri.scheme === 'file') scanDocument(doc);
         }),
 
-        vscode.workspace.onDidSaveTextDocument(doc => {
+        vscode.workspace.onDidSaveTextDocument(async doc => {
             const config = vscode.workspace.getConfiguration('sentinel');
             if (config.get('scanOnSave') && doc.uri.scheme === 'file') {
                 scanDocument(doc);
+                syncWorkspaceFindingsFromServer().catch(() => {});
             }
         }),
 
@@ -1262,7 +1269,15 @@ async function syncWorkspaceFindingsFromServer() {
         }
     }
 
+    const previousFiles = new Set(serverFindingsByFile.keys());
     if (!findings || findings.length === 0) {
+        serverFindingsRaw = [];
+        serverFindingsByFile.clear();
+        for (const prevFile of previousFiles) {
+            try {
+                diagnosticCollection.delete(vscode.Uri.file(prevFile));
+            } catch (_) {}
+        }
         return 0;
     }
 
@@ -1312,6 +1327,15 @@ async function syncWorkspaceFindingsFromServer() {
         }
         fileDiagnosticsMap.get(normKey).push(diag);
         totalMapped++;
+    }
+
+    // Purge diagnostics for files that no longer have server findings
+    for (const prevFile of previousFiles) {
+        if (!fileDiagnosticsMap.has(prevFile)) {
+            try {
+                diagnosticCollection.delete(vscode.Uri.file(prevFile));
+            } catch (_) {}
+        }
     }
 
     for (const [filePath, diags] of fileDiagnosticsMap.entries()) {
@@ -1526,9 +1550,32 @@ function scanDocument(document) {
 
     if (serverDiagsForFile && serverDiagsForFile.length > 0) {
         for (const sd of serverDiagsForFile) {
-            // Avoid duplicates if local rule hit on the exact line with same code
+            const targetLineIdx = sd.range.start.line;
+            const lineText = lines[targetLineIdx] || '';
+
+            // 1. Skip if suppressed via inline comment
+            if (lineText.includes('sentinel-ignore') || lineText.includes('pragma: allowlist secret')) {
+                continue;
+            }
+
+            // 2. If matching rule is known and its regex no longer matches the line, the flaw was remediated
+            const matchingRule = activeRules.find(r =>
+                r.id === sd.code ||
+                r.sonar_key === sd.code ||
+                r.cwe === sd.code ||
+                (sd.code && String(sd.code).includes(r.id))
+            );
+            if (matchingRule && matchingRule.regex) {
+                const rx = compileRegex(matchingRule.regex);
+                if (rx && !rx.test(lineText)) {
+                    // Remediated in code
+                    continue;
+                }
+            }
+
+            // 3. Avoid duplicates if local rule hit on the exact line with same code
             const duplicate = diagnostics.some(ld =>
-                ld.range.start.line === sd.range.start.line &&
+                ld.range.start.line === targetLineIdx &&
                 (ld.code === sd.code || (typeof ld.code === 'string' && typeof sd.code === 'string' && (ld.code.includes(sd.code) || sd.code.includes(ld.code))))
             );
             if (!duplicate) {
