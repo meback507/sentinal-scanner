@@ -76,6 +76,9 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 
         header_b64, payload_b64, signature_b64 = parts
         message = f"{header_b64}.{payload_b64}".encode("utf-8")
+        pad_len_sig = 4 - (len(signature_b64) % 4)
+        actual_sig = base64.urlsafe_b64decode(signature_b64 + ("=" * (pad_len_sig % 4)))
+
         # Collect candidate secrets across shared db, persistent key file, and environment
         candidate_secrets = [JWT_SECRET]
         try:

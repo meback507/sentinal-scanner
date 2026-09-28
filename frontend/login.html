@@ -439,10 +439,9 @@
     </div>
 
     <script>
-        // If already authenticated and not explicitly logged out, redirect straight to dashboard
-        if (localStorage.getItem("aegis_token") && !sessionStorage.getItem("aegis_logged_out")) {
-            window.location.replace("/");
-        }
+        // Ensure stale tokens are cleared when landing on login page to avoid redirect loops
+        localStorage.removeItem("aegis_token");
+        localStorage.removeItem("aegis_user");
 
         function togglePassword() {
             const pw = document.getElementById("password");
