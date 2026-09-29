@@ -1893,18 +1893,3 @@ rules:
   remediation: Do not hardcode internal Alpha tokens.
   project_id: 698834c8-6d0c-466b-998c-063723b503ec
   project_name: Project Alpha
-- id: TEST-01
-  name: Test Rule
-  type: sast
-  severity: HIGH
-  languages:
-  - python
-  cwe: CWE-89
-  cvss: 7.5
-  standards:
-  - OWASP:A03:2021
-  regex: execute\(.*\)
-  description: Detects SQL query executions
-  remediation: Use parameterized queries
-  project_id: null
-  project_name: null

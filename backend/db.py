@@ -422,6 +422,7 @@ class Database:
             conn.execute("DELETE FROM findings WHERE project_id IN (SELECT id FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta'))")  # sentinel-ignore: CWE-89, S2077
             conn.execute("DELETE FROM scans WHERE project_id IN (SELECT id FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta'))")  # sentinel-ignore: CWE-89, S2077
             conn.execute("DELETE FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta')")  # sentinel-ignore: CWE-89, S2077
+            conn.execute("DELETE FROM custom_rules WHERE id LIKE 'TEST-%' OR name LIKE '%Test%'")
 
     # --- User Operations ---
     def _get_user_assigned_projects_conn(self, conn: sqlite3.Connection, user_id_or_username: str) -> List[str]:
