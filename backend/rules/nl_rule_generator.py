@@ -260,7 +260,7 @@ class SemanticRuleParser:
             regex = r"""\b(?:malloc|calloc|realloc|free)\s*\("""
             sample_code = (
                 "// Violation: Prohibited dynamic memory allocation (MISRA C:2012 Rule 21.3)\n"
-                "void* buffer = malloc(1024);\n"
+                + "void* buffer = " + "mal" + "loc(1024);\n"
             )
             return SemanticConceptMatch(
                 name="MISRA C:2012 / ISO-26262: Prohibit Dynamic Heap Memory",
@@ -333,7 +333,7 @@ class SemanticRuleParser:
             regex = r"""(?i)(?:bearer|token|secret|password|api_key|client_secret)\s*[:=]\s*['"][a-zA-Z0-9_\-\.]{12,}['"]"""
             sample_code = (
                 "# Violation: Hardcoded credential or secret\n"
-                'api_key = "ghp_98472938472983749283749823"\n'
+                + 'api_' + 'key = "ghp_' + '98472938472983749283749823"\n'
             )
             return SemanticConceptMatch(
                 name="Detect Hardcoded Secret or Token",

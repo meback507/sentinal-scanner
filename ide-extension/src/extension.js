@@ -1480,9 +1480,9 @@ function scanDocument(document) {
     const uriStr = document.uri ? document.uri.toString() : '';
 
     // Strictly ignore virtual environments, third-party libraries, build output, rule definitions, and test code
-    if (/(?:^|\/)(?:\.venv|venv|site-packages|dist-packages|node_modules|vendor|dist|build|\.pytest_cache|tests?|__tests__|fixtures?|mocks?|backend\/rules)(?:\/|$)/i.test(fsPath) ||
-        /(?:\.venv|venv|site-packages|node_modules)/i.test(uriStr) ||
-        /(?:^|\/)(?:test_[^/]+\.py|[^/]+_test\.(?:py|js|ts|go)|sonar_rules_db\.py)$/i.test(fsPath)) {
+    if (/(?:^|\/)(?:\.venv|venv|site-packages|dist-packages|node_modules|vendor|dist|build|\.pytest_cache|tests?|__tests__|fixtures?|mocks?|backend\/rules|\.sentinel|\.vscode)(?:\/|$)/i.test(fsPath) ||
+        /(?:\.venv|venv|site-packages|node_modules|\.sentinel|backend\/rules)/i.test(uriStr) ||
+        /(?:^|\/)(?:test_[^/]+\.py|[^/]+_test\.(?:py|js|ts|go)|sonar_rules_db\.py|nl_rule_generator\.py|rules\.ya?ml|rules\.json|open_rules_db\.json)$/i.test(fsPath)) {
         if (diagnosticCollection && document.uri) {
             diagnosticCollection.delete(document.uri);
             diagnosticCollection.set(document.uri, []);
@@ -1684,7 +1684,7 @@ function scanWorkspace() {
             clearStoredResults();
         }
 
-        const files = await vscode.workspace.findFiles('**/*', '{**/node_modules/**,**/tests/**,**/test/**,**/__tests__/**,**/.venv/**,**/dist/**,**/build/**}', 300);
+        const files = await vscode.workspace.findFiles('**/*', '{**/node_modules/**,**/tests/**,**/test/**,**/__tests__/**,**/.venv/**,**/dist/**,**/build/**,**/.sentinel/**,**/backend/rules/**,**/.vscode/**}', 300);
         for (const file of files) {
             try {
                 const doc = await vscode.workspace.openTextDocument(file);

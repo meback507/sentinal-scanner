@@ -194,7 +194,7 @@ class SASTEngine:
             # Skip noise directories and test suites
             dirs[:] = [d for d in dirs if d not in [
                 ".git", "node_modules", "vendor", "__pycache__", ".venv", "venv", "dist", "build",
-                "tests", "test", "__tests__", "testing", "fixtures", "mock", "mocks"
+                "tests", "test", "__tests__", "testing", "fixtures", "mock", "mocks", ".sentinel", ".vscode"
             ]]
 
             for file in files:
@@ -221,7 +221,7 @@ class SASTEngine:
         path_segments = norm_path.split("/")
         if any(seg in ("tests", "test", "__tests__", "testing", "fixtures", "mocks") for seg in path_segments):
             return []
-        if "backend/rules" in norm_path or norm_path.endswith("sonar_rules_db.py"):
+        if ".sentinel" in norm_path or "backend/rules" in norm_path or norm_path.endswith("sonar_rules_db.py") or "rules.yaml" in norm_path:
             return []
         if any(norm_path.endswith(sfx) for sfx in ("_test.py", "_test.js", "_test.ts", "_test.go", "test.py")):
             return []
