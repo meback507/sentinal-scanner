@@ -94,15 +94,26 @@ def enrich_finding_age(finding: Dict[str, Any], current_time: Optional[datetime.
 class Database:
     def __init__(self, db_path: str = None):
         self.db_path = db_path or os.getenv("SENTINEL_DB_PATH") or os.getenv("DATABASE_PATH") or DB_FILE
+        self._mem_conn = None
+        self._is_uri = False
+        if self.db_path == ":memory:":
+            import uuid
+            self.db_path = f"file:sentinel_mem_{uuid.uuid4().hex}?mode=memory&cache=shared"
+            self._is_uri = True
+            self._mem_conn = sqlite3.connect(self.db_path, uri=True)
+        elif self.db_path.startswith("file:"):
+            self._is_uri = True
+
         try:
-            db_dir = os.path.dirname(os.path.abspath(self.db_path))
-            if db_dir and not os.path.exists(db_dir):
-                os.makedirs(db_dir, exist_ok=True)
+            if not self._is_uri:
+                db_dir = os.path.dirname(os.path.abspath(self.db_path))
+                if db_dir and not os.path.exists(db_dir):
+                    os.makedirs(db_dir, exist_ok=True)
             self._init_schema()
             self._seed_default_data()
         except Exception as e:  # sentinel-ignore: CWE-772, S2095
             fallback = "/tmp/sentinel.db"
-            if self.db_path != fallback:
+            if self.db_path != fallback and not self._is_uri:
                 print(f"[Sentinel DB] Warning: Cannot initialize database at {self.db_path} ({e}). Falling back to {fallback}")
                 self.db_path = fallback
                 self._init_schema()  # sentinel-ignore: CWE-772, S2095
@@ -110,27 +121,38 @@ class Database:
             else:
                 raise
 
+    def _open_connection(self, path: str) -> sqlite3.Connection:
+        if getattr(self, "_is_uri", False):
+            return sqlite3.connect(path, uri=True)
+        return sqlite3.connect(path)
+
+    _db_connect = getattr(sqlite3, "connect")
+
     @contextmanager
     def _get_conn(self):
         conn = None
         try:
-            with self._db_connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                conn.execute("PRAGMA journal_mode=WAL;")
-                conn.execute("PRAGMA foreign_keys = ON;")
-                yield conn
+            conn = self._open_connection(self.db_path)
         except sqlite3.OperationalError as e:
             fallback = "/tmp/sentinel.db"
-            if self.db_path != fallback:
+            if self.db_path != fallback and not getattr(self, "_is_uri", False):
                 print(f"[Sentinel DB] Warning: Connection error on {self.db_path} ({e}). Falling back to {fallback}")
                 self.db_path = fallback
-                with self._db_connect(self.db_path) as conn:
-                    conn.row_factory = sqlite3.Row
-                    conn.execute("PRAGMA journal_mode=WAL;")
-                    conn.execute("PRAGMA foreign_keys = ON;")
-                    yield conn
+                conn = self._open_connection(self.db_path)
             else:
                 raise
+
+        conn.row_factory = sqlite3.Row
+        if not getattr(self, "_is_uri", False):
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+            except Exception:
+                pass
+        conn.execute("PRAGMA foreign_keys = ON;")
+
+        try:
+            with conn:
+                yield conn
         finally:
             if conn:
                 try:
@@ -138,13 +160,15 @@ class Database:
                 except Exception:
                     pass
 
-    _db_connect = getattr(sqlite3, "connect")
-
     def get_connection(self) -> sqlite3.Connection:
         """Provides an active database connection for direct SQL execution."""
-        conn = self._db_connect(self.db_path)  # sentinel-ignore: CWE-772, S2095
+        conn = self._open_connection(self.db_path)  # sentinel-ignore: CWE-772, S2095
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL;")
+        if not getattr(self, "_is_uri", False):
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+            except Exception:
+                pass
         conn.execute("PRAGMA foreign_keys = ON;")
         return conn
 
@@ -245,6 +269,7 @@ class Database:
                 reachability_status TEXT DEFAULT 'UNKNOWN',
                 entropy REAL,
                 masked_value TEXT,
+                rule_id TEXT,
                 FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
@@ -316,6 +341,8 @@ class Database:
                     conn.execute("ALTER TABLE findings ADD COLUMN entropy REAL")
                 if "masked_value" not in cols:
                     conn.execute("ALTER TABLE findings ADD COLUMN masked_value TEXT")
+                if "rule_id" not in cols:
+                    conn.execute("ALTER TABLE findings ADD COLUMN rule_id TEXT")
                 self._migrate_and_deduplicate_findings(conn)
 
                 # Migration for project-scoped custom rules
@@ -422,7 +449,7 @@ class Database:
             conn.execute("DELETE FROM findings WHERE project_id IN (SELECT id FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta'))")  # sentinel-ignore: CWE-89, S2077
             conn.execute("DELETE FROM scans WHERE project_id IN (SELECT id FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta'))")  # sentinel-ignore: CWE-89, S2077
             conn.execute("DELETE FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta')")  # sentinel-ignore: CWE-89, S2077
-            conn.execute("DELETE FROM findings WHERE title LIKE '%Test Rule%' OR rule_id LIKE 'TEST-%'")
+            conn.execute("DELETE FROM findings WHERE title LIKE '%Test Rule%'")
             conn.execute("DELETE FROM custom_rules WHERE id LIKE 'TEST-%' OR name LIKE '%Test%'")
 
     # --- User Operations ---
@@ -888,7 +915,8 @@ class Database:
                         dependency_lag_versions = ?,
                         reachability_status = ?,
                         entropy = ?,
-                        masked_value = ?
+                        masked_value = ?,
+                        rule_id = ?
                     WHERE id = ?
                     """, (
                         scan_id, ftype, title, description, remediation, severity,
@@ -901,7 +929,7 @@ class Database:
                         orig_first_seen, now, fp,
                         cisa_kev_val, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
                         ai_confidence_rationale, dependency_lag_versions, reachability_status,
-                        entropy_val, masked_val,
+                        entropy_val, masked_val, f.get("rule_id"),
                         finding_id
                     ))
                 else:
@@ -926,8 +954,8 @@ class Database:
                         first_seen, last_seen, fingerprint,
                         cisa_kev, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
                         ai_confidence_rationale, dependency_lag_versions, reachability_status,
-                        entropy, masked_value
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        entropy, masked_value, rule_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         finding_id, scan_id, project_id, ftype, title, description, remediation, severity,
                         cwe_id, cve_id, language, package_name, installed_version, fixed_version,
@@ -939,7 +967,7 @@ class Database:
                         first_seen, now, fp,
                         cisa_kev_val, cisa_kev_due_date, ai_confidence_score, ai_confidence_label,
                         ai_confidence_rationale, dependency_lag_versions, reachability_status,
-                        entropy_val, masked_val
+                        entropy_val, masked_val, f.get("rule_id")
                     ))
 
             # Determine scan_type to scope auto-resolve strictly to covered finding types
@@ -1086,8 +1114,8 @@ class Database:
                 fixed_version, license, file_path, line_start, line_end, code_snippet,
                 cvss_score, cvss_vector, epss_score, epss_percentile, composite_risk_score,
                 quadrant, urgency, sla_days, standards, status, author_name, author_email,
-                commit_hash, commit_date, commit_message, first_seen, last_seen, fingerprint
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                commit_hash, commit_date, commit_message, first_seen, last_seen, fingerprint, rule_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 fid, scan_id, pid, f.get("type", "sast"), f.get("title", "Finding"),
                 f.get("description", ""), f.get("remediation", ""), f.get("severity", "MEDIUM"),
@@ -1100,7 +1128,7 @@ class Database:
                 f.get("urgency", "MEDIUM"), int(f.get("sla_days") or 90), json.dumps(f.get("standards", [])),
                 f.get("status", "open"), f.get("author_name") or "Developer", f.get("author_email") or "developer@internal.net",
                 f.get("commit_hash", "HEAD"), f.get("commit_date", now), f.get("commit_message", "commit"),
-                f.get("first_seen", now), f.get("last_seen", now), fp
+                f.get("first_seen", now), f.get("last_seen", now), fp, f.get("rule_id")
             ))
             f["id"] = fid
             return f
@@ -1315,6 +1343,11 @@ class Database:
             return item
 
     def save_rule(self, rule: Dict[str, Any]) -> Dict[str, Any]:
+        if not rule.get("id"):
+            rule["id"] = f"CUSTOM-{uuid.uuid4().hex[:6].upper()}"
+        if not rule.get("name"):
+            rule["name"] = "Untitled Custom Rule"
+
         with self._get_conn() as conn:
             # Check if project_name needs resolution
             project_id = rule.get("project_id")
@@ -1346,7 +1379,10 @@ class Database:
 
     def delete_rule(self, rule_id: str) -> bool:
         with self._get_conn() as conn:
-            conn.execute("DELETE FROM findings WHERE rule_id = ?", (rule_id,))
+            try:
+                conn.execute("DELETE FROM findings WHERE rule_id = ?", (rule_id,))
+            except Exception:
+                pass
             res = conn.execute("DELETE FROM custom_rules WHERE id = ?", (rule_id,))
             return res.rowcount > 0
 

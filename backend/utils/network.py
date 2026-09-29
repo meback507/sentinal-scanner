@@ -21,16 +21,26 @@ def get_lan_ip() -> str:
         except Exception:
             return "127.0.0.1"
 
+import time
+
+_CACHED_PUBLIC_IP = None
+_LAST_PUBLIC_IP_CHECK = 0.0
 
 def get_public_ip() -> str:
     """
     Detects the public / external IP of the server.
     Checks environment overrides (SENTINEL_HOST, PUBLIC_IP, SERVER_IP),
     then queries reliable IP lookup endpoints with quick timeouts.
+    Caches results for 300 seconds to prevent blocking requests.
     """
+    global _CACHED_PUBLIC_IP, _LAST_PUBLIC_IP_CHECK
     env_ip = os.environ.get("SENTINEL_HOST") or os.environ.get("PUBLIC_IP") or os.environ.get("SERVER_IP")
     if env_ip:
         return env_ip.strip()
+
+    now = time.time()
+    if _CACHED_PUBLIC_IP and (now - _LAST_PUBLIC_IP_CHECK < 300):
+        return _CACHED_PUBLIC_IP
 
     lookup_urls = [
         "https://api.ipify.org",
@@ -40,14 +50,19 @@ def get_public_ip() -> str:
     for url in lookup_urls:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
                 ip = resp.read().decode("utf-8").strip()
                 if ip and len(ip) <= 45:
+                    _CACHED_PUBLIC_IP = ip
+                    _LAST_PUBLIC_IP_CHECK = now
                     return ip
         except Exception:
             continue
 
-    return get_lan_ip()
+    lan_ip = get_lan_ip()
+    _CACHED_PUBLIC_IP = lan_ip
+    _LAST_PUBLIC_IP_CHECK = now
+    return lan_ip
 
 
 def get_server_network_info(client_host: str = None) -> dict:
