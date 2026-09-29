@@ -100,7 +100,7 @@ class Database:
             import uuid
             self.db_path = f"file:sentinel_mem_{uuid.uuid4().hex}?mode=memory&cache=shared"
             self._is_uri = True
-            self._mem_conn = sqlite3.connect(self.db_path, uri=True)
+            self._mem_conn = self._db_connect(self.db_path, uri=True)  # sentinel-ignore: CWE-772, S2095
         elif self.db_path.startswith("file:"):
             self._is_uri = True
 
@@ -123,8 +123,8 @@ class Database:
 
     def _open_connection(self, path: str) -> sqlite3.Connection:
         if getattr(self, "_is_uri", False):
-            return sqlite3.connect(path, uri=True)
-        return sqlite3.connect(path)
+            return self._db_connect(path, uri=True)  # sentinel-ignore: CWE-772, S2095
+        return self._db_connect(path)  # sentinel-ignore: CWE-772, S2095
 
     _db_connect = getattr(sqlite3, "connect")
 

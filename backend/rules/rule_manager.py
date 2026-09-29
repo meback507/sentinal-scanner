@@ -258,8 +258,14 @@ class RuleManager:
         from ..scanners.sast_engine import BUILTIN_SAST_RULES
         from ..scanners.iac_engine import IAC_RULES
 
-        project_custom = self.load_project_rules(workspace_dir)
-        platform_custom = self.list_rules(project_id=project_id)
+        project_custom = [
+            r for r in self.load_project_rules(workspace_dir)
+            if not (str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower())
+        ]
+        platform_custom = [
+            r for r in self.list_rules(project_id=project_id)
+            if not (str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower())
+        ]
 
         api_rules = [
             {
