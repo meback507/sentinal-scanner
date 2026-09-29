@@ -941,14 +941,15 @@ class Database:
                     scan_type = "full"
 
             SCAN_TYPE_MAP = {
-                "full": {"sast", "sca", "secret", "iac", "api"},
-                "secrets": {"secret"},
+                "full": {"sast", "sca", "secret", "secrets", "iac", "api", "dast"},
+                "secrets": {"secret", "secrets"},
                 "sca": {"sca"},
-                "sast": {"sast", "secret", "iac", "api"},
+                "sast": {"sast", "secret", "secrets", "iac", "api", "dast"},
                 "iac": {"iac"},
-                "api": {"api"}
+                "api": {"api"},
+                "dast": {"dast"}
             }
-            covered_types = SCAN_TYPE_MAP.get(scan_type, {"sast", "sca", "secret", "iac", "api"})
+            covered_types = SCAN_TYPE_MAP.get(scan_type, {"sast", "sca", "secret", "secrets", "iac", "api", "dast"})
 
             # Auto-resolve vulnerabilities that were not detected in this scan,
             # scoping strictly to finding types that were part of this scan.

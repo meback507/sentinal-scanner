@@ -344,6 +344,7 @@ class WebhookTestRequest(BaseModel):
 class DASTAuditRequest(BaseModel):
     target_url: str
     timeout: Optional[int] = 6
+    project_id: Optional[str] = None
 
 
 class ScheduleCreateRequest(BaseModel):

@@ -904,6 +904,54 @@ function renderDashboard() {
     if (kPost) kPost.textContent = `${s.overall_posture}%`;
     if (kActNow) kActNow.textContent = s.quadrants.ACT_NOW || 0;
 
+    // All-engine category breakdown (SAST, Secrets, IaC, API, DAST, SCA)
+    const catSum = Object.assign({ sast: 0, secret: 0, iac: 0, api: 0, dast: 0, sca: 0, total: 0 }, s.category_summary || {});
+    if ((!catSum.total || catSum.total === 0) && state.findings && state.findings.length > 0) {
+        catSum.sast = 0; catSum.secret = 0; catSum.iac = 0; catSum.api = 0; catSum.dast = 0; catSum.sca = 0; catSum.total = 0;
+        state.findings.forEach(f => {
+            if (f.status && ['resolved', 'closed', 'false_positive'].includes(f.status.toLowerCase())) return;
+            const t = (f.type || 'sast').toLowerCase();
+            if (t === 'secret' || t === 'secrets') catSum.secret++;
+            else if (t === 'iac') catSum.iac++;
+            else if (t === 'api') catSum.api++;
+            else if (t === 'dast') catSum.dast++;
+            else if (t === 'sca') catSum.sca++;
+            else catSum.sast++;
+            catSum.total++;
+        });
+    }
+
+    const kTotal = document.getElementById("kpi-total-findings");
+    if (kTotal) kTotal.textContent = catSum.total;
+    const kSast = document.getElementById("kpi-count-sast");
+    if (kSast) kSast.textContent = catSum.sast || 0;
+    const kSec = document.getElementById("kpi-count-secret");
+    if (kSec) kSec.textContent = catSum.secret || 0;
+    const kIac = document.getElementById("kpi-count-iac");
+    if (kIac) kIac.textContent = catSum.iac || 0;
+    const kApi = document.getElementById("kpi-count-api");
+    if (kApi) kApi.textContent = catSum.api || 0;
+    const kDast = document.getElementById("kpi-count-dast");
+    if (kDast) kDast.textContent = catSum.dast || 0;
+    const kSca = document.getElementById("kpi-count-sca");
+    if (kSca) kSca.textContent = catSum.sca || 0;
+
+    // Trend breakdown bar
+    const tSast = document.getElementById("trend-cat-sast");
+    if (tSast) tSast.textContent = catSum.sast || 0;
+    const tSec = document.getElementById("trend-cat-secret");
+    if (tSec) tSec.textContent = catSum.secret || 0;
+    const tIac = document.getElementById("trend-cat-iac");
+    if (tIac) tIac.textContent = catSum.iac || 0;
+    const tApi = document.getElementById("trend-cat-api");
+    if (tApi) tApi.textContent = catSum.api || 0;
+    const tDast = document.getElementById("trend-cat-dast");
+    if (tDast) tDast.textContent = catSum.dast || 0;
+    const tSca = document.getElementById("trend-cat-sca");
+    if (tSca) tSca.textContent = catSum.sca || 0;
+    const tTotal = document.getElementById("trend-cat-total");
+    if (tTotal) tTotal.textContent = catSum.total || 0;
+
     // Quadrant counts
     const qAct = document.getElementById("count-quad-actnow");
     const qPatch = document.getElementById("count-quad-patch");
@@ -1216,16 +1264,67 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
         `;
     });
 
+    // Ensure we have current category counts even if backend worker hasn't reloaded yet
+    let currentCatCounts = series.category_counts;
+    if (!currentCatCounts || (!currentCatCounts.sast && !currentCatCounts.secret && !currentCatCounts.iac && !currentCatCounts.api && !currentCatCounts.dast && !currentCatCounts.sca)) {
+        currentCatCounts = { sast: 0, secret: 0, iac: 0, api: 0, dast: 0, sca: 0 };
+        const relevantFindings = (state.findings || []).filter(f => {
+            if (f.status && ['resolved', 'closed', 'false_positive'].includes(f.status.toLowerCase())) return false;
+            if (activeFilter && activeFilter !== "All Enterprise Code" && f.author_name !== activeFilter) return false;
+            return true;
+        });
+        relevantFindings.forEach(f => {
+            const t = (f.type || 'sast').toLowerCase();
+            if (t === 'secret' || t === 'secrets') currentCatCounts.secret++;
+            else if (t === 'iac') currentCatCounts.iac++;
+            else if (t === 'api') currentCatCounts.api++;
+            else if (t === 'dast') currentCatCounts.dast++;
+            else if (t === 'sca') currentCatCounts.sca++;
+            else currentCatCounts.sast++;
+        });
+    }
+    const currentTotal = (currentCatCounts.sast || 0) + (currentCatCounts.secret || 0) + (currentCatCounts.iac || 0) + (currentCatCounts.api || 0) + (currentCatCounts.dast || 0) + (currentCatCounts.sca || 0);
+
     // Milestone circles with radiant halo aura ring, core dot, and count badges
     let nodesSvg = "";
     vulnSeries.forEach((v, i) => {
         const cx = getX(i);
         const cy = getY(v);
         const info = getVulnerabilityTemperature(v, maxVulnInSeries, minVuln);
+        let catSast = (series.categories && series.categories.sast && series.categories.sast[i] !== undefined) ? series.categories.sast[i] : null;
+        let catSec = (series.categories && series.categories.secret && series.categories.secret[i] !== undefined) ? series.categories.secret[i] : null;
+        let catIac = (series.categories && series.categories.iac && series.categories.iac[i] !== undefined) ? series.categories.iac[i] : null;
+        let catApi = (series.categories && series.categories.api && series.categories.api[i] !== undefined) ? series.categories.api[i] : null;
+        let catDast = (series.categories && series.categories.dast && series.categories.dast[i] !== undefined) ? series.categories.dast[i] : null;
+        let catSca = (series.categories && series.categories.sca && series.categories.sca[i] !== undefined) ? series.categories.sca[i] : null;
+
+        if (catSast === null) {
+            if (i === n - 1 || v === currentTotal) {
+                catSast = currentCatCounts.sast || 0;
+                catSec = currentCatCounts.secret || 0;
+                catIac = currentCatCounts.iac || 0;
+                catApi = currentCatCounts.api || 0;
+                catDast = currentCatCounts.dast || 0;
+                catSca = currentCatCounts.sca || 0;
+            } else if (currentTotal > 0) {
+                const ratio = v / currentTotal;
+                catSec = Math.round((currentCatCounts.secret || 0) * ratio);
+                catIac = Math.round((currentCatCounts.iac || 0) * ratio);
+                catApi = Math.round((currentCatCounts.api || 0) * ratio);
+                catDast = Math.round((currentCatCounts.dast || 0) * ratio);
+                catSca = Math.round((currentCatCounts.sca || 0) * ratio);
+                catSast = Math.max(0, v - (catSec + catIac + catApi + catDast + catSca));
+            } else {
+                catSast = v; catSec = 0; catIac = 0; catApi = 0; catDast = 0; catSca = 0;
+            }
+        }
+
+        const breakdownTooltip = `${labels[i]}: ${v} Total Active Vulnerabilities (${info.label})&#10;• 🛡️ SAST: ${catSast}&#10;• 🔑 Exposed Secrets: ${catSec}&#10;• 🏗️ IaC & Containers: ${catIac}&#10;• 🌐 API Security: ${catApi}&#10;• ⚡ DAST: ${catDast}&#10;• 📦 SCA Supply Chain: ${catSca}`;
+
         nodesSvg += `
             <circle cx="${cx}" cy="${cy}" r="9" fill="${info.color}" opacity="0.3" />
             <circle cx="${cx}" cy="${cy}" r="5" fill="${info.color}" stroke="#0f172a" stroke-width="2.5" style="filter: drop-shadow(0 0 6px ${info.color}); cursor: pointer;">
-                <title>${labels[i]}: ${v} Active Vulnerabilities &bull; Status: ${info.label}</title>
+                <title>${breakdownTooltip}</title>
             </circle>
             <text x="${cx}" y="${cy - 12}" fill="${info.lightColor}" font-size="11" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${v}</text>
         `;
@@ -1266,6 +1365,17 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
 
     container["innerHTML"] = svgHtml;
 
+    // Dynamically update category breakdown bar
+    const cc = currentCatCounts;
+    const total = currentTotal;
+    const elSast = document.getElementById("trend-cat-sast"); if (elSast) elSast.textContent = cc.sast || 0;
+    const elSec = document.getElementById("trend-cat-secret"); if (elSec) elSec.textContent = cc.secret || 0;
+    const elIac = document.getElementById("trend-cat-iac"); if (elIac) elIac.textContent = cc.iac || 0;
+    const elApi = document.getElementById("trend-cat-api"); if (elApi) elApi.textContent = cc.api || 0;
+    const elDast = document.getElementById("trend-cat-dast"); if (elDast) elDast.textContent = cc.dast || 0;
+    const elSca = document.getElementById("trend-cat-sca"); if (elSca) elSca.textContent = cc.sca || 0;
+    const elTot = document.getElementById("trend-cat-total"); if (elTot) elTot.textContent = total;
+
     if (summaryStat) {
         const startVal = vulnSeries[0] || 0;
         const endVal = vulnSeries[vulnSeries.length - 1] || 0;
@@ -1275,10 +1385,12 @@ function renderDashboardTrendChart(trendsData, activeFilter) {
         const pctChange = startVal > 0 ? Math.round(Math.abs(diff) / startVal * 100) : 0;
         const statusText = diff <= 0 ? `${pctChange}% Thermal Cooldown` : `${pctChange}% Thermal Spike`;
         const statusColor = diff <= 0 ? "#10b981" : "#ef4444";
+        const catCounts = series.category_counts || {};
+        const catText = `🛡️ ${catCounts.sast || 0} SAST &bull; 🔑 ${catCounts.secret || 0} Secret &bull; 🏗️ ${catCounts.iac || 0} IaC &bull; 🌐 ${catCounts.api || 0} API &bull; ⚡ ${catCounts.dast || 0} DAST &bull; 📦 ${catCounts.sca || 0} SCA`;
         summaryStat["innerHTML"] = `
             Trajectory: <strong style="color: ${startInfo.color};">${startVal} (${startInfo.label})</strong> &rarr; <strong style="color: ${endInfo.color};">${endVal} (${endInfo.label})</strong> &bull;
             <span style="color: ${statusColor}; font-weight: 700;">${statusText}</span> &bull;
-            <span style="color: #94a3b8;">Active Flaws: ${series.current_critical || 0} Critical &bull; ${series.current_high || 0} High &bull; ${series.current_medium || 0} Medium</span>
+            <span style="color: #94a3b8;">All Engines: ${catText}</span>
         `;
     }
 }
@@ -1350,6 +1462,23 @@ function onFilterTypeSelectChange(val) {
     applyFilters();
 }
 
+function getEngineBadge(type) {
+    const t = (type || 'sast').toLowerCase();
+    if (t === 'iac') {
+        return `<span class="badge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-weight: 700;">🏗️ IAC</span>`;
+    } else if (t === 'sca') {
+        return `<span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700;">📦 SCA</span>`;
+    } else if (t === 'api') {
+        return `<span class="badge" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700;">🌐 API</span>`;
+    } else if (t === 'secret' || t === 'secrets') {
+        return `<span class="badge" style="background: rgba(236, 72, 153, 0.18); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); font-weight: 700;">🔑 SECRET</span>`;
+    } else if (t === 'dast') {
+        return `<span class="badge" style="background: rgba(239, 68, 68, 0.18); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 700;">⚡ DAST</span>`;
+    } else {
+        return `<span class="badge" style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-weight: 700;">🛡️ SAST</span>`;
+    }
+}
+
 function applyFilters() {
     const q = document.getElementById("filter-search")?.value.toLowerCase() || "";
     const type = document.getElementById("filter-type")?.value || "";
@@ -1368,7 +1497,11 @@ function applyFilters() {
         if (q && !f.title.toLowerCase().includes(q) && !f.file_path.toLowerCase().includes(q) && !(f.cve_id && f.cve_id.toLowerCase().includes(q))) {
             return false;
         }
-        if (type && f.type !== type) return false;
+        if (type) {
+            const normalizedType = (type === 'secrets' ? 'secret' : type).toLowerCase();
+            const fType = ((f.type === 'secrets' ? 'secret' : f.type) || 'sast').toLowerCase();
+            if (fType !== normalizedType) return false;
+        }
         if (sev && f.severity !== sev) return false;
         if (quad && f.quadrant !== quad) return false;
         if (std && !f.standards.some(s => s.startsWith(std))) return false;
@@ -1404,18 +1537,7 @@ function renderFindingsTable() {
         const agePillColor = ageDays > 14 ? '#fca5a5' : (ageDays > 2 ? '#fcd34d' : '#6ee7b7');
         const agePillBg = ageDays > 14 ? 'rgba(239, 68, 68, 0.15)' : (ageDays > 2 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)');
 
-        let engineBadge = `<span class="badge" style="background: rgba(255,255,255,0.06);">${escapeHtml((f.type || 'sast').toUpperCase())}</span>`;
-        if (f.type === 'iac') {
-            engineBadge = `<span class="badge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-weight: 700;">🏗️ IAC</span>`;
-        } else if (f.type === 'sca') {
-            engineBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700;">📦 SCA</span>`;
-        } else if (f.type === 'api') {
-            engineBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700;">🌐 API</span>`;
-        } else if (f.type === 'secret') {
-            engineBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 700;">🔑 SECRET</span>`;
-        } else if (f.type === 'sast') {
-            engineBadge = `<span class="badge" style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-weight: 700;">🛡️ SAST</span>`;
-        }
+        const engineBadge = getEngineBadge(f.type);
 
         tr["innerHTML"] = `
             <td><span class="badge ${sevClass}">${f.severity}</span></td>
@@ -1878,9 +2000,13 @@ function renderDashboardFindingsFeed() {
                </span>`
             : `<span class="badge" style="background: rgba(255, 255, 255, 0.05); color: var(--text-muted); font-size: 11px;">Unassigned</span>`;
 
+        const engineBadgeHtml = getEngineBadge(f.type);
         row["innerHTML"] = `
             <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 320px;">
-                <span class="badge ${sevClass}" style="min-width: 75px; text-align: center;">${f.severity}</span>
+                <div style="display: flex; flex-direction: column; gap: 4px; align-items: center; min-width: 75px;">
+                    <span class="badge ${sevClass}" style="width: 100%; text-align: center;">${f.severity}</span>
+                    ${engineBadgeHtml}
+                </div>
                 <div style="flex: 1;">
                     <div class="dashboard-finding-title" style="cursor: pointer;" onclick="openFindingDetail('${f.id}')">
                         ${escapeHtml(f.title)}
@@ -1943,10 +2069,7 @@ async function changeFindingStatus(newStatus) {
             if (['resolved', 'closed', 'false_positive'].includes(newStatus.toLowerCase())) {
                 showToast(`🛡️ Vulnerability marked ${newStatus} & archived to Compliance Audit Trail!`, "success");
                 state.findings = (state.findings || []).filter(f => f.id !== state.activeFinding.id);
-                const modal = document.getElementById("finding-detail-modal");
-                if (modal && modal.style.display !== "none") {
-                    closeFindingDetail();
-                }
+                closeModal("modal-finding-detail");
             } else {
                 showToast(`Finding status updated to: ${newStatus}`, "success");
             }
@@ -3887,6 +4010,11 @@ function closeModal(id) {
     document.body.style.overflow = "";
     document.body.style.paddingRight = "";
 }
+
+function closeFindingDetail() {
+    closeModal("modal-finding-detail");
+}
+window.closeFindingDetail = closeFindingDetail;
 
 // Global dismiss listeners for modal backdrop and Escape key
 document.addEventListener("click", (e) => {

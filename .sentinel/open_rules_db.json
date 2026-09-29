@@ -1193,6 +1193,28 @@
       "description": "Hardcoded Bearer token found in code",
       "remediation": "Apply recommended secure coding pattern.",
       "is_active": true
+    },
+    {
+      "id": "TEST-01",
+      "name": "Test Rule",
+      "type": "sast",
+      "severity": "HIGH",
+      "languages": [
+        "python"
+      ],
+      "cwe": "CWE-89",
+      "owasp": "OWASP:A03:2021",
+      "standards": [
+        "OWASP:A03:2021"
+      ],
+      "regex": "execute\\(.*\\)",
+      "description": "Detects SQL query executions",
+      "remediation": "Use parameterized queries",
+      "project_id": null,
+      "project_name": null,
+      "is_active": true,
+      "author": "admin",
+      "created_at": "2026-09-28T11:34:12.315162+00:00"
     }
   ]
 }

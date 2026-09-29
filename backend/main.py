@@ -628,7 +628,28 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
             all_findings.extend(api_findings)
         stage_durations["api"] = max(1, int((time.time() - t0) * 1000))
 
-        # 7. Enrich all findings with Threat Intel (CISA KEV), AI Confidence, and Git Blame Attribution
+        # 7. Run DAST Dynamic Endpoint & Header Probe
+        t0 = time.time()
+        dast_findings = []
+        if scan_type in ("full", "dast"):
+            target_url = proj.get("target_url") or "http://127.0.0.1:8000"
+            try:
+                dast_result = DASTEngine.audit_url(target_url, timeout=3)
+                raw_dast = dast_result.get("findings", [])
+                for df in raw_dast:
+                    df["type"] = "dast"
+                    df["file_path"] = target_url
+                    df["line_start"] = 1
+                    df["code_snippet"] = df.get("evidence", "HTTP/TLS Configuration")
+                    df["author_name"] = "DevOps Engineer"
+                    df["author_email"] = "devops@internal.net"
+                    dast_findings.append(df)
+                all_findings.extend(dast_findings)
+            except Exception as de:
+                print(f"[Sentinel DAST] Probe skipped: {de}")
+        stage_durations["dast"] = max(1, int((time.time() - t0) * 1000))
+
+        # 8. Enrich all findings with Threat Intel (CISA KEV), AI Confidence, and Git Blame Attribution
         t0 = time.time()
         for f in all_findings:
             # Threat Intel: CISA KEV
@@ -741,6 +762,16 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
             },
             {
                 "step": 7,
+                "id": "dast",
+                "name": "Live DAST Dynamic Endpoint & Header Probe",
+                "status": "warning" if dast_findings else "passed",
+                "icon": "bi-broadcast",
+                "duration_ms": stage_durations.get("dast", 10),
+                "findings_count": len(dast_findings),
+                "description": f"{len(dast_findings)} dynamic runtime or transport weaknesses uncovered." if dast_findings else "Dynamic endpoint security check passed."
+            },
+            {
+                "step": 8,
                 "id": "ai_triage",
                 "name": "Threat Intel & AI Confidence Scoring",
                 "status": "passed",
@@ -750,7 +781,7 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
                 "description": f"Enriched with CISA KEV catalog ({cisa_kev_count} exploited) and Git Blame developer authorship."
             },
             {
-                "step": 8,
+                "step": 9,
                 "id": "quality_gate",
                 "name": "Security Quality Gate & Audit Seal",
                 "status": "failed" if (gate_eval and gate_eval.get("verdict") == "BLOCKED") else "passed",
@@ -785,7 +816,12 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
                 "medium": med_count,
                 "low": low_count,
                 "cisa_kev": cisa_kev_count,
-                "secrets": secrets_count
+                "secrets": len(secret_findings),
+                "sast": len(sast_findings),
+                "sca": len(sca_findings),
+                "iac": len(iac_findings),
+                "api": len(api_findings),
+                "dast": len(dast_findings)
             },
             "stages": stages
         }
@@ -2441,23 +2477,62 @@ def _compute_vulnerability_trends(
         tot = len(flist)
         posture = round(max(10.0, min(100.0, 100.0 - (c * 15.0 + h * 8.0 + m * 3.0))), 1) if tot > 0 else 100.0
 
+        # Detailed breakdown of all open vulnerability types
+        cat_counts = {
+            "sast": 0, "secret": 0, "iac": 0, "api": 0, "dast": 0, "sca": 0
+        }
+        for f in flist:
+            t = (f.get("type") or "sast").lower()
+            if t in ("secrets", "secret"):
+                cat_counts["secret"] += 1
+            elif t == "iac":
+                cat_counts["iac"] += 1
+            elif t in ("api", "api_sec"):
+                cat_counts["api"] += 1
+            elif t == "dast":
+                cat_counts["dast"] += 1
+            elif t == "sca":
+                cat_counts["sca"] += 1
+            else:
+                cat_counts["sast"] += 1
+
+        num_points = len(milestone_labels)
+        cat_series = {}
+        for k in ("sast", "secret", "iac", "api", "dast", "sca"):
+            cur_k = cat_counts[k]
+            cat_series[k] = [max(0, cur_k + int((num_points - 1 - i) * (cur_k / max(1, tot)))) for i in range(num_points)]
+            if num_points > 0:
+                cat_series[k][-1] = cur_k
+
         if sorted_scans and developer_name is None:
             # Use actual scan history for enterprise-wide trends
             crit_series = [s.get("critical_count", 0) for s in sorted_scans]
             high_series = [s.get("high_count", 0) for s in sorted_scans]
             med_series = [s.get("medium_count", 0) for s in sorted_scans]
             vuln_series = [s.get("critical_count", 0) + s.get("high_count", 0) + s.get("medium_count", 0) + s.get("low_count", 0) for s in sorted_scans]
+            if vuln_series:
+                vuln_series[-1] = tot
+                crit_series[-1] = c
+                high_series[-1] = h
+                med_series[-1] = m
         else:
             # Dynamic trajectory based on findings for developer-scoped or fallback
-            num_points = len(milestone_labels)
             crit_series = [max(0, c + (num_points - 1 - i)) for i in range(num_points)]
             high_series = [max(0, h + (num_points - 1 - i) * 2) for i in range(num_points)]
             med_series = [max(0, m + (num_points - 1 - i) * 2) for i in range(num_points)]
-            vuln_series = [crit_series[i] + high_series[i] + med_series[i] + l for i in range(num_points)]
+            vuln_series = [
+                cat_series["sast"][i] + cat_series["secret"][i] + cat_series["iac"][i] +
+                cat_series["api"][i] + cat_series["dast"][i] + cat_series["sca"][i]
+                for i in range(num_points)
+            ]
+            if num_points > 0:
+                vuln_series[-1] = tot
+                crit_series[-1] = c
+                high_series[-1] = h
+                med_series[-1] = m
 
         # Cumulative resolved vulnerabilities (mocked trajectory for audit readiness)
         res_base = max(1, tot)
-        num_points = len(milestone_labels)
         resolved_series = [max(1, int(res_base * (0.15 + (i * 0.20)))) for i in range(num_points)]
         posture_series = [round(max(15.0, posture - (25.0 - i * 5)), 1) for i in range(num_points)]
 
@@ -2469,6 +2544,8 @@ def _compute_vulnerability_trends(
         return {
             "name": name,
             "total_findings": tot,
+            "categories": cat_counts,
+            "category_series": cat_series,
             "vulnerability_series": vuln_series,
             "critical_series": crit_series,
             "high_series": high_series,
@@ -2482,7 +2559,13 @@ def _compute_vulnerability_trends(
             "current_critical": c,
             "current_high": h,
             "current_medium": m,
-            "current_low": l
+            "current_low": l,
+            "current_sast": cat_counts["sast"],
+            "current_secret": cat_counts["secret"],
+            "current_iac": cat_counts["iac"],
+            "current_api": cat_counts["api"],
+            "current_dast": cat_counts["dast"],
+            "current_sca": cat_counts["sca"]
         }
 
     primary_name = f"Contributed Code: {scoped_developer_name}" if is_developer_scoped else "All Enterprise Code"
@@ -2611,9 +2694,34 @@ def get_dashboard_stats(
         scans=scans
     )
 
+    category_summary = {
+        "sast": 0,
+        "secret": 0,
+        "iac": 0,
+        "api": 0,
+        "dast": 0,
+        "sca": 0,
+        "total": total_findings
+    }
+    for f in findings:
+        t = (f.get("type") or "sast").lower()
+        if t in ("secrets", "secret"):
+            category_summary["secret"] += 1
+        elif t == "iac":
+            category_summary["iac"] += 1
+        elif t in ("api", "api_sec"):
+            category_summary["api"] += 1
+        elif t == "dast":
+            category_summary["dast"] += 1
+        elif t == "sca":
+            category_summary["sca"] += 1
+        else:
+            category_summary["sast"] += 1
+
     return {
         "total_projects": total_projects,
         "total_findings": total_findings,
+        "category_summary": category_summary,
         "critical_count": critical_count,
         "high_count": high_count,
         "medium_count": medium_count,
@@ -2907,6 +3015,7 @@ def test_webhook_endpoint(
 @app.post("/api/dast/audit")
 def audit_dast_endpoint(
     payload: DASTAuditRequest,
+    project_id: Optional[str] = Query(None),
     user: UserModel = Depends(get_current_user)
 ):
     """
@@ -2914,11 +3023,47 @@ def audit_dast_endpoint(
     evaluating HSTS, CSP, Clickjacking, MIME headers, Cookies, and TLS.
     """
     result = DASTEngine.audit_url(payload.target_url, timeout=payload.timeout or 6)
+    target_pid = project_id or getattr(payload, "project_id", None)
+    if not target_pid:
+        projs = db.list_projects()
+        if projs:
+            target_pid = projs[0]["id"]
+
+    raw_findings = result.get("findings", [])
+    if target_pid and raw_findings:
+        dast_findings = []
+        for df in raw_findings:
+            dast_findings.append({
+                "rule_id": df.get("id", "DAST-001"),
+                "type": "dast",
+                "title": df.get("title", "Dynamic Security Flaw"),
+                "description": df.get("description", ""),
+                "remediation": df.get("remediation", ""),
+                "severity": df.get("severity", "MEDIUM"),
+                "cwe_id": df.get("cwe_id", "CWE-319"),
+                "standards": df.get("standards", ["OWASP-API:API2:2023", "ISO-27001:A.8.24"]),
+                "file_path": payload.target_url,
+                "line_start": 1,
+                "line_end": 1,
+                "code_snippet": df.get("evidence", "HTTP/TLS Configuration"),
+                "cvss_score": df.get("cvss_score", 5.0),
+                "epss_score": df.get("epss_score", 0.05),
+                "composite_risk_score": 50.0,
+                "quadrant": "ROUTINE",
+                "urgency": "LOW",
+                "sla_days": 90,
+                "status": "open",
+                "author_name": user.username if hasattr(user, "username") else "DevOps Engineer",
+                "author_email": user.email if hasattr(user, "email") else "devops@internal.net"
+            })
+        scan_id = db.create_scan(target_pid, f"DAST Audit: {payload.target_url}", "dast")
+        db.update_scan_results(scan_id, target_pid, dast_findings)
+
     AuditService.log_audit_event(
         event_type="DAST_AUDIT_COMPLETED",
         user=user.username,
         action=f"Audited endpoint '{payload.target_url}' (Grade: {result.get('grade')}, Score: {result.get('score')})",
-        details={"url": payload.target_url, "findings_count": len(result.get("findings", []))}
+        details={"url": payload.target_url, "findings_count": len(raw_findings), "project_id": target_pid}
     )
     return result
 
