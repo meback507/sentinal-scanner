@@ -1214,8 +1214,6 @@ function getServerCandidateUrls() {
 
     urls.push('http://127.0.0.1:8000');
     urls.push('http://localhost:8000');
-    urls.push('http://172.19.0.2:8000');
-    urls.push('http://192.168.0.101:8000');
 
     // Deduplicate and filter out dead public WAN IPs
     const deduped = [];

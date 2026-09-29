@@ -170,7 +170,7 @@
       "properties": {
         "sentinel.serverUrl": {
           "type": "string",
-          "default": "http://192.168.0.101:8000",
+          "default": "http://127.0.0.1:8000",
           "description": "Base URL of the Sentinel / AegisSec backend server"
         },
         "sentinel.apiToken": {

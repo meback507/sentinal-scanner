@@ -69,13 +69,14 @@ def get_server_network_info(client_host: str = None) -> dict:
     custom_host = os.environ.get("SENTINEL_HOST")
     if custom_host:
         best_host = custom_host.strip()
-    elif lan_ip and lan_ip != "127.0.0.1":
+    elif lan_ip and lan_ip != "127.0.0.1" and not lan_ip.startswith("172."):
         best_host = lan_ip
-    elif public_ip and public_ip != "127.0.0.1":
+    elif public_ip and public_ip != "127.0.0.1" and not public_ip.startswith("172."):
         best_host = public_ip
     else:
         best_host = "127.0.0.1"
 
+    safe_lan_ip = "127.0.0.1" if (not lan_ip or lan_ip.startswith("172.")) else lan_ip
     server_url = f"http://{best_host}:{port}"
 
     client_accessible_url = server_url
@@ -88,7 +89,7 @@ def get_server_network_info(client_host: str = None) -> dict:
 
     return {
         "port": port,
-        "lan_ip": lan_ip,
+        "lan_ip": safe_lan_ip,
         "public_ip": public_ip,
         "best_host": best_host,
         "server_url": server_url,
@@ -117,7 +118,7 @@ def auto_write_workspace_config() -> dict:
         config_data = {
             "serverUrl": info["server_url"],
             "lanUrl": f"http://{info['lan_ip']}:{info['port']}",
-            "publicUrl": f"http://{info['public_ip']}:{info['port']}",
+            "publicUrl": info["server_url"],
             "host": info["best_host"],
             "port": info["port"],
             "autoConfigured": True,
