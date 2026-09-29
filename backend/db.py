@@ -1336,6 +1336,7 @@ class Database:
 
     def delete_rule(self, rule_id: str) -> bool:
         with self._get_conn() as conn:
+            conn.execute("DELETE FROM findings WHERE rule_id = ?", (rule_id,))
             res = conn.execute("DELETE FROM custom_rules WHERE id = ?", (rule_id,))
             return res.rowcount > 0
 

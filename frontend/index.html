@@ -340,31 +340,6 @@
                 </div>
             </div>
 
-            <!-- Interactive Prioritized Findings & Remediation Queue (Every Finding Clickable) -->
-            <div class="glass-card" style="margin-bottom: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
-                    <div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <h2 style="font-size: 18px; font-weight: 700;">Actionable Security Findings &amp; Remediation Queue</h2>
-                            <span class="badge badge-critical" style="font-size: 11px;">CLICK TO INSPECT OR GUIDE</span>
-                        </div>
-                        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Click any finding card to immediately inspect code context, author attribution, AI diffs, and assigned tickets.</p>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <input type="text" id="dashboard-findings-search" class="form-input" style="padding: 5px 12px; font-size: 12px; width: 220px;" placeholder="Search finding title or file..." oninput="onDashboardFindingsSearch(this.value)">
-                        <button class="dashboard-filter-btn active" id="dash-filter-all" onclick="filterDashboardFindings('ALL')">All Findings</button>
-                        <button class="dashboard-filter-btn" id="dash-filter-actnow" onclick="filterDashboardFindings('ACT_NOW')" style="color: #f87171;">🚨 Act Now</button>
-                        <button class="dashboard-filter-btn" id="dash-filter-critical" onclick="filterDashboardFindings('CRITICAL')" style="color: #fb923c;">⚠️ Critical</button>
-                        <button class="dashboard-filter-btn" id="dash-filter-ticketed" onclick="filterDashboardFindings('TICKETED')" style="color: #c084fc;">🎫 Ticket Assigned</button>
-                    </div>
-                </div>
-
-                <!-- Finding Items Feed -->
-                <div id="dashboard-findings-feed">
-                    <!-- Populated dynamically by renderDashboardFindingsFeed() -->
-                </div>
-            </div>
-
             <!-- Vulnerability & Security Posture Trend Line Graph -->
             <div class="glass-card" style="margin-bottom: 24px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
@@ -428,6 +403,31 @@
                     <div id="trend-summary-stat" style="color: var(--text-muted); font-size: 12px;">
                         Baseline Sprint 31 to Current: <strong style="color: #10b981;">Thermal Cooldown</strong>
                     </div>
+                </div>
+            </div>
+
+            <!-- Interactive Prioritized Findings & Remediation Queue (Every Finding Clickable) -->
+            <div class="glass-card" style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h2 style="font-size: 18px; font-weight: 700;">Actionable Security Findings &amp; Remediation Queue</h2>
+                            <span class="badge badge-critical" style="font-size: 11px;">CLICK TO INSPECT OR GUIDE</span>
+                        </div>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Click any finding card to immediately inspect code context, author attribution, AI diffs, and assigned tickets.</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <input type="text" id="dashboard-findings-search" class="form-input" style="padding: 5px 12px; font-size: 12px; width: 220px;" placeholder="Search finding title or file..." oninput="onDashboardFindingsSearch(this.value)">
+                        <button class="dashboard-filter-btn active" id="dash-filter-all" onclick="filterDashboardFindings('ALL')">All Findings</button>
+                        <button class="dashboard-filter-btn" id="dash-filter-actnow" onclick="filterDashboardFindings('ACT_NOW')" style="color: #f87171;">🚨 Act Now</button>
+                        <button class="dashboard-filter-btn" id="dash-filter-critical" onclick="filterDashboardFindings('CRITICAL')" style="color: #fb923c;">⚠️ Critical</button>
+                        <button class="dashboard-filter-btn" id="dash-filter-ticketed" onclick="filterDashboardFindings('TICKETED')" style="color: #c084fc;">🎫 Ticket Assigned</button>
+                    </div>
+                </div>
+
+                <!-- Finding Items Feed -->
+                <div id="dashboard-findings-feed">
+                    <!-- Populated dynamically by renderDashboardFindingsFeed() -->
                 </div>
             </div>
 
