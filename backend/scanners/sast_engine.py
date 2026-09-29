@@ -163,12 +163,16 @@ class SASTEngine:
                 from ..rules.open_rule_database import open_rule_db
                 open_rules = open_rule_db.get_all_rules(active_only=True)
                 for r in open_rules:
+                    if str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower():
+                        continue
                     if not any(existing.get("id") == r.get("id") for existing in self.rules):
                         self.rules.append(r)
             except Exception:
                 pass
         if custom_rules:
             for r in custom_rules:
+                if str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower():
+                    continue
                 if not any(existing.get("id") == r.get("id") for existing in self.rules):
                     self.rules.append(r)
 
@@ -181,6 +185,8 @@ class SASTEngine:
             from ..rules.rule_manager import rule_manager
             proj_rules = rule_manager.load_project_rules(target_dir)
             for r in proj_rules:
+                if str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower():
+                    continue
                 if r.get("type", "sast").lower() in ["sast", "secret", "sast_pattern"]:
                     if not any(existing.get("id") == r.get("id") for existing in self.rules):
                         self.rules.append(r)

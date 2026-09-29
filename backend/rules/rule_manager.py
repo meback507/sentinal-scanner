@@ -37,6 +37,11 @@ class RuleManager:
         """
         db_deleted = db.delete_rule(rule_id)
         yaml_deleted = self._delete_from_project_rules(rule_id, workspace_dir)
+        try:
+            from .open_rule_database import open_rule_db
+            open_rule_db.delete_rule(rule_id)
+        except Exception:
+            pass
         return db_deleted or yaml_deleted
 
     def _delete_from_project_rules(self, rule_id: str, workspace_dir: str = None) -> bool:
@@ -174,6 +179,8 @@ class RuleManager:
         all_rules = self.list_rules(project_id=project_id, include_global=include_global)
         active = []
         for r in all_rules:
+            if str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower():
+                continue
             cat = str(r.get("rule_category", "")).lower()
             rtype = str(r.get("type", "")).lower()
             if r.get("is_active", True) and (cat in ["sast", "sast_pattern", "secret"] or rtype in ["sast", "sast_pattern", "secret"]):
@@ -228,6 +235,8 @@ class RuleManager:
                     raw_rules = data.get("rules", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
                     for r in raw_rules:
                         if isinstance(r, dict) and "id" in r and "name" in r:
+                            if str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower():
+                                continue
                             r["source"] = f"project:{os.path.relpath(c, target_dir)}"
                             r["is_project_custom"] = True
                             rules.append(r)

@@ -105,7 +105,12 @@ class OpenRuleDatabaseManager:
                 with open(self.cache_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self._disabled_rule_ids = set(data.get("disabled_rules", []))
-                    self._imported_rules = data.get("imported_rules", [])
+                    raw_imported = data.get("imported_rules", [])
+                    # Filter out any lingering test rules
+                    self._imported_rules = [
+                        r for r in raw_imported
+                        if not (str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower())
+                    ]
             except Exception as e:
                 print(f"[OpenRuleDB] Warning loading cache: {e}")
 
@@ -113,23 +118,41 @@ class OpenRuleDatabaseManager:
         """Saves imported rules and active flags to local cache."""
         try:
             os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
+            clean_imported = [
+                r for r in self._imported_rules
+                if not (str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower())
+            ]
+            clean_disabled = [d for d in self._disabled_rule_ids if not str(d).upper().startswith("TEST-")]
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump({
                     "version": "1.0",
-                    "disabled_rules": list(self._disabled_rule_ids),
-                    "imported_rules": self._imported_rules
+                    "disabled_rules": clean_disabled,
+                    "imported_rules": clean_imported
                 }, f, indent=2)
         except Exception as e:
             print(f"[OpenRuleDB] Warning saving cache: {e}")
 
     def add_rule(self, rule: Dict[str, Any]):
         """Adds a custom or imported rule to the database and persists cache."""
+        if str(rule.get("id", "")).upper().startswith("TEST-") or "test rule" in str(rule.get("name", "")).lower():
+            return
         existing = [i for i, r in enumerate(self._imported_rules) if r.get("id") == rule.get("id")]
         if existing:
             self._imported_rules[existing[0]] = rule
         else:
             self._imported_rules.append(rule)
         self._save_cache()
+
+    def delete_rule(self, rule_id: str) -> bool:
+        """Permanently deletes a rule by id from imported rules and saves cache."""
+        clean_id = rule_id.strip().lower()
+        orig_len = len(self._imported_rules)
+        self._imported_rules = [r for r in self._imported_rules if r.get("id", "").strip().lower() != clean_id]
+        self._disabled_rule_ids.discard(rule_id)
+        if len(self._imported_rules) < orig_len:
+            self._save_cache()
+            return True
+        return False
 
     def get_sonarqube_rules(self, active_only: bool = False) -> List[Dict[str, Any]]:
         """Returns SonarQube RSPEC rules."""
@@ -166,6 +189,8 @@ class OpenRuleDatabaseManager:
         all_rules.extend(self.get_community_rules())
 
         for r in self._imported_rules:
+            if str(r.get("id", "")).upper().startswith("TEST-") or "test rule" in str(r.get("name", "")).lower():
+                continue
             rc = dict(r)
             rc["is_active"] = r.get("id") not in self._disabled_rule_ids
             all_rules.append(rc)

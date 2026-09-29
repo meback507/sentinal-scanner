@@ -422,6 +422,7 @@ class Database:
             conn.execute("DELETE FROM findings WHERE project_id IN (SELECT id FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta'))")  # sentinel-ignore: CWE-89, S2077
             conn.execute("DELETE FROM scans WHERE project_id IN (SELECT id FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta'))")  # sentinel-ignore: CWE-89, S2077
             conn.execute("DELETE FROM projects WHERE name LIKE '%Demo%' OR git_url = '' OR git_url = 'demo' OR git_url LIKE '/tmp/%' OR name IN ('Project Alpha', 'Project Beta')")  # sentinel-ignore: CWE-89, S2077
+            conn.execute("DELETE FROM findings WHERE title LIKE '%Test Rule%' OR rule_id LIKE 'TEST-%'")
             conn.execute("DELETE FROM custom_rules WHERE id LIKE 'TEST-%' OR name LIKE '%Test%'")
 
     # --- User Operations ---
@@ -756,6 +757,15 @@ class Database:
                     existing_by_fp[fp] = r_dict
 
             incoming_fingerprints = set()
+
+            findings = [
+                f for f in findings
+                if not (
+                    str(f.get("title", "")).lower() == "test rule"
+                    or str(f.get("rule_id", "")).upper().startswith("TEST-")
+                    or "test-01" in str(f.get("rule_id", "")).lower()
+                )
+            ]
 
             for f in findings:
                 fp = compute_finding_fingerprint(project_id, f)

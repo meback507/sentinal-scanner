@@ -647,7 +647,23 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
                 all_findings.extend(dast_findings)
             except Exception as de:
                 print(f"[Sentinel DAST] Probe skipped: {de}")
-        stage_durations["dast"] = max(1, int((time.time() - t0) * 1000))
+        # Filter out any test rule findings
+        all_findings = [
+            f for f in all_findings
+            if not (
+                str(f.get("title", "")).lower() == "test rule"
+                or str(f.get("rule_id", "")).upper().startswith("TEST-")
+                or "test-01" in str(f.get("rule_id", "")).lower()
+            )
+        ]
+        sast_findings = [
+            f for f in sast_findings
+            if not (
+                str(f.get("title", "")).lower() == "test rule"
+                or str(f.get("rule_id", "")).upper().startswith("TEST-")
+                or "test-01" in str(f.get("rule_id", "")).lower()
+            )
+        ]
 
         # 8. Enrich all findings with Threat Intel (CISA KEV), AI Confidence, and Git Blame Attribution
         t0 = time.time()
