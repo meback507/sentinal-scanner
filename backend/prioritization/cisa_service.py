@@ -141,6 +141,14 @@ class CISAService:
 
         return False, None, None
 
+    def is_known_exploited(self, cve_id: Optional[str]) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Convenience wrapper returning (is_kev, metadata_dict).
+        """
+        is_kev, due_date, name = self.check_cisa_kev(cve_id)
+        meta = {"due_date": due_date, "vulnerability_name": name or ""} if is_kev else {}
+        return is_kev, meta
+
     def enrich_finding_with_cisa_kev(self, finding: Dict[str, Any]) -> Dict[str, Any]:
         """
         Enriches finding dictionary with CISA KEV attributes.

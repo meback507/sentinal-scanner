@@ -285,6 +285,7 @@ class IaCEngine:
         )
 
         return {
+            "rule_id": rule.get("id"),
             "type": "iac",
             "title": f"[{rule['id']}] {rule['name']}",
             "description": rule.get("description", "Infrastructure as Code configuration vulnerability."),

@@ -454,6 +454,11 @@ class NLRuleGenerator:
         return cls._synthesize_core_rule(human_prompt, target_ecosystem, project_id=project_id, project_name=project_name)
 
     @classmethod
+    def generate_rule(cls, human_prompt: str, target_ecosystem: str = "auto", project_id: Optional[str] = None, project_name: Optional[str] = None) -> Dict[str, Any]:
+        """Alias for generate_from_text."""
+        return cls.generate_from_text(human_prompt, target_ecosystem=target_ecosystem, project_id=project_id, project_name=project_name)
+
+    @classmethod
     def _synthesize_core_rule(cls, human_prompt: str, target_ecosystem: str = "auto", project_id: Optional[str] = None, project_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Core synthesis engine that translates natural language to SAST or SCA rule without external API dependencies.

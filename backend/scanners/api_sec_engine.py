@@ -237,6 +237,8 @@ class APISecEngine:
 
         return {
             "type": "api",
+            "id": rule_id,
+            "rule_id": rule_id,
             "title": f"[{rule_id}] {title}",
             "description": description,
             "remediation": remediation,

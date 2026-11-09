@@ -1,0 +1,62 @@
+name: "ThreatGate AppSec CI/CD"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  # =====================================================================
+  # FAST-PATH VERIFICATION (< 5 Seconds)
+  # =====================================================================
+  threat-model-gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code & Threat Models
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Verify Ed25519 Public Key Signatures (Fast Path)
+        id: verify
+        run: |
+          python -m src.threatgate.cli verify-pr --key .threatmodel/public_key.pem
+        continue-on-error: true
+
+      - name: Fallback Threat Modeling (If Local Signature Missing or Drifted)
+        if: steps.verify.outcome == 'failure'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          echo "⚠️ Local threat model seal missing or tampered. Running Fallback Engine..."
+          python scripts/sentinel_cli.py scan . --fail-on=HIGH
+          echo "FALLBACK_TRIGGERED=true" >> $GITHUB_ENV
+
+      - name: Execute Threat Regression Unit Tests
+        run: |
+          if [ -d "tests/security" ]; then
+            pytest tests/security/ -v
+          fi
+
+      - name: Enforce Branch Protection Gate
+        if: steps.verify.outcome == 'failure' && env.FALLBACK_TRIGGERED == 'true'
+        run: |
+          echo "❌ ThreatGate Gatekeeper: Pull Request contains unmitigated threats or invalid seals."
+          exit 1
+

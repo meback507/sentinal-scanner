@@ -39,7 +39,7 @@ CORE_BUILTIN_RULES = [
         "name": "SQL Injection via String Concatenation or Formatting",
         "cwe": "CWE-89",
         "languages": ["python", "javascript", "typescript", "java", "php", "go"],
-        "regex": r"""(?i)(?:execute|query|raw|cursor\.execute)\s*\(\s*(?:f['"].*SELECT.*\{|['"].*SELECT.*['"]\s*\+|\`.*SELECT.*\$\{)""",
+        "regex": r"""(?i)(?:(?:execute|query|raw|cursor\.execute)\s*\(\s*(?:f['"].*(?:SELECT|INSERT|UPDATE|DELETE).*\{|['"].*(?:SELECT|INSERT|UPDATE|DELETE).*['"]\s*\+|\`.*(?:SELECT|INSERT|UPDATE|DELETE).*\$\{)|(?:query|sql|stmt)\s*=\s*(?:f['"].*(?:SELECT|INSERT|UPDATE|DELETE).*\{|['"].*(?:SELECT|INSERT|UPDATE|DELETE).*['"]\s*\+|\`.*(?:SELECT|INSERT|UPDATE|DELETE).*\$\{))""",
         "description": "SQL query dynamically constructed using raw string interpolation instead of parameterized queries.",
         "remediation": "Use parameterized queries or ORM query builders (e.g. cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,)))"
     },

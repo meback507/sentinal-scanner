@@ -29,6 +29,19 @@ from backend.prioritization.cisa_service import cisa_service
 from backend.rules.rule_manager import rule_manager
 import json
 
+# ThreatGate Code-First Threat Modeling & Cryptographic Engine
+try:
+    from src.threatgate.core.engine import ThreatEngine
+    from src.threatgate.core.crypto import (
+        generate_keypair, sign_payload, verify_payload,
+        extract_seal_from_markdown, embed_seal_into_markdown
+    )
+    from src.threatgate.core.delta import compute_delta, format_delta_summary
+    from src.threatgate.core.test_gen import generate_security_regression_test
+    THREATGATE_AVAILABLE = True
+except Exception:
+    THREATGATE_AVAILABLE = False
+
 
 # ANSI Color Codes
 CLR_RESET = "\033[0m"
@@ -266,6 +279,151 @@ def init_sonar(target_path: str = ".", project_key: str = None) -> int:
     return 0
 
 
+def run_threat_model(target_file, sign=True, key_path=None, test_gen=True):
+    if not THREATGATE_AVAILABLE:
+        print(f"{CLR_RED}Error: ThreatGate module not available. Install requirements.{CLR_RESET}")
+        return 1
+    if not os.path.isfile(target_file):
+        print(f"{CLR_RED}Error: File not found: {target_file}{CLR_RESET}")
+        return 1
+
+    with open(target_file, "r", encoding="utf-8") as f:
+        code_content = f.read()
+
+    engine = ThreatEngine()
+    print(f"{CLR_BOLD}Evaluating STRIDE threats for:{CLR_RESET} {target_file}")
+    report = engine.evaluate_code(target_file, code_content)
+
+    status_label = f"{CLR_GREEN}APPROVED ✔{CLR_RESET}" if report.is_approved else f"{CLR_RED}ACTION REQUIRED ✖{CLR_RESET}"
+    print(f"\n{CLR_BOLD}Verdict:{CLR_RESET} {status_label}")
+    print(f"{CLR_BOLD}Summary:{CLR_RESET} {report.summary}")
+
+    print(f"\n{CLR_BOLD}STRIDE Threats Matrix:{CLR_RESET}")
+    for t in report.threats:
+        st_icon = f"{CLR_GREEN}✔ Mitigated{CLR_RESET}" if t.is_mitigated else f"{CLR_RED}✖ {t.severity.value}{CLR_RESET}"
+        print(f"  • [{t.id}] {t.stride_category.value:22} | {t.target_element:20} | {st_icon}")
+
+    if report.dfd_mermaid:
+        print(f"\n{CLR_CYAN}{CLR_BOLD}Mermaid Data Flow Diagram (DFD Level-1):{CLR_RESET}")
+        print(report.dfd_mermaid)
+
+    if not report.is_approved:
+        print(f"\n{CLR_RED}{CLR_BOLD}✖ ACTION REQUIRED:{CLR_RESET} High/Critical threats detected. Fix code before sealing.")
+        return 1
+
+    if sign:
+        key_file = key_path or os.path.join(REPO_ROOT, ".threatmodel", "private_key.pem")
+        if not os.path.exists(key_file):
+            print(f"{CLR_YELLOW}Initializing Ed25519 keypair in .threatmodel/...{CLR_RESET}")
+            os.makedirs(os.path.dirname(key_file), exist_ok=True)
+            priv_pem, pub_pem = generate_keypair()
+            with open(key_file, "wb") as f: f.write(priv_pem)
+            with open(os.path.join(os.path.dirname(key_file), "public_key.pem"), "wb") as f: f.write(pub_pem)
+
+        with open(key_file, "rb") as f: priv_pem = f.read()
+        report_body = engine.format_threat_model_markdown(target_file, report, code_content, digital_seal=None)
+        seal = sign_payload(code_content, report_body, priv_pem)
+        out_file = os.path.splitext(target_file)[0] + ".threat.md"
+        full_md = engine.format_threat_model_markdown(target_file, report, code_content, digital_seal=seal)
+        with open(out_file, "w", encoding="utf-8") as f: f.write(full_md)
+        print(f"\n{CLR_GREEN}✔ Component Threat Model Sealed:{CLR_RESET} {out_file}")
+        print(f"  • Ed25519 Seal: {seal[:24]}...")
+
+        if test_gen:
+            mitigated = [t for t in report.threats if t.is_mitigated]
+            if mitigated:
+                t_path = generate_security_regression_test(mitigated[0])
+                print(f"{CLR_GREEN}✔ Security Regression Test Generated:{CLR_RESET} {t_path}")
+    return 0
+
+
+def run_verify_pr(pub_key_path=None):
+    if not THREATGATE_AVAILABLE:
+        print(f"{CLR_RED}Error: ThreatGate module not available.{CLR_RESET}")
+        return 1
+    pub_file = pub_key_path or os.path.join(REPO_ROOT, ".threatmodel", "public_key.pem")
+    if not os.path.exists(pub_file):
+        print(f"{CLR_RED}Error: Public key not found: {pub_file}{CLR_RESET}")
+        return 1
+    with open(pub_file, "rb") as f: pub_pem = f.read()
+
+    threat_files = []
+    for root, dirs, files in os.walk(REPO_ROOT):
+        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", ".venv", "build", "dist")]
+        for f in files:
+            if f.endswith(".threat.md"):
+                threat_files.append(os.path.join(root, f))
+
+    if not threat_files:
+        print(f"{CLR_YELLOW}No *.threat.md files found in repository to verify.{CLR_RESET}")
+        return 0
+
+    print(f"{CLR_CYAN}{CLR_BOLD}⚡ ThreatGate Fast-Path CI Verification ({len(threat_files)} components)...{CLR_RESET}")
+    all_valid = True
+    for tf in threat_files:
+        base_no_ext = tf[:-len(".threat.md")]
+        code_file = base_no_ext + ".py"
+        if not os.path.exists(code_file):
+            for ext in (".js", ".ts", ".go", ".java", ".c", ".cpp"):
+                if os.path.exists(base_no_ext + ext):
+                    code_file = base_no_ext + ext
+                    break
+        if not os.path.exists(code_file):
+            continue
+        with open(code_file, "r", encoding="utf-8") as f: c_code = f.read()
+        with open(tf, "r", encoding="utf-8") as f: t_rep = f.read()
+        body, seal = extract_seal_from_markdown(t_rep)
+        if not seal:
+            print(f"  {CLR_RED}✖ {code_file}: Missing Ed25519 Seal{CLR_RESET}")
+            all_valid = False
+            continue
+        if verify_payload(c_code, body, seal, pub_pem):
+            print(f"  {CLR_GREEN}✔ {code_file}: Ed25519 Seal VERIFIED{CLR_RESET}")
+        else:
+            print(f"  {CLR_RED}✖ {code_file}: TAMPERED / DRIFTED (Signature mismatch!){CLR_RESET}")
+            all_valid = False
+
+    if not all_valid:
+        print(f"\n{CLR_RED}{CLR_BOLD}✖ ThreatGate CI Gate: FAILED (Code drifted or seals invalid){CLR_RESET}")
+        return 1
+    print(f"\n{CLR_GREEN}{CLR_BOLD}✔ ThreatGate CI Gate: APPROVED (All components verified){CLR_RESET}")
+    return 0
+
+
+def run_threat_graph(target_file):
+    if not THREATGATE_AVAILABLE:
+        print(f"{CLR_RED}Error: ThreatGate module not available.{CLR_RESET}")
+        return 1
+    if not os.path.isfile(target_file):
+        print(f"{CLR_RED}Error: File not found: {target_file}{CLR_RESET}")
+        return 1
+    with open(target_file, "r", encoding="utf-8") as f: code = f.read()
+    engine = ThreatEngine()
+    rep = engine.evaluate_code(target_file, code)
+    print(rep.dfd_mermaid or "graph LR\nClient --> Controller --> DataStore")
+    return 0
+
+
+def run_init_keys(out_dir=".threatmodel"):
+    if not THREATGATE_AVAILABLE:
+        print(f"{CLR_RED}Error: ThreatGate module not available.{CLR_RESET}")
+        return 1
+    target = os.path.join(REPO_ROOT, out_dir)
+    os.makedirs(target, exist_ok=True)
+    priv_file = os.path.join(target, "private_key.pem")
+    pub_file = os.path.join(target, "public_key.pem")
+    if os.path.exists(priv_file) and os.path.exists(pub_file):
+        print(f"{CLR_YELLOW}Keys already exist in {out_dir}/. Skipping re-generation.{CLR_RESET}")
+        return 0
+    priv_pem, pub_pem = generate_keypair()
+    with open(priv_file, "wb") as f: f.write(priv_pem)
+    with open(pub_file, "wb") as f: f.write(pub_pem)
+    print(f"{CLR_GREEN}{CLR_BOLD}✔ Successfully generated Ed25519 Keypair in {out_dir}/{CLR_RESET}")
+    print(f"  • Public Key: {pub_file}")
+    print(f"  • Private Key: {priv_file}")
+    return 0
+
+
 def install_pre_commit_hook():
     git_dir = os.path.join(REPO_ROOT, ".git")
     if not os.path.isdir(git_dir):
@@ -321,6 +479,25 @@ def main():
     # Hook installer command
     subparsers.add_parser("install-hook", help="Install automated Git pre-commit security hook")
 
+    # ThreatGate Code-First Threat Modeling
+    tm_p = subparsers.add_parser("threat-model", help="Run code-first STRIDE threat modeling, render DFD graph & seal with Ed25519")
+    tm_p.add_argument("path", help="Target source code file to evaluate (e.g. src/payments/refund.py)")
+    tm_p.add_argument("--no-sign", action="store_true", help="Do not generate Ed25519 digital seal")
+    tm_p.add_argument("--key", default=None, help="Path to Ed25519 private key")
+    tm_p.add_argument("--no-test-gen", action="store_true", help="Do not generate companion pytest regression unit test")
+
+    # ThreatGate PR Verifier (Fast Path)
+    vp_p = subparsers.add_parser("verify-pr", help="Fast-path PR verification (< 2s) checking Ed25519 digital seals on *.threat.md")
+    vp_p.add_argument("--key", default=None, help="Path to Ed25519 public key (.threatmodel/public_key.pem)")
+
+    # ThreatGate DFD Graph
+    tg_p = subparsers.add_parser("threat-graph", help="Generate Level-1 Data Flow Diagram (DFD) Mermaid graph for a component")
+    tg_p.add_argument("path", help="Target source code file")
+
+    # ThreatGate Init Keys
+    ik_p = subparsers.add_parser("init-keys", help="Initialize Ed25519 cryptographic keypair in .threatmodel/")
+    ik_p.add_argument("--out-dir", default=".threatmodel", help="Target directory for keys")
+
     args = parser.parse_args()
 
     if getattr(args, "json", False):
@@ -339,6 +516,21 @@ def main():
         target = getattr(args, "path", ".")
         output_json = getattr(args, "json", False)
         sys.exit(list_rules(target, output_json))
+    elif args.command == "threat-model":
+        target = getattr(args, "path")
+        sign = not getattr(args, "no_sign", False)
+        key_path = getattr(args, "key", None)
+        test_gen = not getattr(args, "no_test_gen", False)
+        sys.exit(run_threat_model(target, sign=sign, key_path=key_path, test_gen=test_gen))
+    elif args.command == "verify-pr":
+        pub_key = getattr(args, "key", None)
+        sys.exit(run_verify_pr(pub_key_path=pub_key))
+    elif args.command == "threat-graph":
+        target = getattr(args, "path")
+        sys.exit(run_threat_graph(target))
+    elif args.command == "init-keys":
+        out_dir = getattr(args, "out_dir", ".threatmodel")
+        sys.exit(run_init_keys(out_dir))
     elif args.command == "scan" or args.command is None:
         target = getattr(args, "path", ".")
         threshold = getattr(args, "fail_on", "HIGH")

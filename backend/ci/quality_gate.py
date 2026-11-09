@@ -5,6 +5,7 @@ failing builds on weaponized (🚨 Act Now) or safety-critical (ASIL-D / MISRA R
 defects, while permitting routine maintenance to pass without breaking velocity.
 """
 
+import os
 from typing import Dict, Any, List, Optional
 
 
@@ -75,6 +76,43 @@ class CIQualityGate:
         if len(critical_findings) > policy.get("max_critical", 0):
             warnings.append(f"Critical findings count ({len(critical_findings)}) exceeds limit ({policy.get('max_critical')}).")
 
+        # Check ThreatGate component-level Ed25519 digital seals if workspace path supplied
+        repo_dir = kwargs.get("repo_path")
+        if repo_dir and os.path.exists(repo_dir) and policy.get("fail_on_threatgate_tamper", True):
+            try:
+                from src.threatgate.core.crypto import verify_payload, extract_seal_from_markdown
+                pub_file = os.path.join(repo_dir, ".threatmodel", "public_key.pem")
+                if os.path.exists(pub_file):
+                    with open(pub_file, "rb") as pf:
+                        pub_pem = pf.read()
+                    for root, dirs, files in os.walk(repo_dir):
+                        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", ".venv", "build", "dist")]
+                        for f in files:
+                            if f.endswith(".threat.md"):
+                                t_path = os.path.join(root, f)
+                                base_no_ext = t_path[:-len(".threat.md")]
+                                code_file = None
+                                for ext in (".py", ".js", ".ts", ".go", ".java", ".c", ".cpp"):
+                                    cand = base_no_ext + ext
+                                    if os.path.exists(cand):
+                                        code_file = cand
+                                        break
+                                if code_file and os.path.exists(code_file):
+                                    with open(code_file, "r", encoding="utf-8", errors="ignore") as cf:
+                                        c_text = cf.read()
+                                    with open(t_path, "r", encoding="utf-8", errors="ignore") as tf:
+                                        t_text = tf.read()
+                                    body, seal = extract_seal_from_markdown(t_text)
+                                    if not seal or not verify_payload(c_text, body, seal, pub_pem):
+                                        blockers.append({
+                                            "reason": "THREATGATE_SEAL_INVALID",
+                                            "title": "ThreatGate Cryptographic Seal Invalid or Tampered",
+                                            "file": os.path.relpath(code_file, repo_dir),
+                                            "description": "ThreatGate Ed25519 digital seal missing or signature verification failed (code drifted after signing)."
+                                        })
+            except Exception:
+                pass
+
         passed = len(blockers) == 0
         gate_status = "PASSED" if passed else "FAILED"
 
@@ -118,7 +156,7 @@ class CIQualityGate:
             )
         else:
             blocker_rows = "\n".join([
-                f"| `{b['file']}` | **{b['title']}** | `{b['reason']}` | {b['description']} |"
+                f"| `{b.get('file', 'N/A')}` | **{b.get('title') or b.get('reason') or 'Security Blocker'}** | `{b.get('reason', 'BLOCKED')}` | {b.get('description', '')} |"
                 for b in blockers
             ])
             body = f"""### ⚠️ Merge Blocked by Security Policy

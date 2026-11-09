@@ -43,18 +43,81 @@ class ThreatModelEngine:
             code = t.get("stride_code", "S")
             category_counts[code] = category_counts.get(code, 0) + 1
 
+        # Reconcile component-scoped ThreatGate models & Ed25519 digital seals
+        threatgate_components = cls._discover_threatgate_models(repo_path)
+
         return {
             "threat_model_version": "2.0",
             "stride_summary": {
                 "total_threats": total_threats,
                 "average_dread_score": avg_dread,
                 "highest_risk_category": max(category_counts.items(), key=lambda x: x[1])[0] if total_threats else "None",
-                "counts_by_category": category_counts
+                "counts_by_category": category_counts,
+                "threatgate_components_count": len(threatgate_components),
+                "threatgate_verified_count": sum(1 for c in threatgate_components if c.get("is_verified"))
             },
             "components": components,
             "threats": threats,
-            "data_flow_diagram": dfd_graph
+            "data_flow_diagram": dfd_graph,
+            "threatgate_components": threatgate_components
         }
+
+    @classmethod
+    def _discover_threatgate_models(cls, repo_path: str) -> List[Dict[str, Any]]:
+        """
+        Discovers all component-scoped *.threat.md models, validates Ed25519 digital seals,
+        and returns verification status for the centralized dashboard.
+        """
+        results = []
+        if not repo_path or not os.path.exists(repo_path):
+            return results
+
+        try:
+            from src.threatgate.core.crypto import verify_payload, extract_seal_from_markdown
+            pub_key_file = os.path.join(repo_path, ".threatmodel", "public_key.pem")
+            pub_pem = None
+            if os.path.exists(pub_key_file):
+                with open(pub_key_file, "rb") as f:
+                    pub_pem = f.read()
+
+            for root, dirs, files in os.walk(repo_path):
+                dirs[:] = [d for d in dirs if d not in (".git", "node_modules", ".venv", "build", "dist")]
+                for fname in files:
+                    if fname.endswith(".threat.md"):
+                        t_path = os.path.join(root, fname)
+                        rel_threat = os.path.relpath(t_path, repo_path).replace("\\", "/")
+                        base_name = fname[:-len(".threat.md")]
+                        code_file = None
+                        for ext in (".py", ".js", ".ts", ".go", ".java", ".c", ".cpp"):
+                            cand = os.path.join(root, base_name + ext)
+                            if os.path.exists(cand):
+                                code_file = cand
+                                break
+
+                        rel_code = os.path.relpath(code_file, repo_path).replace("\\", "/") if code_file else "Unknown"
+
+                        with open(t_path, "r", encoding="utf-8", errors="ignore") as tf:
+                            t_content = tf.read()
+
+                        body, seal = extract_seal_from_markdown(t_content)
+                        is_verified = False
+                        if pub_pem and code_file and seal:
+                            with open(code_file, "r", encoding="utf-8", errors="ignore") as cf:
+                                c_content = cf.read()
+                            is_verified = verify_payload(c_content, body, seal, pub_pem)
+
+                        status = "VERIFIED_APPROVED" if is_verified else ("TAMPERED" if seal else "UNSEALED")
+                        results.append({
+                            "threat_file": rel_threat,
+                            "code_file": rel_code,
+                            "has_seal": bool(seal),
+                            "is_verified": is_verified,
+                            "status": status,
+                            "seal_snippet": f"{seal[:16]}..." if seal else None
+                        })
+        except Exception:
+            pass
+        return results
 
     @classmethod
     def _discover_architecture_components(cls, repo_path: str) -> List[Dict[str, Any]]:
