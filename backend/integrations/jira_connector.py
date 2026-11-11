@@ -34,9 +34,24 @@ class JiraConnector:
             return {"success": False, "message": f"Connection error: {str(e)}"}
 
     @classmethod
-    def create_ticket(cls, finding: Dict[str, Any]) -> Dict[str, Any]:
-        author_name = finding.get("author_name") or "Unknown Developer"
-        author_email = finding.get("author_email") or "unknown@domain.local"
+    def create_ticket(
+        cls,
+        finding: Dict[str, Any],
+        assignee_name: Optional[str] = None,
+        assignee_email: Optional[str] = None
+    ) -> Dict[str, Any]:
+        author_email = finding.get("author_email") or ""
+        author_name = finding.get("author_name") or "Developer"
+
+        # Check if a user with the same email exists in the platform to assign ticket directly to them
+        if not assignee_email and author_email:
+            matched_user = db.get_user_by_email(author_email)
+            if matched_user:
+                assignee_name = matched_user.get("username")
+                assignee_email = matched_user.get("email")
+
+        assigned_to = assignee_name or finding.get("ticket_assigned_to") or author_name
+        assigned_email = assignee_email or finding.get("ticket_assigned_email") or author_email or "unknown@domain.local"
 
         cfg = cls.get_config()
         if not cfg or not cfg.get("enabled"):
@@ -46,9 +61,9 @@ class JiraConnector:
                 "success": True,
                 "ticket_key": mock_key,
                 "ticket_url": f"https://mock-jira.internal/browse/{mock_key}",
-                "assigned_to": author_name,
-                "assigned_email": author_email,
-                "assignee": author_name,
+                "assigned_to": assigned_to,
+                "assigned_email": assigned_email,
+                "assignee": assigned_to,
                 "is_mock": True
             }
 
@@ -80,7 +95,7 @@ class JiraConnector:
 *Severity:* {finding.get('severity')} (CVSS: {finding.get('cvss_score')}, EPSS: {finding.get('epss_score')})
 *Quadrant:* {finding.get('quadrant')} (SLA: {finding.get('sla_days')} days)
 *File / Location:* {finding.get('file_path')}:{finding.get('line_start')}
-*Developer / Author (Assigned):* {author_name} <{author_email}> (Commit: {finding.get('commit_hash', 'HEAD')} on {finding.get('commit_date', 'N/A')})
+*Developer / Committer (Assigned):* {assigned_to} <{assigned_email}> (Commit: {finding.get('commit_hash', 'HEAD')} on {finding.get('commit_date', 'N/A')})
 *Standards:* {', '.join(finding.get('standards', []))}
 
 *Description:*
@@ -98,7 +113,7 @@ class JiraConnector:
         payload = {
             "fields": {
                 "project": {"key": project_key},
-                "summary": f"[AegisSec] {finding.get('title')} ({author_name})",
+                "summary": f"[AegisSec] {finding.get('title')} ({assigned_to})",
                 "description": {
                     "type": "doc",
                     "version": 1,
@@ -111,13 +126,13 @@ class JiraConnector:
                 },
                 "issuetype": {"name": issue_type},
                 "priority": {"name": severity_map.get(finding.get("severity"), "Medium")},
-                "labels": ["aegissec", "appsec", finding.get("type", "vuln"), f"author-{author_name.replace(' ', '_').lower()}"]
+                "labels": ["aegissec", "appsec", finding.get("type", "vuln"), f"author-{assigned_to.replace(' ', '_').lower()}"]
             }
         }
 
-        # Assign ticket directly to the author of the code
-        if author_email:
-            payload["fields"]["assignee"] = {"name": author_name, "emailAddress": author_email}
+        # Assign ticket directly to the matched person / code author
+        if assigned_email and assigned_email != "unknown@domain.local":
+            payload["fields"]["assignee"] = {"name": assigned_to, "emailAddress": assigned_email}
 
         try:
             resp = requests.post(f"{url}/rest/api/3/issue", json=payload, headers=headers, timeout=10)
@@ -128,9 +143,9 @@ class JiraConnector:
                     "success": True,
                     "ticket_key": key,
                     "ticket_url": f"{url}/browse/{key}",
-                    "assigned_to": author_name,
-                    "assigned_email": author_email,
-                    "assignee": author_name,
+                    "assigned_to": assigned_to,
+                    "assigned_email": assigned_email,
+                    "assignee": assigned_to,
                     "is_mock": False
                 }
             else:

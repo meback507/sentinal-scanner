@@ -505,6 +505,28 @@ class Database:
             u["assigned_projects"] = self._get_user_assigned_projects_conn(conn, u["id"])
             return u
 
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Finds a registered user by email address (case-insensitive)."""
+        if not email:
+            return None
+        clean_email = email.strip().lower()
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT * FROM users WHERE LOWER(email) = ?", (clean_email,)).fetchone()
+            if not row:
+                # Also check if username matches part of the email address (e.g., github noreply email)
+                cursor = conn.execute("SELECT * FROM users")
+                for r in cursor.fetchall():
+                    u_dict = dict(r)
+                    u_email = (u_dict.get("email") or "").lower()
+                    u_name = (u_dict.get("username") or "").lower()
+                    if u_name and u_name in clean_email:
+                        u_dict["assigned_projects"] = self._get_user_assigned_projects_conn(conn, u_dict["id"])
+                        return u_dict
+                return None
+            u = dict(row)
+            u["assigned_projects"] = self._get_user_assigned_projects_conn(conn, u["id"])
+            return u
+
     def list_users(self) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:
             rows = conn.execute("SELECT id, username, email, role, created_at FROM users ORDER BY created_at ASC").fetchall()
@@ -854,11 +876,18 @@ class Database:
                     ticket_assigned_to = existing.get("ticket_assigned_to") or f.get("ticket_assigned_to")
                     ticket_assigned_email = existing.get("ticket_assigned_email") or f.get("ticket_assigned_email")
 
-                    author_name = f.get("author_name") or existing.get("author_name", "DevOps Engineer")
-                    author_email = f.get("author_email") or existing.get("author_email", "devops@internal.net")
-                    commit_hash = f.get("commit_hash") or existing.get("commit_hash", "HEAD")
-                    commit_date = f.get("commit_date") or existing.get("commit_date", "2026-09-17")
-                    commit_message = f.get("commit_message") or existing.get("commit_message", "Automated build sync")
+                    author_name = f.get("author_name") or existing.get("author_name") or "Developer"
+                    author_email = f.get("author_email") or existing.get("author_email") or ""
+                    commit_hash = f.get("commit_hash") or existing.get("commit_hash") or "HEAD"
+                    commit_date = f.get("commit_date") or existing.get("commit_date") or now[:10]
+                    commit_message = f.get("commit_message") or existing.get("commit_message") or "Repository commit"
+
+                    # If finding author email matches a registered user, directly assign ticket to that person
+                    if not ticket_assigned_email and author_email:
+                        matched = self.get_user_by_email(author_email)
+                        if matched:
+                            ticket_assigned_to = matched.get("username")
+                            ticket_assigned_email = matched.get("email")
 
                     # Keep existing AI confidence if not re-evaluated
                     if ai_confidence_score is None and existing.get("ai_confidence_score") is not None:
@@ -936,11 +965,23 @@ class Database:
                     # New vulnerability introduced or discovered
                     finding_id = str(uuid.uuid4())
                     first_seen = f.get("first_seen") or f.get("commit_date") or now
-                    author_name = f.get("author_name", "DevOps Engineer")
-                    author_email = f.get("author_email", "devops@internal.net")
-                    commit_hash = f.get("commit_hash", "HEAD")
-                    commit_date = f.get("commit_date", "2026-09-17")
-                    commit_message = f.get("commit_message", "Automated build sync")
+                    author_name = f.get("author_name") or "Developer"
+                    author_email = f.get("author_email") or ""
+                    commit_hash = f.get("commit_hash") or "HEAD"
+                    commit_date = f.get("commit_date") or now[:10]
+                    commit_message = f.get("commit_message") or "Repository commit"
+
+                    ticket_assigned_to = f.get("ticket_assigned_to")
+                    ticket_assigned_email = f.get("ticket_assigned_email")
+
+                    # If finding author email matches a registered user, directly assign ticket to that person
+                    if not ticket_assigned_email and author_email:
+                        matched = self.get_user_by_email(author_email)
+                        if matched:
+                            ticket_assigned_to = matched.get("username")
+                            ticket_assigned_email = matched.get("email")
+                            f["ticket_assigned_to"] = ticket_assigned_to
+                            f["ticket_assigned_email"] = ticket_assigned_email
 
                     conn.execute("""
                     INSERT INTO findings (

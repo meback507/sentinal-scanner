@@ -98,6 +98,7 @@ class IssueTrackerManager:
     ) -> Dict[str, Any]:
         """
         Create an issue in Jira or Linear for a specific finding.
+        If a registered person with the finding author's email exists, assigns the ticket directly to them.
         """
         provider_norm = provider.lower()
         title = finding.get("title") or "Security Flaw"
@@ -105,6 +106,22 @@ class IssueTrackerManager:
         cve = finding.get("cve_id") or "N/A"
         file_path = finding.get("file_path") or "app.py"
         line = finding.get("line_start") or 1
+
+        author_email = finding.get("author_email") or ""
+        author_name = finding.get("author_name") or "Developer"
+
+        # Check if a user with the same email exists in the platform to assign directly
+        assigned_to = author_name
+        assigned_email = author_email
+        try:
+            from ..db import db
+            if author_email:
+                matched_user = db.get_user_by_email(author_email)
+                if matched_user:
+                    assigned_to = matched_user.get("username")
+                    assigned_email = matched_user.get("email")
+        except Exception:
+            pass
 
         if provider_norm == "jira":
             pkey = project_key or self.config.get("jira", {}).get("project_key", "SEC")
@@ -123,9 +140,12 @@ class IssueTrackerManager:
                 "project_key": pkey,
                 "status": "TO DO",
                 "priority": jira_priority,
+                "assigned_to": assigned_to,
+                "assigned_email": assigned_email,
+                "assignee": assigned_to,
                 "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "summary": f"[AppSec {severity}] {title} in {file_path}:{line}",
-                "description": f"Vulnerability detected by Sentinel AppSec:\n- Severity: {severity}\n- CVE: {cve}\n- Location: {file_path}:{line}\n- Remediation: {finding.get('remediation', 'Review and patch.')}"
+                "description": f"Vulnerability detected by Sentinel AppSec:\n- Severity: {severity}\n- CVE: {cve}\n- Location: {file_path}:{line}\n- Assigned Developer: {assigned_to} <{assigned_email}>\n- Remediation: {finding.get('remediation', 'Review and patch.')}"
             }
         else:
             team = project_key or self.config.get("linear", {}).get("team_id", "ENG")
@@ -140,9 +160,12 @@ class IssueTrackerManager:
                 "project_key": team,
                 "status": "Todo",
                 "priority": severity,
+                "assigned_to": assigned_to,
+                "assigned_email": assigned_email,
+                "assignee": assigned_to,
                 "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "summary": f"[AppSec {severity}] {title}",
-                "description": f"Sentinel Automated Triage finding at {file_path}:{line}"
+                "summary": f"[AppSec {severity}] {title} ({assigned_to})",
+                "description": f"Sentinel Automated Triage finding at {file_path}:{line}\nAssigned Developer: {assigned_to} <{assigned_email}>"
             }
 
         return ticket_data

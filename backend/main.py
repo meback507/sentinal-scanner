@@ -636,13 +636,16 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
             try:
                 dast_result = DASTEngine.audit_url(target_url, timeout=3)
                 raw_dast = dast_result.get("findings", [])
+                committer = GitService.get_repo_committer(target_dir if target_dir and os.path.exists(target_dir) else ".")
+                dast_author = committer.get("author_name", "Developer")
+                dast_email = committer.get("author_email", "")
                 for df in raw_dast:
                     df["type"] = "dast"
                     df["file_path"] = target_url
                     df["line_start"] = 1
                     df["code_snippet"] = df.get("evidence", "HTTP/TLS Configuration")
-                    df["author_name"] = "DevOps Engineer"
-                    df["author_email"] = "devops@internal.net"
+                    df["author_name"] = dast_author
+                    df["author_email"] = dast_email
                     dast_findings.append(df)
                 all_findings.extend(dast_findings)
             except Exception as de:
@@ -677,13 +680,20 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
             f["ai_confidence_label"] = conf["confidence_label"]
             f["ai_confidence_rationale"] = conf["rationale"]
 
-            # Git Blame Attribution
+            # Git Blame Attribution (extract actual developer who committed the code to git)
             blame = GitService.get_line_blame(target_dir, f["file_path"], f.get("line_start", 1))
-            f["author_name"] = blame.get("author_name", "DevOps Engineer")
-            f["author_email"] = blame.get("author_email", "devops@internal.net")
+            f["author_name"] = blame.get("author_name", "Developer")
+            f["author_email"] = blame.get("author_email", "")
             f["commit_hash"] = blame.get("commit_hash", commit_hash)
-            f["commit_date"] = blame.get("commit_date", "2026-09-17")
+            f["commit_date"] = blame.get("commit_date", scan_start_iso[:10])
             f["commit_message"] = blame.get("commit_message", "Repository commit")
+
+            # If a person with the same email exists in the platform, directly assign ticket to that person
+            if f.get("author_email"):
+                matched_user = db.get_user_by_email(f["author_email"])
+                if matched_user:
+                    f["ticket_assigned_to"] = matched_user["username"]
+                    f["ticket_assigned_email"] = matched_user["email"]
         stage_durations["enrich"] = max(1, int((time.time() - t0) * 1000))
 
         # 8. Security Quality Gate & Compliance Audit Event Logging
@@ -1120,7 +1130,7 @@ django==4.1.0
 
 def _is_finding_authored_by_user(finding: Dict[str, Any], user: UserModel) -> bool:
     """
-    Checks if a vulnerability is attributed to the logged-in developer.
+    Checks if a vulnerability is attributed or assigned to the logged-in developer.
     Admins, Security Engineers, and Auditors have global visibility.
     """
     role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
@@ -1130,8 +1140,13 @@ def _is_finding_authored_by_user(finding: Dict[str, Any], user: UserModel) -> bo
     u_email = user.email.lower()
     f_author = (finding.get("author_name") or "").lower()
     f_email = (finding.get("author_email") or "").lower()
-    return (u_name in f_author or (u_email and u_email == f_email) or (f_author and f_author in u_name) or
-            (u_name == "developer" and "marcus" in f_author))
+    t_assigned = (finding.get("ticket_assigned_to") or "").lower()
+    t_email = (finding.get("ticket_assigned_email") or "").lower()
+    return (
+        (u_email and (u_email == f_email or u_email == t_email)) or
+        (u_name and (u_name in f_author or u_name in t_assigned or f_author in u_name)) or
+        (u_name == "developer" and "marcus" in f_author)
+    )
 
 
 # --- Findings & Triage Routes ---
@@ -1283,58 +1298,67 @@ def create_ticket_for_finding(
             detail="Access denied: You are only authorized to create tickets for findings in code you authored."
         )
 
-    author_name = finding.get("author_name") or "Unknown Developer"
-    author_email = finding.get("author_email") or "unknown@domain.local"
+    author_email = finding.get("author_email") or ""
+    author_name = finding.get("author_name") or "Developer"
+
+    # If a person with the same email exists in the platform, assign ticket directly to that person
+    matched_user = db.get_user_by_email(author_email) if author_email else None
+    if matched_user:
+        assigned_to = matched_user.get("username") or author_name
+        assigned_email = matched_user.get("email") or author_email
+    else:
+        assigned_to = finding.get("ticket_assigned_to") or author_name
+        assigned_email = finding.get("ticket_assigned_email") or author_email or "unknown@domain.local"
 
     if req.platform == "jira":
-        res = JiraConnector.create_ticket(finding)
+        res = JiraConnector.create_ticket(finding, assignee_name=assigned_to, assignee_email=assigned_email)
         if res.get("success"):
             db.update_finding_status(
                 finding_id,
                 "in_triage",
                 ticket_key=res.get("ticket_key"),
                 platform="jira",
-                ticket_assigned_to=author_name,
-                ticket_assigned_email=author_email
+                ticket_assigned_to=assigned_to,
+                ticket_assigned_email=assigned_email
             )
-            res["assigned_to"] = author_name
-            res["assigned_email"] = author_email
+            res["assigned_to"] = assigned_to
+            res["assigned_email"] = assigned_email
             AuditService.log_audit_event(
                 event_type="TICKET_DISPATCHED",
                 user=user.username,
-                action=f"Dispatched Jira ticket {res.get('ticket_key')} assigned to code author '{author_name}'",
+                action=f"Dispatched Jira ticket {res.get('ticket_key')} assigned directly to code committer '{assigned_to}' ({assigned_email})",
                 details={
                     "finding_id": finding_id,
                     "ticket_key": res.get("ticket_key"),
                     "platform": "jira",
-                    "assigned_to": author_name,
-                    "assigned_email": author_email
+                    "assigned_to": assigned_to,
+                    "assigned_email": assigned_email
                 }
             )
         return res
     elif req.platform == "zammad":
-        res = ZammadConnector.create_ticket(finding)
+        res = ZammadConnector.create_ticket(finding, assignee_name=assigned_to, assignee_email=assigned_email)
         if res.get("success"):
             db.update_finding_status(
                 finding_id,
                 "in_triage",
                 ticket_key=res.get("ticket_key"),
                 platform="zammad",
-                ticket_assigned_to=author_name,
-                ticket_assigned_email=author_email
+                ticket_assigned_to=assigned_to,
+                ticket_assigned_email=assigned_email
             )
-            res["assigned_to"] = author_name
-            res["assigned_email"] = author_email
+            res["assigned_to"] = assigned_to
+            res["assigned_email"] = assigned_email
             AuditService.log_audit_event(
                 event_type="TICKET_DISPATCHED",
                 user=user.username,
-                action=f"Dispatched Zammad ticket {res.get('ticket_key')} assigned to code author '{author_name}'",
+                action=f"Dispatched Zammad ticket {res.get('ticket_key')} assigned directly to code committer '{assigned_to}' ({assigned_email})",
                 details={
                     "finding_id": finding_id,
                     "ticket_key": res.get("ticket_key"),
                     "platform": "zammad",
-                    "assigned_to": author_name,
-                    "assigned_email": author_email
+                    "assigned_to": assigned_to,
+                    "assigned_email": assigned_email
                 }
             )
         return res
@@ -1370,11 +1394,20 @@ def auto_dispatch_tickets_for_project(
         if platform == "zammad" and f.get("zammad_id"):
             continue
 
-        author_name = f.get("author_name") or "Unknown Developer"
-        author_email = f.get("author_email") or "unknown@domain.local"
+        author_email = f.get("author_email") or ""
+        author_name = f.get("author_name") or "Developer"
+
+        # Check if a user with the same email exists in the platform to assign directly
+        matched_user = db.get_user_by_email(author_email) if author_email else None
+        if matched_user:
+            assigned_to = matched_user.get("username") or author_name
+            assigned_email = matched_user.get("email") or author_email
+        else:
+            assigned_to = f.get("ticket_assigned_to") or author_name
+            assigned_email = f.get("ticket_assigned_email") or author_email or "unknown@domain.local"
 
         if platform == "jira":
-            res = JiraConnector.create_ticket(f)
+            res = JiraConnector.create_ticket(f, assignee_name=assigned_to, assignee_email=assigned_email)
             if res.get("success"):
                 t_key = res.get("ticket_key")
                 db.update_finding_status(
@@ -1382,19 +1415,19 @@ def auto_dispatch_tickets_for_project(
                     "in_triage",
                     ticket_key=t_key,
                     platform="jira",
-                    ticket_assigned_to=author_name,
-                    ticket_assigned_email=author_email
+                    ticket_assigned_to=assigned_to,
+                    ticket_assigned_email=assigned_email
                 )
                 assigned_tickets.append({
                     "finding_id": f["id"],
                     "title": f["title"],
                     "ticket_key": t_key,
-                    "assigned_to": author_name,
-                    "assigned_email": author_email,
+                    "assigned_to": assigned_to,
+                    "assigned_email": assigned_email,
                     "platform": "jira"
                 })
         elif platform == "zammad":
-            res = ZammadConnector.create_ticket(f)
+            res = ZammadConnector.create_ticket(f, assignee_name=assigned_to, assignee_email=assigned_email)
             if res.get("success"):
                 t_key = res.get("ticket_key")
                 db.update_finding_status(
@@ -1402,15 +1435,15 @@ def auto_dispatch_tickets_for_project(
                     "in_triage",
                     ticket_key=t_key,
                     platform="zammad",
-                    ticket_assigned_to=author_name,
-                    ticket_assigned_email=author_email
+                    ticket_assigned_to=assigned_to,
+                    ticket_assigned_email=assigned_email
                 )
                 assigned_tickets.append({
                     "finding_id": f["id"],
                     "title": f["title"],
                     "ticket_key": t_key,
-                    "assigned_to": author_name,
-                    "assigned_email": author_email,
+                    "assigned_to": assigned_to,
+                    "assigned_email": assigned_email,
                     "platform": "zammad"
                 })
 
@@ -3047,6 +3080,16 @@ def audit_dast_endpoint(
 
     raw_findings = result.get("findings", [])
     if target_pid and raw_findings:
+        proj_obj = db.get_project_by_id(target_pid)
+        p_dir = proj_obj.get("git_url", ".") if proj_obj and os.path.isdir(proj_obj.get("git_url", "")) else "."
+        committer = GitService.get_repo_committer(p_dir)
+        dast_author = committer.get("author_name", "Developer")
+        dast_email = committer.get("author_email", "")
+
+        matched_committer_user = db.get_user_by_email(dast_email) if dast_email else None
+        dast_assigned_to = matched_committer_user.get("username") if matched_committer_user else None
+        dast_assigned_email = matched_committer_user.get("email") if matched_committer_user else None
+
         dast_findings = []
         for df in raw_findings:
             dast_findings.append({
@@ -3069,8 +3112,10 @@ def audit_dast_endpoint(
                 "urgency": "LOW",
                 "sla_days": 90,
                 "status": "open",
-                "author_name": user.username if hasattr(user, "username") else "DevOps Engineer",
-                "author_email": user.email if hasattr(user, "email") else "devops@internal.net"
+                "author_name": dast_author,
+                "author_email": dast_email,
+                "ticket_assigned_to": dast_assigned_to,
+                "ticket_assigned_email": dast_assigned_email
             })
         scan_id = db.create_scan(target_pid, f"DAST Audit: {payload.target_url}", "dast")
         db.update_scan_results(scan_id, target_pid, dast_findings)
