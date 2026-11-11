@@ -185,10 +185,15 @@ class GitService:
                             is_platform = any(ident in an.lower() or ident in ae.lower() for ident in cls.APPSEC_PLATFORM_IDENTIFIERS)
                             is_generic = an.lower() in ("developer", "unknown", "")
                             if not is_platform and not is_generic and ae:
-                                if "@users.noreply.github.com" in ae and git_pat:
-                                    real_em = cls.resolve_github_primary_email(git_pat)
-                                    if real_em:
-                                        ae = real_em
+                                if "@users.noreply.github.com" in ae:
+                                    if git_pat:
+                                        real_em = cls.resolve_github_primary_email(git_pat)
+                                        if real_em:
+                                            ae = real_em
+                                    if "@users.noreply.github.com" in ae:
+                                        local_email = subprocess.run(["git", "config", "user.email"], cwd=target_root, capture_output=True, text=True).stdout.strip()
+                                        if local_email and "@users.noreply.github.com" not in local_email and "@" in local_email:
+                                            ae = local_email
                                 return {
                                     "author_name": an,
                                     "author_email": ae,
@@ -221,7 +226,7 @@ class GitService:
         return fallback
 
     @classmethod
-    def get_line_blame(cls, repo_dir: str, file_path: str, line_no: int = 1) -> dict:
+    def get_line_blame(cls, repo_dir: str, file_path: str, line_no: int = 1, git_pat: Optional[str] = None) -> dict:
         """
         Runs git blame to determine the developer author, email, commit hash, and commit message
         for a specific line of code. Fetches the actual committer who introduced the code,
@@ -238,7 +243,7 @@ class GitService:
         # If file_path is a URL or dynamic endpoint (e.g. DAST findings), attribute directly to repo committer
         clean_path = str(file_path or "").strip()
         if not clean_path or clean_path.startswith(("http://", "https://", "ws://", "wss://")) or "://" in clean_path:
-            return cls.get_repo_committer(repo_dir or ".")
+            return cls.get_repo_committer(repo_dir or ".", git_pat=git_pat)
 
         if not repo_dir or not os.path.exists(repo_dir):
             return cls.get_repo_committer(os.getcwd())
@@ -341,7 +346,16 @@ class GitService:
 
         if not author_name or is_appsec_author:
             # Fallback to repo committer
-            return cls.get_repo_committer(git_root)
+            return cls.get_repo_committer(git_root, git_pat=git_pat)
+
+        if author_email and "@users.noreply.github.com" in author_email:
+            real_em = cls.resolve_github_primary_email(git_pat) if git_pat else None
+            if real_em:
+                author_email = real_em
+            else:
+                local_email = subprocess.run(["git", "config", "user.email"], cwd=git_root, capture_output=True, text=True).stdout.strip()
+                if local_email and "@users.noreply.github.com" not in local_email and "@" in local_email:
+                    author_email = local_email
 
         return {
             "author_name": author_name,

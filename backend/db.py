@@ -1211,6 +1211,7 @@ class Database:
                     FROM findings
                     WHERE LOWER(author_name) IN ('devops engineer', 'aegissec admin', 'devops', 'admin', 'developer', 'unknown')
                        OR LOWER(author_email) IN ('devops@internal.net', 'admin@aegissec.internal', 'admin@sentinel.internal', 'pipeline-bot@supplychain.net')
+                       OR author_email LIKE '%@users.noreply.github.com%'
                        OR author_name IS NULL
                        OR author_name = ''
                 """).fetchall()
@@ -1239,7 +1240,7 @@ class Database:
 
                     clean_path = str(fpath).strip()
                     if clean_path and not clean_path.startswith(("http://", "https://", "ws://", "wss://")) and "://" not in clean_path:
-                        blame = GitService.get_line_blame(".", clean_path, lstart)
+                        blame = GitService.get_line_blame(".", clean_path, lstart, git_pat=proj_pat)
                         blame_name = blame.get("author_name") or ""
                         blame_email = blame.get("author_email") or ""
                         if blame_name and not any(ident in blame_name.lower() or ident in blame_email.lower() for ident in GitService.APPSEC_PLATFORM_IDENTIFIERS) and blame_name.lower() not in ("developer", "unknown"):
@@ -1249,9 +1250,19 @@ class Database:
                             commit_date = blame.get("commit_date", commit_date)
                             commit_message = blame.get("commit_message", commit_message)
 
+                    if author_email and "@users.noreply.github.com" in author_email:
+                        if proj_pat:
+                            real_em = GitService.resolve_github_primary_email(proj_pat)
+                            if real_em:
+                                author_email = real_em
+                        if "@users.noreply.github.com" in author_email:
+                            local_email = subprocess.run(["git", "config", "user.email"], capture_output=True, text=True).stdout.strip()
+                            if local_email and "@users.noreply.github.com" not in local_email and "@" in local_email:
+                                author_email = local_email
+
                     matched_user = self.get_user_by_email(author_email) if author_email else None
                     t_assigned_to = matched_user.get("username") if matched_user else r["ticket_assigned_to"]
-                    t_assigned_email = matched_user.get("email") if matched_user else r["ticket_assigned_email"]
+                    t_assigned_email = matched_user.get("email") if matched_user else (author_email if matched_user else r["ticket_assigned_email"])
 
                     conn.execute("""
                         UPDATE findings

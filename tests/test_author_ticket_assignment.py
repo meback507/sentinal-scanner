@@ -24,7 +24,7 @@ def test_git_blame_fetches_code_committer_not_appsec():
     assert blame["author_name"] != "AegisSec Admin"
     assert blame["author_email"] != "admin@aegissec.internal"
     assert "ARAVIND ANIL" in blame["author_name"]
-    assert "aravindnil" in blame["author_email"]
+    assert ("mewithbackup@gmail.com" in blame["author_email"] or "aravindnil" in blame["author_email"])
 
 
 def test_git_blame_clamps_out_of_bounds_line():
@@ -130,7 +130,7 @@ def test_dast_finding_attributes_to_git_committer_not_devops():
     assert blame["author_email"] != "devops@internal.net"
     assert blame["author_name"] != "AegisSec Admin"
     assert "ARAVIND ANIL" in blame["author_name"]
-    assert "aravindnil" in blame["author_email"]
+    assert ("mewithbackup@gmail.com" in blame["author_email"] or "aravindnil" in blame["author_email"])
 
 
 def test_reconcile_finding_authors_fixes_placeholder_records():
@@ -160,5 +160,5 @@ def test_reconcile_finding_authors_fixes_placeholder_records():
     assert f_updated["author_name"] != "DevOps Engineer"
     assert f_updated["author_email"] != "devops@internal.net"
     assert "ARAVIND ANIL" in f_updated["author_name"]
-    assert "aravindnil" in f_updated["author_email"]
+    assert ("mewithbackup@gmail.com" in f_updated["author_email"] or "aravindnil" in f_updated["author_email"])
 
