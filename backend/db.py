@@ -1225,7 +1225,8 @@ class Database:
                     if pid not in committer_by_proj:
                         proj = self.get_project_by_id(pid) if pid else None
                         proj_path = proj.get("git_url", ".") if (proj and os.path.isdir(proj.get("git_url", ""))) else "."
-                        committer = GitService.get_repo_committer(proj_path)
+                        proj_pat = proj.get("git_pat") if proj else None
+                        committer = GitService.get_repo_committer(proj_path, git_pat=proj_pat)
                         committer_by_proj[pid] = committer
                     else:
                         committer = committer_by_proj[pid]

@@ -1410,7 +1410,7 @@ async function loadFindings() {
             const devSelect = document.getElementById("filter-developer");
             if (devSelect) {
                 const currentVal = devSelect.value;
-                const uniqueDevs = Array.from(new Set(state.findings.map(f => f.author_name).filter(Boolean)));
+                const uniqueDevs = Array.from(new Set(state.findings.map(f => f.author_email || f.author_name).filter(Boolean)));
                 devSelect["innerHTML"] = '<option value="">All Developers</option>';
                 uniqueDevs.forEach(dev => {
                     const opt = document.createElement("option");
@@ -1505,7 +1505,7 @@ function applyFilters() {
         if (sev && f.severity !== sev) return false;
         if (quad && f.quadrant !== quad) return false;
         if (std && !f.standards.some(s => s.startsWith(std))) return false;
-        if (dev && f.author_name !== dev) return false;
+        if (dev && f.author_email !== dev && f.author_name !== dev) return false;
         return true;
     });
 
@@ -1557,8 +1557,8 @@ function renderFindingsTable() {
                 </div>
             </td>
             <td>
-                <div style="font-weight: 600; color: #fff; font-size: 13px;">${escapeHtml(f.author_name || 'Unknown')}</div>
-                <div style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(f.author_email || '')}</div>
+                <div style="font-weight: 600; color: #fff; font-size: 13px;">${escapeHtml(f.author_email || f.author_name || 'Unknown')}</div>
+                <div style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(f.author_name && f.author_email ? f.author_name : '')}</div>
                 <div style="font-family: var(--font-mono); font-size: 10px; color: var(--accent-cyan);">${f.commit_hash ? '#' + f.commit_hash : ''}</div>
             </td>
             <td>${engineBadge}</td>
@@ -1573,10 +1573,10 @@ function renderFindingsTable() {
             <td>${stdBadges}</td>
             <td>
                 <span class="badge" style="background: rgba(56, 189, 248, 0.1); color: var(--accent-cyan);">${f.status.replace("_", " ")}</span>
-                ${(f.jira_key || f.zammad_id || f.ticket_assigned_to) ? `
+                ${(f.jira_key || f.zammad_id || f.ticket_assigned_to || f.ticket_assigned_email) ? `
                     <div style="margin-top: 4px;">
-                        <span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; font-size: 10px; border: 1px solid rgba(168, 85, 247, 0.35);" title="Ticket assigned to author ${escapeHtml(f.ticket_assigned_to || f.author_name)}">
-                            🎫 ${f.jira_key ? 'Jira #' + f.jira_key : (f.zammad_id ? 'Zammad #' + f.zammad_id : 'Ticket')} &rarr; ${escapeHtml(f.ticket_assigned_to || f.author_name)}
+                        <span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; font-size: 10px; border: 1px solid rgba(168, 85, 247, 0.35);" title="Ticket assigned to ${escapeHtml(f.ticket_assigned_email || f.ticket_assigned_to || f.author_email || f.author_name)}">
+                            🎫 ${f.jira_key ? 'Jira #' + f.jira_key : (f.zammad_id ? 'Zammad #' + f.zammad_id : 'Ticket')} &rarr; ${escapeHtml(f.ticket_assigned_email || f.ticket_assigned_to || f.author_email)}
                         </span>
                     </div>
                 ` : ''}
@@ -4355,15 +4355,15 @@ function renderAuditFindingsLedger(findings) {
                 </div>
             </td>
             <td>
-                <div style="font-size: 12px; color: #fff; font-weight: 600;">${escapeHtml(f.author_name || 'Unknown')}</div>
-                <div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(f.author_email || '')}</div>
+                <div style="font-size: 12px; color: #fff; font-weight: 600;">${escapeHtml(f.author_email || f.author_name || 'Unknown')}</div>
+                <div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(f.author_name && f.author_email ? f.author_name : '')}</div>
             </td>
             <td>
                 <span class="status-pill status-${(f.status || 'open').toLowerCase()}">${(f.status || 'open').toUpperCase()}</span>
-                ${(f.jira_key || f.zammad_id || f.ticket_assigned_to) ? `
+                ${(f.jira_key || f.zammad_id || f.ticket_assigned_to || f.ticket_assigned_email) ? `
                     <div style="margin-top: 4px;">
-                        <span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; font-size: 10px; border: 1px solid rgba(168, 85, 247, 0.35);" title="Assigned to author ${escapeHtml(f.ticket_assigned_to || f.author_name)}">
-                            🎫 ${f.jira_key ? 'Jira #' + f.jira_key : (f.zammad_id ? 'Zammad #' + f.zammad_id : 'Ticket')} &rarr; ${escapeHtml(f.ticket_assigned_to || f.author_name)}
+                        <span class="badge" style="background: rgba(168, 85, 247, 0.18); color: #c084fc; font-size: 10px; border: 1px solid rgba(168, 85, 247, 0.35);" title="Assigned to ${escapeHtml(f.ticket_assigned_email || f.ticket_assigned_to || f.author_email || f.author_name)}">
+                            🎫 ${f.jira_key ? 'Jira #' + f.jira_key : (f.zammad_id ? 'Zammad #' + f.zammad_id : 'Ticket')} &rarr; ${escapeHtml(f.ticket_assigned_email || f.ticket_assigned_to || f.author_email)}
                         </span>
                     </div>
                 ` : ''}

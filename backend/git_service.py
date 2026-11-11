@@ -111,7 +111,33 @@ class GitService:
     }
 
     @classmethod
-    def get_repo_committer(cls, repo_dir: str = ".") -> dict:
+    def resolve_github_primary_email(cls, git_pat: Optional[str] = None) -> Optional[str]:
+        """
+        Resolves the verified primary account email from GitHub API when commits use masked noreply addresses.
+        """
+        if not git_pat:
+            return None
+        try:
+            import urllib.request
+            import json
+            req = urllib.request.Request(
+                "https://api.github.com/user/emails",
+                headers={"Authorization": f"token {git_pat}", "User-Agent": "Sentinel-AppSec"}
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                emails = json.loads(resp.read().decode())
+                if isinstance(emails, list):
+                    for e in emails:
+                        if e.get("primary") and e.get("verified"):
+                            return e.get("email")
+                    if emails and "email" in emails[0]:
+                        return emails[0]["email"]
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def get_repo_committer(cls, repo_dir: str = ".", git_pat: Optional[str] = None) -> dict:
         """
         Extracts the human developer committer from the Git repository history or configuration,
         strictly avoiding AppSec platform administrators or automated bot handles.
@@ -159,6 +185,10 @@ class GitService:
                             is_platform = any(ident in an.lower() or ident in ae.lower() for ident in cls.APPSEC_PLATFORM_IDENTIFIERS)
                             is_generic = an.lower() in ("developer", "unknown", "")
                             if not is_platform and not is_generic and ae:
+                                if "@users.noreply.github.com" in ae and git_pat:
+                                    real_em = cls.resolve_github_primary_email(git_pat)
+                                    if real_em:
+                                        ae = real_em
                                 return {
                                     "author_name": an,
                                     "author_email": ae,
@@ -173,9 +203,14 @@ class GitService:
                 if cfg_name or cfg_mail:
                     is_platform_cfg = any(ident in cfg_name.lower() or ident in cfg_mail.lower() for ident in cls.APPSEC_PLATFORM_IDENTIFIERS)
                     if not is_platform_cfg and cfg_name.lower() not in ("developer", "unknown", ""):
+                        eff_mail = cfg_mail or ""
+                        if "@users.noreply.github.com" in eff_mail and git_pat:
+                            real_em = cls.resolve_github_primary_email(git_pat)
+                            if real_em:
+                                eff_mail = real_em
                         return {
                             "author_name": cfg_name or "Developer",
-                            "author_email": cfg_mail or "",
+                            "author_email": eff_mail,
                             "commit_hash": "HEAD",
                             "commit_date": datetime.datetime.now().strftime("%Y-%m-%d"),
                             "commit_message": "Local repository workspace"
