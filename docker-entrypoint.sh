@@ -5,6 +5,9 @@ set -e
 mkdir -p /app/data /app/reports /app/workspaces
 chmod -R 770 /app/data /app/reports /app/workspaces 2>/dev/null || true  # sentinel-ignore: S2612
 
+# Configure Git safe.directory to permit repository blame and history operations inside container
+git config --global --add safe.directory "*" 2>/dev/null || true
+
 # If running interactively and ADMIN_PASSWORD is not provided, prompt the administrator for password
 if [ -z "$ADMIN_PASSWORD" ] && [ -t 0 ]; then
     printf "\n======================================================\n"

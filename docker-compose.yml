@@ -25,6 +25,7 @@ services:
       - ./frontend:/app/frontend
       - ./backend:/app/backend
       - ./.sentinel:/app/.sentinel
+      - ./.git:/app/.git:ro
       - ./docker-entrypoint.sh:/app/docker-entrypoint.sh
       # Persistent storage for SQLite database and generated audit reports
       - sentinel_data:/app/data

@@ -119,3 +119,46 @@ def test_issue_tracker_directly_assigned_to_person_with_matching_email():
     res = manager.create_ticket(finding, provider="jira")
     assert res["assigned_to"] == dev_username
     assert res["assigned_email"] == dev_email
+
+
+def test_dast_finding_attributes_to_git_committer_not_devops():
+    # Dynamic endpoint findings have URL file paths (e.g. http://127.0.0.1:8000:1)
+    # They should resolve directly to the repository Git committer, never 'DevOps Engineer'
+    blame = GitService.get_line_blame(".", "http://127.0.0.1:8000:1", line_no=1)
+    assert blame is not None
+    assert blame["author_name"] != "DevOps Engineer"
+    assert blame["author_email"] != "devops@internal.net"
+    assert blame["author_name"] != "AegisSec Admin"
+    assert "ARAVIND ANIL" in blame["author_name"]
+    assert "aravindnil" in blame["author_email"]
+
+
+def test_reconcile_finding_authors_fixes_placeholder_records():
+    # Insert a finding with stale 'DevOps Engineer' / 'devops@internal.net' author
+    proj_name = f"Test_Reconcile_{uuid.uuid4().hex[:6]}"
+    created_proj = db.create_project(proj_name, "Desc", ".", "main", "", "admin")
+    p_id = created_proj["id"]
+
+    stale_fid = f"FINDING-STALE-{uuid.uuid4().hex[:6]}"
+    db.create_finding({
+        "id": stale_fid,
+        "project_id": p_id,
+        "type": "dast",
+        "title": "Missing Referrer-Policy Header",
+        "file_path": "http://127.0.0.1:8000:1",
+        "author_name": "DevOps Engineer",
+        "author_email": "devops@internal.net",
+        "commit_hash": "HEAD"
+    })
+
+    # Run author reconciliation
+    db.reconcile_finding_authors()
+
+    # Verify that the finding was retroactively updated to the true Git committer
+    f_updated = db.get_finding_by_id(stale_fid)
+    assert f_updated is not None
+    assert f_updated["author_name"] != "DevOps Engineer"
+    assert f_updated["author_email"] != "devops@internal.net"
+    assert "ARAVIND ANIL" in f_updated["author_name"]
+    assert "aravindnil" in f_updated["author_email"]
+

@@ -681,12 +681,21 @@ def trigger_scan(project_id: str, scan_type: str = "full", user: UserModel = Dep
             f["ai_confidence_rationale"] = conf["rationale"]
 
             # Git Blame Attribution (extract actual developer who committed the code to git)
-            blame = GitService.get_line_blame(target_dir, f["file_path"], f.get("line_start", 1))
-            f["author_name"] = blame.get("author_name", "Developer")
-            f["author_email"] = blame.get("author_email", "")
-            f["commit_hash"] = blame.get("commit_hash", commit_hash)
-            f["commit_date"] = blame.get("commit_date", scan_start_iso[:10])
-            f["commit_message"] = blame.get("commit_message", "Repository commit")
+            clean_fp = str(f.get("file_path", "")).strip()
+            if f.get("type") == "dast" or clean_fp.startswith(("http://", "https://", "ws://", "wss://")) or "://" in clean_fp:
+                committer = GitService.get_repo_committer(target_dir if target_dir and os.path.exists(target_dir) else ".")
+                f["author_name"] = committer.get("author_name", "Developer")
+                f["author_email"] = committer.get("author_email", "")
+                f["commit_hash"] = committer.get("commit_hash", commit_hash)
+                f["commit_date"] = committer.get("commit_date", scan_start_iso[:10])
+                f["commit_message"] = committer.get("commit_message", "Repository commit")
+            else:
+                blame = GitService.get_line_blame(target_dir, f["file_path"], f.get("line_start", 1))
+                f["author_name"] = blame.get("author_name", "Developer")
+                f["author_email"] = blame.get("author_email", "")
+                f["commit_hash"] = blame.get("commit_hash", commit_hash)
+                f["commit_date"] = blame.get("commit_date", scan_start_iso[:10])
+                f["commit_message"] = blame.get("commit_message", "Repository commit")
 
             # If a person with the same email exists in the platform, directly assign ticket to that person
             if f.get("author_email"):

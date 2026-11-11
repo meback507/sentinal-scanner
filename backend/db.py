@@ -111,6 +111,7 @@ class Database:
                     os.makedirs(db_dir, exist_ok=True)
             self._init_schema()
             self._seed_default_data()
+            self.reconcile_finding_authors()
         except Exception as e:  # sentinel-ignore: CWE-772, S2095
             fallback = "/tmp/sentinel.db"
             if self.db_path != fallback and not self._is_uri:
@@ -118,6 +119,7 @@ class Database:
                 self.db_path = fallback
                 self._init_schema()  # sentinel-ignore: CWE-772, S2095
                 self._seed_default_data()
+                self.reconcile_finding_authors()
             else:
                 raise
 
@@ -429,8 +431,8 @@ class Database:
             admin_password = os.getenv("ADMIN_PASSWORD") or os.getenv("SENTINEL_ADMIN_PASSWORD") or "admin"
             admin_email = os.getenv("ADMIN_EMAIL", f"{admin_username}@sentinel.internal").strip()
 
-            # Remove all test/demo users - ONLY the single admin user exists
-            conn.execute("DELETE FROM users WHERE username != ?", (admin_username,))
+            # Remove only ephemeral test/demo accounts while preserving legitimate registered users
+            conn.execute("DELETE FROM users WHERE username IN ('test-developer', 'test-auditor', 'test-admin', 'developer', 'auditor') AND username != ?", (admin_username,))
 
             # Upsert the configured default admin user
             admin_user = conn.execute("SELECT id FROM users WHERE username = ?", (admin_username,)).fetchone()
@@ -519,7 +521,7 @@ class Database:
                     u_dict = dict(r)
                     u_email = (u_dict.get("email") or "").lower()
                     u_name = (u_dict.get("username") or "").lower()
-                    if u_name and u_name in clean_email:
+                    if u_name and u_name not in ("admin", "devops", "root", "developer") and u_name in clean_email:
                         u_dict["assigned_projects"] = self._get_user_assigned_projects_conn(conn, u_dict["id"])
                         return u_dict
                 return None
@@ -537,6 +539,23 @@ class Database:
                 users.append(u)
             return users
 
+    def assign_findings_to_user_email(self, email: str, username: str) -> int:
+        """
+        Assigns all open findings matching the developer's email or username directly to their platform user account.
+        """
+        if not email or not username:
+            return 0
+        clean_email = email.strip().lower()
+        clean_username = username.strip().lower()
+        with self._get_conn() as conn:
+            cur = conn.execute("""
+                UPDATE findings
+                SET ticket_assigned_to = ?, ticket_assigned_email = ?
+                WHERE (LOWER(author_email) = ? OR LOWER(author_name) = ? OR ? LIKE '%' || LOWER(author_email) || '%')
+                  AND (ticket_assigned_to IS NULL OR ticket_assigned_to = '')
+            """, (username, email, clean_email, clean_username, clean_email))
+            return cur.rowcount
+
     def create_user(self, username: str, email: str, password: str, role: str, assigned_projects: Optional[List[str]] = None) -> Dict[str, Any]:
         user_id = str(uuid.uuid4())
         now = datetime.datetime.now().isoformat()
@@ -548,6 +567,7 @@ class Database:
             )
         if assigned_projects:
             self.set_user_projects(user_id, assigned_projects)
+        self.assign_findings_to_user_email(email, username)
         return {
             "id": user_id,
             "username": username,
@@ -589,6 +609,8 @@ class Database:
         if assigned_projects is not None:
             self.set_user_projects(actual_id, assigned_projects)
         res["assigned_projects"] = self.get_user_assigned_projects(actual_id)
+        if res.get("email") and res.get("username"):
+            self.assign_findings_to_user_email(res["email"], res["username"])
         return res
 
     def delete_user(self, user_id: str) -> bool:
@@ -1174,7 +1196,94 @@ class Database:
             f["id"] = fid
             return f
 
+    def reconcile_finding_authors(self):
+        """
+        Reconciles findings in the database that are attributed to AppSec platform staff,
+        bots, or placeholder names (e.g. 'DevOps Engineer', 'AegisSec Admin', 'devops@internal.net')
+        to the actual Git committer who committed the code to git.
+        Also automatically assigns tickets directly to platform users with matching email.
+        """
+        try:
+            from backend.git_service import GitService
+            with self._get_conn() as conn:
+                rows = conn.execute("""
+                    SELECT id, project_id, file_path, line_start, author_name, author_email, ticket_assigned_to, ticket_assigned_email
+                    FROM findings
+                    WHERE LOWER(author_name) IN ('devops engineer', 'aegissec admin', 'devops', 'admin', 'developer', 'unknown')
+                       OR LOWER(author_email) IN ('devops@internal.net', 'admin@aegissec.internal', 'admin@sentinel.internal', 'pipeline-bot@supplychain.net')
+                       OR author_name IS NULL
+                       OR author_name = ''
+                """).fetchall()
+
+                committer_by_proj = {}
+                for r in rows:
+                    fid = r["id"]
+                    pid = r["project_id"]
+                    fpath = r["file_path"] or ""
+                    lstart = r["line_start"] or 1
+
+                    if pid not in committer_by_proj:
+                        proj = self.get_project_by_id(pid) if pid else None
+                        proj_path = proj.get("git_url", ".") if (proj and os.path.isdir(proj.get("git_url", ""))) else "."
+                        committer = GitService.get_repo_committer(proj_path)
+                        committer_by_proj[pid] = committer
+                    else:
+                        committer = committer_by_proj[pid]
+
+                    author_name = committer.get("author_name") or "Developer"
+                    author_email = committer.get("author_email") or ""
+                    commit_hash = committer.get("commit_hash", "HEAD")
+                    commit_date = committer.get("commit_date", "")
+                    commit_message = committer.get("commit_message", "Repository commit")
+
+                    clean_path = str(fpath).strip()
+                    if clean_path and not clean_path.startswith(("http://", "https://", "ws://", "wss://")) and "://" not in clean_path:
+                        blame = GitService.get_line_blame(".", clean_path, lstart)
+                        blame_name = blame.get("author_name") or ""
+                        blame_email = blame.get("author_email") or ""
+                        if blame_name and not any(ident in blame_name.lower() or ident in blame_email.lower() for ident in GitService.APPSEC_PLATFORM_IDENTIFIERS) and blame_name.lower() not in ("developer", "unknown"):
+                            author_name = blame_name
+                            author_email = blame_email or author_email
+                            commit_hash = blame.get("commit_hash", commit_hash)
+                            commit_date = blame.get("commit_date", commit_date)
+                            commit_message = blame.get("commit_message", commit_message)
+
+                    matched_user = self.get_user_by_email(author_email) if author_email else None
+                    t_assigned_to = matched_user.get("username") if matched_user else r["ticket_assigned_to"]
+                    t_assigned_email = matched_user.get("email") if matched_user else r["ticket_assigned_email"]
+
+                    conn.execute("""
+                        UPDATE findings
+                        SET author_name = ?,
+                            author_email = ?,
+                            commit_hash = ?,
+                            commit_date = ?,
+                            commit_message = ?,
+                            ticket_assigned_to = ?,
+                            ticket_assigned_email = ?
+                        WHERE id = ?
+                    """, (author_name, author_email, commit_hash, commit_date, commit_message, t_assigned_to, t_assigned_email, fid))
+
+                # Reconcile unassigned tickets for findings where author matches a registered platform user
+                unassigned = conn.execute("""
+                    SELECT id, author_email, author_name
+                    FROM findings
+                    WHERE (ticket_assigned_to IS NULL OR ticket_assigned_to = '')
+                      AND author_email IS NOT NULL AND author_email != ''
+                """).fetchall()
+                for ur in unassigned:
+                    m_user = self.get_user_by_email(ur["author_email"])
+                    if m_user:
+                        conn.execute("""
+                            UPDATE findings
+                            SET ticket_assigned_to = ?, ticket_assigned_email = ?
+                            WHERE id = ?
+                        """, (m_user["username"], m_user["email"], ur["id"]))
+        except Exception as e:
+            logger.error("Error reconciling finding authors: %s", e)
+
     def list_findings(self, project_id: Optional[str] = None, scan_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        self.reconcile_finding_authors()
         with self._get_conn() as conn:
             query = "SELECT * FROM findings"
             params = []
@@ -1206,6 +1315,7 @@ class Database:
             return findings
 
     def get_finding_by_id(self, finding_id: str) -> Optional[Dict[str, Any]]:
+        self.reconcile_finding_authors()
         with self._get_conn() as conn:
             row = conn.execute("SELECT * FROM findings WHERE id = ?", (finding_id,)).fetchone()
             if not row:
