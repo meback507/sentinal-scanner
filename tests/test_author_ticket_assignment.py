@@ -18,21 +18,23 @@ from backend.integrations.issue_trackers import IssueTrackerManager
 def test_git_blame_fetches_code_committer_not_appsec():
     # Test blame on a file authored by a developer in this repository
     blame = GitService.get_line_blame(".", "src/payments/refund.py", line_no=15)
+    committer = GitService.get_repo_committer(".")
     assert blame is not None
     assert blame["author_name"] != "DevOps Engineer"
     assert blame["author_email"] != "devops@internal.net"
     assert blame["author_name"] != "AegisSec Admin"
     assert blame["author_email"] != "admin@aegissec.internal"
-    assert "ARAVIND ANIL" in blame["author_name"]
-    assert ("mewithbackup@gmail.com" in blame["author_email"] or "aravindnil" in blame["author_email"])
+    assert blame["author_name"] == committer["author_name"]
+    assert blame["author_email"] == committer["author_email"]
 
 
 def test_git_blame_clamps_out_of_bounds_line():
     # Line 9999 exceeds file length, should clamp to file length without throwing 128 error
     blame = GitService.get_line_blame(".", "src/payments/refund.py", line_no=9999)
+    committer = GitService.get_repo_committer(".")
     assert blame is not None
     assert blame["author_name"] != "DevOps Engineer"
-    assert "ARAVIND ANIL" in blame["author_name"]
+    assert blame["author_name"] == committer["author_name"]
 
 
 def test_db_get_user_by_email():
@@ -125,12 +127,13 @@ def test_dast_finding_attributes_to_git_committer_not_devops():
     # Dynamic endpoint findings have URL file paths (e.g. http://127.0.0.1:8000:1)
     # They should resolve directly to the repository Git committer, never 'DevOps Engineer'
     blame = GitService.get_line_blame(".", "http://127.0.0.1:8000:1", line_no=1)
+    committer = GitService.get_repo_committer(".")
     assert blame is not None
     assert blame["author_name"] != "DevOps Engineer"
     assert blame["author_email"] != "devops@internal.net"
     assert blame["author_name"] != "AegisSec Admin"
-    assert "ARAVIND ANIL" in blame["author_name"]
-    assert ("mewithbackup@gmail.com" in blame["author_email"] or "aravindnil" in blame["author_email"])
+    assert blame["author_name"] == committer["author_name"]
+    assert blame["author_email"] == committer["author_email"]
 
 
 def test_reconcile_finding_authors_fixes_placeholder_records():
@@ -156,9 +159,10 @@ def test_reconcile_finding_authors_fixes_placeholder_records():
 
     # Verify that the finding was retroactively updated to the true Git committer
     f_updated = db.get_finding_by_id(stale_fid)
+    committer = GitService.get_repo_committer(".")
     assert f_updated is not None
     assert f_updated["author_name"] != "DevOps Engineer"
     assert f_updated["author_email"] != "devops@internal.net"
-    assert "ARAVIND ANIL" in f_updated["author_name"]
-    assert ("mewithbackup@gmail.com" in f_updated["author_email"] or "aravindnil" in f_updated["author_email"])
+    assert f_updated["author_name"] == committer["author_name"]
+    assert f_updated["author_email"] == committer["author_email"]
 
